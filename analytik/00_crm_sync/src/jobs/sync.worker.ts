@@ -24,6 +24,8 @@ export class SyncWorker extends WorkerHost {
     switch (job.data?.type) {
       case 'delta':
         return this.delta.run(job.data.accountId);
+      case 'enrich':
+        return this.delta.runEnrich(job.data.accountId);
       case 'pipeline':
         return this.pipeline.run(job.data.accountId);
       case 'delta-sync-cron':

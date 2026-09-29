@@ -18,6 +18,7 @@ export class AdminController {
   @Post('accounts/:accountId/retry-backfill') retry(@Param('accountId', ParseIntPipe) id: number) { return this.svc.retryBackfill(id); }
   @Post('accounts/:accountId/stop-sync') stopSync(@Param('accountId', ParseIntPipe) id: number) { return this.svc.stopSync(id); }
   @Post('accounts/:accountId/start-sync') startSync(@Param('accountId', ParseIntPipe) id: number) { return this.svc.startSync(id); }
+  @Post('accounts/:accountId/enrich') enrich(@Param('accountId', ParseIntPipe) id: number) { return this.svc.enrichAccount(id); }
   @Get('accounts/:accountId/ai-settings') getAiSettings(@Param('accountId', ParseIntPipe) id: number) { return this.svc.getAiSettings(id); }
   @Patch('accounts/:accountId/ai-settings') updateAiSettings(@Param('accountId', ParseIntPipe) id: number, @Body() dto: UpdateAiSettingsDto) { return this.svc.updateAiSettings(id, dto); }
   @Get('notifications') listNotif(@Query('unreadOnly') unread: string) { return this.svc.listNotifications(unread === 'true'); }

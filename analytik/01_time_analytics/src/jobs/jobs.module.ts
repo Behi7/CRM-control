@@ -9,6 +9,8 @@ import { TokenExpiryProcessor } from './processors/token-expiry.processor';
 import { EventProcessor } from './processors/event.processor';
 import { SyncWorker, BackfillWorker } from './sync.worker';
 
+const isWorkerEnabled = process.env.SYNC_WORKER_ENABLED !== 'false';
+
 @Global()
 @Module({
   imports: [
@@ -19,15 +21,13 @@ import { SyncWorker, BackfillWorker } from './sync.worker';
   ],
   providers: [
     JobSchedulerService,
-    JobsBootstrapService,
     EventProcessor,
     DeltaSyncProcessor,
     PipelineSyncProcessor,
     BackfillProcessor,
     TokenExpiryProcessor,
-    SyncWorker,
-    BackfillWorker,
+    ...(isWorkerEnabled ? [JobsBootstrapService, SyncWorker, BackfillWorker] : []),
   ],
-  exports: [JobSchedulerService],
+  exports: [JobSchedulerService, DeltaSyncProcessor],
 })
 export class JobsModule {}

@@ -3,7 +3,31 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { CrmConnectorService } from '../../crm-connector/crm-connector.service';
 
 export interface CrmEvent { id: number; type: string; entity_id: number; created_at: number; value_after?: any; value_before?: any; }
-export interface AmoLead { id: number; name: string; status_id: number; pipeline_id: number; created_at: number; updated_at: number; closed_at?: number; price: number|string; responsible_user_id?: number; _embedded?: { tags?: Array<{id: number; name: string}> }; }
+export interface AmoLead {
+  id: number;
+  name: string;
+  status_id: number;
+  pipeline_id: number;
+  created_at: number;
+  updated_at: number;
+  closed_at?: number;
+  closest_task_at?: number;
+  loss_reason_id?: number;
+  price: number | string;
+  responsible_user_id?: number;
+  custom_fields_values?: Array<{
+    field_id: number;
+    field_name: string;
+    field_code?: string | null;
+    field_type?: string;
+    values?: Array<{ value: any; enum_id?: number; enum_code?: string }>;
+  }> | null;
+  _embedded?: {
+    tags?: Array<{ id: number; name: string }>;
+    loss_reason?: Array<{ id: number; name: string }> | { id: number; name: string };
+    contacts?: Array<{ id: number; is_main?: boolean }>;
+  };
+}
 
 export interface EventSyncContext {
   pipelineMap?: Map<string, number>;
@@ -119,6 +143,62 @@ export class EventProcessor {
       }
     }
 
+    // Extract BI Enrichment fields (loss reason, main contact, closest task, custom fields & UTM)
+    const lossReasonId = amo.loss_reason_id != null ? String(amo.loss_reason_id) : null;
+    const embeddedLoss = amo._embedded?.loss_reason;
+    const lossReasonName = Array.isArray(embeddedLoss)
+      ? embeddedLoss[0]?.name || null
+      : (embeddedLoss as any)?.name || null;
+
+    const contacts = amo._embedded?.contacts || [];
+    const mainContact = contacts.find((c: any) => c.is_main) || contacts[0];
+    const mainContactId = mainContact?.id != null ? String(mainContact.id) : null;
+
+    const closestTaskAt =
+      amo.closest_task_at && Number(amo.closest_task_at) > 0
+        ? new Date(Number(amo.closest_task_at) * 1000)
+        : null;
+
+    let customFields: any = undefined;
+    let utmSource: string | null = null;
+    let utmMedium: string | null = null;
+    let utmCampaign: string | null = null;
+    let utmContent: string | null = null;
+    let utmTerm: string | null = null;
+
+    if (Array.isArray(amo.custom_fields_values) && amo.custom_fields_values.length > 0) {
+      customFields = amo.custom_fields_values.map((cf) => ({
+        id: cf.field_id,
+        name: cf.field_name,
+        code: cf.field_code || null,
+        values: (cf.values || []).map((v) => v.value),
+      }));
+
+      for (const cf of amo.custom_fields_values) {
+        const key = (cf.field_code || cf.field_name || '').trim().toUpperCase();
+        const val = cf.values?.[0]?.value != null ? String(cf.values[0].value).trim() : null;
+        if (!val) continue;
+        if (key === 'UTM_SOURCE' || key === ' ИСТОЧНИК' || key === 'SOURCE') utmSource = utmSource || val;
+        else if (key === 'UTM_MEDIUM') utmMedium = utmMedium || val;
+        else if (key === 'UTM_CAMPAIGN') utmCampaign = utmCampaign || val;
+        else if (key === 'UTM_CONTENT') utmContent = utmContent || val;
+        else if (key === 'UTM_TERM') utmTerm = utmTerm || val;
+      }
+    }
+
+    const enrichmentData: Record<string, any> = {
+      lossReasonId,
+      lossReasonName,
+      mainContactId,
+      closestTaskAt,
+      ...(customFields !== undefined ? { customFields } : {}),
+      ...(utmSource ? { utmSource } : {}),
+      ...(utmMedium ? { utmMedium } : {}),
+      ...(utmCampaign ? { utmCampaign } : {}),
+      ...(utmContent ? { utmContent } : {}),
+      ...(utmTerm ? { utmTerm } : {}),
+    };
+
     const lead = await tx.lead.upsert({
       where: { accountId_externalId: { accountId, externalId: String(amo.id) } },
       create: {
@@ -128,12 +208,15 @@ export class EventProcessor {
         status, price: priceNum != null ? priceNum as any : null,
         crmCreatedAt: new Date(amo.created_at * 1000),
         crmClosedAt: closed, updatedAt: new Date(amo.updated_at * 1000),
+        ...enrichmentData,
       },
       update: {
         name: amo.name || null,
         pipelineId, currentStageId: stageId,
         responsibleUserId,
-        status, crmClosedAt: closed, updatedAt: new Date(amo.updated_at * 1000),
+        status, price: priceNum != null ? priceNum as any : null,
+        crmClosedAt: closed, updatedAt: new Date(amo.updated_at * 1000),
+        ...enrichmentData,
       },
     });
 
@@ -179,7 +262,7 @@ export class EventProcessor {
     const existingLead = await this.prisma.lead.findUnique({ where: { accountId_externalId: { accountId, externalId: leadExtId } } });
     if (!existingLead) {
       const resp = await this.crm.request<any>(accountId, subdomain, baseDomain, token, {
-        method: 'GET', path: `/api/v4/leads/${event.entity_id}`, params: { with: 'tags' },
+        method: 'GET', path: `/api/v4/leads/${event.entity_id}`, params: { with: 'tags,contacts,loss_reason' },
       });
       if (resp.status !== 200) {
         await this.prisma.processedCrmEvent.create({

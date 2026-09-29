@@ -127,6 +127,16 @@ model Lead {
   responsibleUserId Int?      @map("responsible_user_id")
   status            String    @default("open") @db.Text
   price             Decimal?  @db.Decimal(18,2)
+  lossReasonId      String?   @map("loss_reason_id") @db.Text
+  lossReasonName    String?   @map("loss_reason_name") @db.Text
+  mainContactId     String?   @map("main_contact_id") @db.Text
+  closestTaskAt     DateTime? @map("closest_task_at") @db.Timestamptz()
+  customFields      Json?     @map("custom_fields") @db.JsonB
+  utmSource         String?   @map("utm_source") @db.Text
+  utmMedium         String?   @map("utm_medium") @db.Text
+  utmCampaign       String?   @map("utm_campaign") @db.Text
+  utmContent        String?   @map("utm_content") @db.Text
+  utmTerm           String?   @map("utm_term") @db.Text
   crmCreatedAt      DateTime  @map("crm_created_at") @db.Timestamptz()
   crmClosedAt       DateTime? @map("crm_closed_at") @db.Timestamptz()
   updatedAt         DateTime  @map("updated_at") @db.Timestamptz()
@@ -145,6 +155,9 @@ model Lead {
   @@index([accountId, pipelineId, status])
   @@index([accountId, responsibleUserId])
   @@index([accountId, crmCreatedAt])
+  @@index([accountId, utmSource])
+  @@index([accountId, mainContactId])
+  @@index([accountId, lossReasonName])
   @@map("leads")
 }
 

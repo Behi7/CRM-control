@@ -17,6 +17,15 @@ export class JobsBootstrapService implements OnModuleInit {
         if (['pending', 'in_progress'].includes(a.backfillStatus)) {
           await this.scheduler.startBackfill(a.id);
           this.logger.log(`Restarted backfill for account ${a.id}`);
+        } else if (a.backfillStatus === 'done') {
+          const enrichedCount = await this.prisma.lead.count({
+            where: { accountId: a.id, NOT: { customFields: { equals: null as any } } },
+          });
+          const totalCount = await this.prisma.lead.count({ where: { accountId: a.id } });
+          if (totalCount > 0 && enrichedCount === 0) {
+            await this.scheduler.triggerEnrich(a.id);
+            this.logger.log(`Scheduled initial BI enrichment for account ${a.id} (${a.subdomain}, ${totalCount} leads)`);
+          }
         }
       }
     } catch (e: any) {

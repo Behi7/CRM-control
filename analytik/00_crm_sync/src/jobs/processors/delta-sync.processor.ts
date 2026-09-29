@@ -45,6 +45,34 @@ export class DeltaSyncProcessor {
     }
   }
 
+  async runEnrich(accountId: number) {
+    const acc = await this.prisma.account.findUnique({ where: { id: accountId } });
+    if (!acc || !acc.encryptedToken || acc.status !== 'connected') return;
+    const syncCtx = await this.events.buildSyncContext(accountId);
+    const token = this.crypto.decrypt(acc.encryptedToken);
+    let page = 1;
+    this.logger.log(`Starting BI enrichment pass for account ${accountId} (${acc.subdomain})...`);
+    while (true) {
+      const resp = await this.crm.request<any>(accountId, acc.subdomain, acc.baseDomain, token, {
+        method: 'GET',
+        path: '/api/v4/leads',
+        params: { page, limit: 250, with: 'tags,contacts,loss_reason' },
+      });
+      if (resp.status !== 200 && resp.status !== 204) break;
+      const items = resp.status === 204 ? [] : (resp.data?._embedded?.leads || []);
+      for (const amo of items) {
+        try {
+          await this.events.upsertLead(this.prisma, accountId, amo, syncCtx);
+        } catch (e) {
+          this.logger.error(`Error enriching lead ${amo?.id}: ${e}`);
+        }
+      }
+      if (!items.length || items.length < 250) break;
+      page++;
+    }
+    this.logger.log(`Completed BI enrichment pass for account ${accountId} (${acc.subdomain}).`);
+  }
+
   private async doRun(accountId: number) {
     const acc = await this.prisma.account.findUnique({ where: { id: accountId } });
     if (!acc || !acc.encryptedToken || acc.status !== 'connected' || acc.backfillStatus !== 'done' || acc.syncStatus === 'stopped') return;
@@ -63,7 +91,7 @@ export class DeltaSyncProcessor {
       }
       const resp = await this.crm.request<any>(accountId, acc.subdomain, acc.baseDomain, token, {
         method: 'GET', path: '/api/v4/leads',
-        params: { 'filter[updated_at][from]': Math.floor(windowFrom.getTime()/1000), page, limit: 250, with: 'tags' },
+        params: { 'filter[updated_at][from]': Math.floor(windowFrom.getTime()/1000), page, limit: 250, with: 'tags,contacts,loss_reason' },
       });
       if (resp.status === 401) { await this.markTokenExpired(accountId); throw new AppException('AMO_CRM_TOKEN_EXPIRED', 401, 'Token expired'); }
       if (resp.status !== 200 && resp.status !== 204) throw new AppException('AMO_CRM_ERROR', 502, `leads: ${resp.status}`);

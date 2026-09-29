@@ -15,6 +15,10 @@ export class JobSchedulerService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    if (process.env.SYNC_WORKER_ENABLED === 'false') {
+      this.logger.log('JobScheduler running in producer-only (API) mode; cron scheduling delegated to 00_crm_sync.');
+      return;
+    }
     const syncEveryMinutes = parseInt(process.env.SYNC_INTERVAL_MINUTES || '10', 10);
     try {
       const repeatable = await this.queue.getRepeatableJobs();
@@ -78,6 +82,16 @@ export class JobSchedulerService implements OnModuleInit {
     return this.queue.add(
       'delta',
       { accountId, type: 'delta' },
+      { jobId, removeOnComplete: true, removeOnFail: 100 },
+    );
+  }
+
+  async triggerEnrich(accountId: number) {
+    const jobId = `enrich-${accountId}`;
+    await this.prepareJobSlot(this.queue, jobId, ['completed', 'failed']);
+    return this.queue.add(
+      'enrich',
+      { accountId, type: 'enrich' },
       { jobId, removeOnComplete: true, removeOnFail: 100 },
     );
   }

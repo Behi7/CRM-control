@@ -38,7 +38,7 @@ export class BackfillProcessor {
             return;
           }
           const resp = await this.crm.request<any>(accountId, acc.subdomain, acc.baseDomain, token, {
-            method: 'GET', path: '/api/v4/leads', params: { page, limit: cursor.limit, with: 'tags' },
+            method: 'GET', path: '/api/v4/leads', params: { page, limit: cursor.limit, with: 'tags,contacts,loss_reason' },
           });
           if (resp.status === 401) throw new AppException('AMO_CRM_TOKEN_EXPIRED', 401, 'Token expired');
           if (resp.status !== 200 && resp.status !== 204) throw new AppException('AMO_CRM_ERROR', resp.status, `Leads: ${resp.status}`);

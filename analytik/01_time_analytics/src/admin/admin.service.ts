@@ -170,6 +170,13 @@ export class AdminService {
     return { ok: true };
   }
 
+  async enrichAccount(accountId: number) {
+    const acc = await this.prisma.account.findUnique({ where: { id: accountId } });
+    if (!acc) throw new AppException('NOT_FOUND', 404, 'Account not found');
+    await this.scheduler.triggerEnrich(accountId);
+    return { ok: true, message: 'BI enrichment queued in 00_crm_sync' };
+  }
+
   async listNotifications(unreadOnly: boolean) {
     return this.prisma.notification.findMany({ where: unreadOnly ? { isRead: false } : undefined, orderBy: { createdAt: 'desc' }, take: 200 });
   }

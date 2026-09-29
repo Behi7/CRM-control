@@ -131,3 +131,28 @@ export const userApi = {
     lang?: 'ru' | 'uz';
   }) => api<{ reply: string }>(`/accounts/${accountId}/ai/chat`, { method: 'POST', body: JSON.stringify(data) }),
 };
+
+export const py2Api = {
+  accounts: () => api<any[]>('/py2/accounts'),
+  analytics: (
+    accountId: number,
+    params: {
+      pipelineId?: number | null;
+      dateFrom?: string;
+      dateTo?: string;
+      managerIds?: number[];
+      tagIds?: number[];
+    } = {},
+  ) => {
+    const p = new URLSearchParams();
+    if (params.pipelineId) p.set('pipeline_id', String(params.pipelineId));
+    if (params.dateFrom) p.set('date_from', params.dateFrom);
+    if (params.dateTo) p.set('date_to', params.dateTo);
+    if (params.managerIds?.length) p.set('manager_ids', params.managerIds.join(','));
+    if (params.tagIds?.length) p.set('tag_ids', params.tagIds.join(','));
+    const qs = p.toString();
+    return api<any>(`/py2/analytics/${accountId}${qs ? `?${qs}` : ''}`);
+  },
+  triggerEnrich: (accountId: number) =>
+    api<{ ok: boolean; message: string }>(`/py2/analytics/${accountId}/enrich`, { method: 'POST' }),
+};
