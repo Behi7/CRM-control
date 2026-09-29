@@ -14,11 +14,12 @@ export class JobsBootstrapService implements OnModuleInit {
         where: { status: 'connected', syncStatus: 'active' },
       });
       for (const a of accounts) {
-        await this.scheduler.scheduleAccountJobs(a.id);
         if (['pending', 'in_progress'].includes(a.backfillStatus)) {
           await this.scheduler.startBackfill(a.id);
           this.logger.log(`Restarted backfill for account ${a.id}`);
         } else if (a.backfillStatus === 'done') {
+          await this.scheduler.triggerSync(a.id);
+          this.logger.log(`Triggered immediate delta-sync for active account ${a.id} (${a.subdomain})`);
           const enrichedCount = await this.prisma.lead.count({
             where: { accountId: a.id, NOT: { customFields: { equals: null as any } } },
           });

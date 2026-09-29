@@ -31,7 +31,7 @@ services:
   # === Модуль 00: Выделенный микросервис синхронизации и обогащения БД (00_crm_sync) ===
   crm_sync:
     build:
-      context: ./analytik/01_time_analytics
+      context: ./analytik/00_crm_sync
       dockerfile: Dockerfile
     restart: always
     depends_on:
@@ -57,7 +57,7 @@ services:
     command: >
       sh -c "
         npx prisma migrate deploy &&
-        node dist/src/worker-main.js
+        node dist/src/main.js
       "
 
   # === Модуль 01 (Ядро Auth/Admin + Аналитика времени, только API) ===
