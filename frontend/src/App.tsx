@@ -8,6 +8,12 @@ import StatsPage from './pages/StatsPage';
 import StageLeadsPage from './pages/StageLeadsPage';
 import LeadDetailPage from './pages/LeadDetailPage';
 import SearchPage from './pages/SearchPage';
+import BiAnalyticsPage from './pages/BiAnalyticsPage';
+import AppSidebarLayout from './components/AppSidebar';
+
+function WithSidebar({ children }: { children: React.ReactNode }) {
+  return <AppSidebarLayout>{children}</AppSidebarLayout>;
+}
 
 export default function App() {
   const { role, loading } = useAuth();
@@ -26,20 +32,22 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       {role === 'admin' && (
         <>
-          <Route path="/admin/clients" element={<AdminClientsPage />} />
-          <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
-          <Route path="/admin/stats/:accountId" element={<StatsPage />} />
-          <Route path="/admin/stage/:stageId" element={<StageLeadsPage />} />
-          <Route path="/admin/lead/:leadId" element={<LeadDetailPage />} />
-          <Route path="/admin/search/:accountId" element={<SearchPage />} />
+          <Route path="/admin/clients" element={<WithSidebar><AdminClientsPage /></WithSidebar>} />
+          <Route path="/admin/notifications" element={<WithSidebar><AdminNotificationsPage /></WithSidebar>} />
+          <Route path="/admin/stats/:accountId" element={<WithSidebar><StatsPage /></WithSidebar>} />
+          <Route path="/admin/bi/:accountId" element={<WithSidebar><BiAnalyticsPage /></WithSidebar>} />
+          <Route path="/admin/stage/:stageId" element={<WithSidebar><StageLeadsPage /></WithSidebar>} />
+          <Route path="/admin/lead/:leadId" element={<WithSidebar><LeadDetailPage /></WithSidebar>} />
+          <Route path="/admin/search/:accountId" element={<WithSidebar><SearchPage /></WithSidebar>} />
         </>
       )}
       {role === 'viewer' && (
         <>
-          <Route path="/stats" element={<StatsPage />} />
-          <Route path="/stage/:stageId" element={<StageLeadsPage />} />
-          <Route path="/lead/:leadId" element={<LeadDetailPage />} />
-          <Route path="/search" element={<SearchPage />} />
+          <Route path="/stats" element={<WithSidebar><StatsPage /></WithSidebar>} />
+          <Route path="/bi" element={<WithSidebar><BiAnalyticsPage /></WithSidebar>} />
+          <Route path="/stage/:stageId" element={<WithSidebar><StageLeadsPage /></WithSidebar>} />
+          <Route path="/lead/:leadId" element={<WithSidebar><LeadDetailPage /></WithSidebar>} />
+          <Route path="/search" element={<WithSidebar><SearchPage /></WithSidebar>} />
         </>
       )}
       <Route
