@@ -241,6 +241,8 @@ export default function BiAnalyticsPage() {
     (role === 'viewer' ? decodedAccountId : storedAccId ?? 1);
 
   const [activeTab, setActiveTab] = useState<BiTab>('overview');
+
+  // Draft filter states (only applied when user clicks "Применить")
   const [pipelineId, setPipelineId] = useState<number | null>(
     Number(searchParams.get('pipeline')) || null,
   );
@@ -263,7 +265,34 @@ export default function BiAnalyticsPage() {
   );
   const [dateFrom, setDateFrom] = useState<string>(searchParams.get('dateFrom') || '');
   const [dateTo, setDateTo] = useState<string>(searchParams.get('dateTo') || '');
+
+  // Applied filter states (drives the API query)
+  const [appliedFilters, setAppliedFilters] = useState(() => ({
+    pipelineId: Number(searchParams.get('pipeline')) || null,
+    managerIds: (searchParams.get('managers') || '')
+      .split(',')
+      .filter(Boolean)
+      .map(Number)
+      .filter((n) => Number.isInteger(n) && n > 0),
+    tagIds: (searchParams.get('tags') || '')
+      .split(',')
+      .filter(Boolean)
+      .map(Number)
+      .filter((n) => Number.isInteger(n) && n > 0),
+    datePreset: ((searchParams.get('preset') as DatePreset) || 'all') as DatePreset,
+    dateFrom: searchParams.get('dateFrom') || '',
+    dateTo: searchParams.get('dateTo') || '',
+  }));
+
   const [selectedCustomFieldName, setSelectedCustomFieldName] = useState<string>('ALL');
+
+  const isDirty =
+    pipelineId !== appliedFilters.pipelineId ||
+    datePreset !== appliedFilters.datePreset ||
+    dateFrom !== appliedFilters.dateFrom ||
+    dateTo !== appliedFilters.dateTo ||
+    selectedManagerIds.join(',') !== appliedFilters.managerIds.join(',') ||
+    selectedTagIds.join(',') !== appliedFilters.tagIds.join(',');
 
   const syncUrlParams = (
     nextPipe: number | null,
@@ -295,27 +324,56 @@ export default function BiAnalyticsPage() {
       const { from, to } = getPresetDates(preset);
       setDateFrom(from);
       setDateTo(to);
-      syncUrlParams(pipelineId, selectedManagerIds, selectedTagIds, preset, from, to);
     }
+  };
+
+  const handleApplyFilters = () => {
+    setAppliedFilters({
+      pipelineId,
+      managerIds: [...selectedManagerIds],
+      tagIds: [...selectedTagIds],
+      datePreset,
+      dateFrom,
+      dateTo,
+    });
+    syncUrlParams(pipelineId, selectedManagerIds, selectedTagIds, datePreset, dateFrom, dateTo);
+  };
+
+  const handleResetFilters = () => {
+    setPipelineId(null);
+    setSelectedManagerIds([]);
+    setSelectedTagIds([]);
+    setDatePreset('all');
+    setDateFrom('');
+    setDateTo('');
+    setAppliedFilters({
+      pipelineId: null,
+      managerIds: [],
+      tagIds: [],
+      datePreset: 'all',
+      dateFrom: '',
+      dateTo: '',
+    });
+    syncUrlParams(null, [], [], 'all', '', '');
   };
 
   const biQuery = useQuery({
     queryKey: [
       'py2-bi-analytics',
       effectiveAccountId,
-      pipelineId,
-      dateFrom,
-      dateTo,
-      selectedManagerIds,
-      selectedTagIds,
+      appliedFilters.pipelineId,
+      appliedFilters.dateFrom,
+      appliedFilters.dateTo,
+      appliedFilters.managerIds,
+      appliedFilters.tagIds,
     ],
     queryFn: () =>
       py2Api.analytics(effectiveAccountId!, {
-        pipelineId,
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
-        managerIds: selectedManagerIds.length > 0 ? selectedManagerIds : undefined,
-        tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
+        pipelineId: appliedFilters.pipelineId,
+        dateFrom: appliedFilters.dateFrom || undefined,
+        dateTo: appliedFilters.dateTo || undefined,
+        managerIds: appliedFilters.managerIds.length > 0 ? appliedFilters.managerIds : undefined,
+        tagIds: appliedFilters.tagIds.length > 0 ? appliedFilters.tagIds : undefined,
       }),
     enabled: !!effectiveAccountId,
   });
@@ -390,7 +448,6 @@ export default function BiAnalyticsPage() {
             onChange={(e) => {
               const nextPipe = e.target.value ? Number(e.target.value) : null;
               setPipelineId(nextPipe);
-              syncUrlParams(nextPipe, selectedManagerIds, selectedTagIds, datePreset, dateFrom, dateTo);
             }}
             className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
           >
@@ -409,10 +466,7 @@ export default function BiAnalyticsPage() {
             options={managersList}
             selectedIds={selectedManagerIds}
             icon={<Users size={13} />}
-            onChange={(nextIds) => {
-              setSelectedManagerIds(nextIds);
-              syncUrlParams(pipelineId, nextIds, selectedTagIds, datePreset, dateFrom, dateTo);
-            }}
+            onChange={(nextIds) => setSelectedManagerIds(nextIds)}
           />
 
           {/* Multi-select Tags */}
@@ -423,10 +477,7 @@ export default function BiAnalyticsPage() {
             selectedIds={selectedTagIds}
             prefix="#"
             icon={<TagIcon size={13} />}
-            onChange={(nextIds) => {
-              setSelectedTagIds(nextIds);
-              syncUrlParams(pipelineId, selectedManagerIds, nextIds, datePreset, dateFrom, dateTo);
-            }}
+            onChange={(nextIds) => setSelectedTagIds(nextIds)}
           />
 
           {/* Date presets */}
@@ -460,24 +511,42 @@ export default function BiAnalyticsPage() {
               <input
                 type="date"
                 value={dateFrom}
-                onChange={(e) => {
-                  setDateFrom(e.target.value);
-                  syncUrlParams(pipelineId, selectedManagerIds, selectedTagIds, 'custom', e.target.value, dateTo);
-                }}
+                onChange={(e) => setDateFrom(e.target.value)}
                 className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs"
               />
               <span className="text-slate-400">—</span>
               <input
                 type="date"
                 value={dateTo}
-                onChange={(e) => {
-                  setDateTo(e.target.value);
-                  syncUrlParams(pipelineId, selectedManagerIds, selectedTagIds, 'custom', dateFrom, e.target.value);
-                }}
+                onChange={(e) => setDateTo(e.target.value)}
                 className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs"
               />
             </div>
           )}
+
+          {/* Action buttons: Применить & Сбросить */}
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={handleApplyFilters}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                isDirty
+                  ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md ring-2 ring-indigo-400/40'
+                  : 'bg-indigo-600/90 hover:bg-indigo-600 text-white shadow-xs'
+              }`}
+            >
+              <Check size={14} />
+              <span>Применить</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-700 text-xs font-medium transition-colors cursor-pointer"
+            >
+              <X size={14} />
+              <span>Сбросить</span>
+            </button>
+          </div>
         </div>
 
         {/* Active multi-select badges */}
@@ -495,11 +564,7 @@ export default function BiAnalyticsPage() {
                   <span>{m.name}</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      const next = selectedManagerIds.filter((x) => x !== id);
-                      setSelectedManagerIds(next);
-                      syncUrlParams(pipelineId, next, selectedTagIds, datePreset, dateFrom, dateTo);
-                    }}
+                    onClick={() => setSelectedManagerIds(selectedManagerIds.filter((x) => x !== id))}
                     className="ml-0.5 hover:text-rose-500 cursor-pointer"
                   >
                     <X size={12} />
@@ -518,11 +583,7 @@ export default function BiAnalyticsPage() {
                   <span>#{t.name}</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      const next = selectedTagIds.filter((x) => x !== id);
-                      setSelectedTagIds(next);
-                      syncUrlParams(pipelineId, selectedManagerIds, next, datePreset, dateFrom, dateTo);
-                    }}
+                    onClick={() => setSelectedTagIds(selectedTagIds.filter((x) => x !== id))}
                     className="ml-0.5 hover:text-rose-500 cursor-pointer"
                   >
                     <X size={12} />
@@ -530,17 +591,6 @@ export default function BiAnalyticsPage() {
                 </span>
               );
             })}
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedManagerIds([]);
-                setSelectedTagIds([]);
-                syncUrlParams(pipelineId, [], [], datePreset, dateFrom, dateTo);
-              }}
-              className="text-[11px] text-rose-500 hover:underline font-medium ml-2 cursor-pointer"
-            >
-              Сбросить все фильтры
-            </button>
           </div>
         )}
       </div>

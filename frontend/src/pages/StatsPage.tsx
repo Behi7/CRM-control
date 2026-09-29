@@ -77,6 +77,25 @@ export default function StatsPage() {
   const [dateFrom, setDateFrom] = useState<string>(initialFrom);
   const [dateTo, setDateTo] = useState<string>(initialTo);
 
+  const [applied, setApplied] = useState(() => ({
+    pipelineId: Number.isInteger(storedPipelineId) && storedPipelineId > 0 ? storedPipelineId : null,
+    tagIds: storedTagIds,
+    status: storedStatus,
+    managerIds: storedManagerIds,
+    datePreset: storedPreset,
+    dateFrom: initialFrom,
+    dateTo: initialTo,
+  }));
+
+  const isStDirty =
+    pipelineId !== applied.pipelineId ||
+    selectedStatus !== applied.status ||
+    datePreset !== applied.datePreset ||
+    dateFrom !== applied.dateFrom ||
+    dateTo !== applied.dateTo ||
+    selectedTags.join(',') !== applied.tagIds.join(',') ||
+    selectedManagers.join(',') !== applied.managerIds.join(',');
+
   const decodedAccountId = (() => {
     const token = localStorage.getItem('access_token');
     return decodeJwt(token)?.accountId ?? null;
@@ -119,13 +138,10 @@ export default function StatsPage() {
 
   const handlePresetChange = (preset: DatePreset) => {
     setDatePreset(preset);
-    if (preset === 'custom') {
-      updateFilters(pipelineId, selectedTags, selectedStatus, selectedManagers, 'custom', dateFrom, dateTo);
-    } else {
+    if (preset !== 'custom') {
       const { from, to } = getPresetDates(preset);
       setDateFrom(from);
       setDateTo(to);
-      updateFilters(pipelineId, selectedTags, selectedStatus, selectedManagers, preset, from, to);
     }
   };
 
@@ -139,7 +155,40 @@ export default function StatsPage() {
     }
     setDateFrom(correctedFrom);
     setDateTo(correctedTo);
-    updateFilters(pipelineId, selectedTags, selectedStatus, selectedManagers, 'custom', correctedFrom, correctedTo);
+  };
+
+  const handleApplyStFilters = () => {
+    setApplied({
+      pipelineId,
+      tagIds: [...selectedTags],
+      status: selectedStatus,
+      managerIds: [...selectedManagers],
+      datePreset,
+      dateFrom,
+      dateTo,
+    });
+    updateFilters(pipelineId, selectedTags, selectedStatus, selectedManagers, datePreset, dateFrom, dateTo);
+  };
+
+  const handleResetStFilters = () => {
+    const firstId = pipelines.data?.items?.[0]?.id || pipelineId;
+    setPipelineId(firstId);
+    setSelectedTags([]);
+    setSelectedStatus('all');
+    setSelectedManagers([]);
+    setDatePreset('all');
+    setDateFrom('');
+    setDateTo('');
+    setApplied({
+      pipelineId: firstId,
+      tagIds: [],
+      status: 'all',
+      managerIds: [],
+      datePreset: 'all',
+      dateFrom: '',
+      dateTo: '',
+    });
+    updateFilters(firstId, [], 'all', [], 'all', '', '');
   };
 
   const adminAccounts = useQuery({
@@ -158,6 +207,7 @@ export default function StatsPage() {
     if (!pipelineId && pipelines.data?.items?.length) {
       const firstId = pipelines.data.items[0].id;
       setPipelineId(firstId);
+      setApplied((prev) => ({ ...prev, pipelineId: firstId }));
       updateFilters(firstId, selectedTags, selectedStatus, selectedManagers, datePreset, dateFrom, dateTo);
     }
   }, [pipelines.data, pipelineId]);
@@ -207,17 +257,17 @@ export default function StatsPage() {
   });
 
   const filters: FilterParams = {
-    tagIds: selectedTags,
-    managerIds: selectedManagers,
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
-    status: selectedStatus,
+    tagIds: applied.tagIds,
+    managerIds: applied.managerIds,
+    dateFrom: applied.dateFrom || undefined,
+    dateTo: applied.dateTo || undefined,
+    status: applied.status,
   };
 
   const stats = useQuery({
-    queryKey: ['stats', pipelineId, filters],
-    queryFn: () => userApi.stagesStats(pipelineId!, filters),
-    enabled: !!pipelineId,
+    queryKey: ['stats', applied.pipelineId, filters],
+    queryFn: () => userApi.stagesStats(applied.pipelineId!, filters),
+    enabled: !!applied.pipelineId,
   });
 
   if (role === 'admin' && !paramAccountId && adminAccounts.data) {
@@ -285,7 +335,6 @@ export default function StatsPage() {
               onChange={(e) => {
                 const nextPipelineId = parseInt(e.target.value, 10) || null;
                 setPipelineId(nextPipelineId);
-                updateFilters(nextPipelineId, selectedTags, selectedStatus, selectedManagers, datePreset, dateFrom, dateTo);
               }}
               className="w-full p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded focus:ring-2 focus:ring-blue-500 outline-none"
             >
@@ -314,7 +363,6 @@ export default function StatsPage() {
                     type="button"
                     onClick={() => {
                       setSelectedStatus(opt.id);
-                      updateFilters(pipelineId, selectedTags, opt.id, selectedManagers, datePreset, dateFrom, dateTo);
                     }}
                     className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
                       active
@@ -336,7 +384,6 @@ export default function StatsPage() {
           selectedManagers={selectedManagers}
           onChange={(nextManagerIds) => {
             setSelectedManagers(nextManagerIds);
-            updateFilters(pipelineId, selectedTags, selectedStatus, nextManagerIds, datePreset, dateFrom, dateTo);
           }}
         />
 
@@ -391,7 +438,6 @@ export default function StatsPage() {
                   type="button"
                   onClick={() => {
                     setSelectedTags([]);
-                    updateFilters(pipelineId, [], selectedStatus, selectedManagers, datePreset, dateFrom, dateTo);
                   }}
                   className="text-xs text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                 >
@@ -411,7 +457,6 @@ export default function StatsPage() {
                         ? selectedTags.filter((x) => x !== tg.id)
                         : [...selectedTags, tg.id];
                       setSelectedTags(nextTagIds);
-                      updateFilters(pipelineId, nextTagIds, selectedStatus, selectedManagers, datePreset, dateFrom, dateTo);
                     }}
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
                       isSelected
@@ -426,6 +471,35 @@ export default function StatsPage() {
             </div>
           </div>
         )}
+
+        {/* Apply & Reset Filters Bar */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-lg shadow-sm mb-4 flex items-center justify-between">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            {isStDirty
+              ? '⚡ Вы изменили параметры фильтра. Нажмите «Применить», чтобы обновить таблицу.'
+              : 'Показаны данные по применённым фильтрам'}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleApplyStFilters}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                isStDirty
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md ring-2 ring-blue-400/40'
+                  : 'bg-blue-600/90 hover:bg-blue-600 text-white shadow-xs'
+              }`}
+            >
+              Применить
+            </button>
+            <button
+              type="button"
+              onClick={handleResetStFilters}
+              className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 text-sm font-medium transition-colors cursor-pointer"
+            >
+              Сбросить
+            </button>
+          </div>
+        </div>
 
         {/* Stages Stats Table */}
         {stats.data && (
