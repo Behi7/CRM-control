@@ -1,12 +1,10 @@
 import os
 import json
-import base64
+import urllib.request
 from datetime import datetime, timezone
 from typing import Optional
 import jwt
-import httpx
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from fastapi import FastAPI, Depends, HTTPException, Header, Query, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, Header, Query
 from sqlalchemy import create_engine, text
 
 app = FastAPI(title="AmoCRM Analytics - Module 02 (Python Deep BI)")
@@ -16,19 +14,6 @@ JWT_ACCESS_SECRET = os.getenv("JWT_ACCESS_SECRET", "")
 TOKEN_ENCRYPTION_KEY = os.getenv("TOKEN_ENCRYPTION_KEY", "")
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
-
-
-def decrypt_amo_token(encrypted_json: str) -> str:
-    """Расшифровка 5-летнего токена AmoCRM (AES-256-GCM) из таблицы accounts."""
-    if not encrypted_json or not TOKEN_ENCRYPTION_KEY:
-        raise ValueError("Missing encrypted token or TOKEN_ENCRYPTION_KEY")
-    obj = json.loads(encrypted_json)
-    nonce = base64.b64decode(obj["nonce"])
-    ciphertext = base64.b64decode(obj["ciphertext"])
-    auth_tag = base64.b64decode(obj["authTag"])
-    aesgcm = AESGCM(TOKEN_ENCRYPTION_KEY.encode("utf-8"))
-    plaintext = aesgcm.decrypt(nonce, ciphertext + auth_tag, None)
-    return plaintext.decode("utf-8")
 
 
 def get_current_user(authorization: str | None = Header(default=None)):
@@ -90,161 +75,25 @@ def list_accounts_bi(user: dict = Depends(get_current_user)):
         return [dict(r) for r in rows]
 
 
-def _run_python_enrichment(account_id: int):
-    """Фоновая дозагрузка (обогащение) сделок аккаунта напрямую через 5-летний токен."""
-    with engine.connect() as conn:
-        acc = conn.execute(
-            text("SELECT id, subdomain, base_domain, encrypted_token FROM accounts WHERE id = :id"),
-            {"id": account_id},
-        ).mappings().first()
-        if not acc or not acc["encrypted_token"]:
-            return
-
-    try:
-        token = decrypt_amo_token(acc["encrypted_token"])
-    except Exception as e:
-        print(f"[Enrich] Failed to decrypt token for account {account_id}: {e}")
-        return
-
-    base_url = f"https://{acc['subdomain']}.{acc['base_domain']}"
-    headers = {"Authorization": f"Bearer {token}"}
-
-    # 1. Загрузим справочник причин отказа (/api/v4/leads/loss_reasons)
-    loss_reasons_map: dict[str, str] = {}
-    try:
-        with httpx.Client(timeout=30.0) as client:
-            lr_resp = client.get(f"{base_url}/api/v4/leads/loss_reasons", headers=headers)
-            if lr_resp.status_code == 200:
-                items = lr_resp.json().get("_embedded", {}).get("loss_reasons", [])
-                for item in items:
-                    loss_reasons_map[str(item.get("id"))] = item.get("name", "")
-    except Exception as e:
-        print(f"[Enrich] Could not fetch loss_reasons dictionary: {e}")
-
-    # 2. Проходим по сделкам и обогащаем поля
-    page = 1
-    with httpx.Client(timeout=30.0) as client:
-        while True:
-            try:
-                resp = client.get(
-                    f"{base_url}/api/v4/leads",
-                    headers=headers,
-                    params={"page": page, "limit": 250, "with": "tags,contacts,loss_reason"},
-                )
-                if resp.status_code not in (200, 204):
-                    break
-                if resp.status_code == 204:
-                    break
-                leads = resp.json().get("_embedded", {}).get("leads", [])
-                if not leads:
-                    break
-
-                batch_updates = []
-                for amo in leads:
-                    ext_id = str(amo.get("id"))
-                    loss_id = str(amo["loss_reason_id"]) if amo.get("loss_reason_id") else None
-                    emb_loss = amo.get("_embedded", {}).get("loss_reason")
-                    loss_name = None
-                    if isinstance(emb_loss, list) and len(emb_loss) > 0:
-                        loss_name = emb_loss[0].get("name")
-                    elif isinstance(emb_loss, dict):
-                        loss_name = emb_loss.get("name")
-                    if not loss_name and loss_id and loss_id in loss_reasons_map:
-                        loss_name = loss_reasons_map[loss_id]
-
-                    contacts = amo.get("_embedded", {}).get("contacts") or []
-                    main_c = next((c for c in contacts if c.get("is_main")), contacts[0] if contacts else None)
-                    main_contact_id = str(main_c["id"]) if main_c and main_c.get("id") else None
-
-                    closest_task = amo.get("closest_task_at")
-                    closest_task_dt = (
-                        datetime.fromtimestamp(int(closest_task), tz=timezone.utc)
-                        if closest_task and int(closest_task) > 0
-                        else None
-                    )
-
-                    cfs = amo.get("custom_fields_values") or []
-                    clean_cfs = []
-                    utm_source = utm_medium = utm_campaign = utm_content = utm_term = None
-
-                    for cf in cfs:
-                        f_name = cf.get("field_name") or ""
-                        f_code = cf.get("field_code") or ""
-                        vals = [v.get("value") for v in (cf.get("values") or []) if v.get("value") is not None]
-                        if vals:
-                            clean_cfs.append({
-                                "id": cf.get("field_id"),
-                                "name": f_name,
-                                "code": f_code,
-                                "values": vals,
-                            })
-                            key = (f_code or f_name).strip().upper()
-                            v_str = str(vals[0]).strip()
-                            if key in ("UTM_SOURCE", "ИСТОЧНИК", "SOURCE"):
-                                utm_source = utm_source or v_str
-                            elif key == "UTM_MEDIUM":
-                                utm_medium = utm_medium or v_str
-                            elif key == "UTM_CAMPAIGN":
-                                utm_campaign = utm_campaign or v_str
-                            elif key == "UTM_CONTENT":
-                                utm_content = utm_content or v_str
-                            elif key == "UTM_TERM":
-                                utm_term = utm_term or v_str
-
-                    batch_updates.append({
-                        "acc_id": account_id,
-                        "ext_id": ext_id,
-                        "loss_id": loss_id,
-                        "loss_name": loss_name,
-                        "contact_id": main_contact_id,
-                        "task_at": closest_task_dt,
-                        "cfs": json.dumps(clean_cfs, ensure_ascii=False) if clean_cfs else None,
-                        "utm_source": utm_source,
-                        "utm_medium": utm_medium,
-                        "utm_campaign": utm_campaign,
-                        "utm_content": utm_content,
-                        "utm_term": utm_term,
-                    })
-
-                if batch_updates:
-                    with engine.begin() as conn:
-                        conn.execute(
-                            text("""
-                                UPDATE leads
-                                SET
-                                    loss_reason_id = COALESCE(:loss_id, loss_reason_id),
-                                    loss_reason_name = COALESCE(:loss_name, loss_reason_name),
-                                    main_contact_id = COALESCE(:contact_id, main_contact_id),
-                                    closest_task_at = :task_at,
-                                    custom_fields = COALESCE(CAST(:cfs AS jsonb), custom_fields),
-                                    utm_source = COALESCE(:utm_source, utm_source),
-                                    utm_medium = COALESCE(:utm_medium, utm_medium),
-                                    utm_campaign = COALESCE(:utm_campaign, utm_campaign),
-                                    utm_content = COALESCE(:utm_content, utm_content),
-                                    utm_term = COALESCE(:utm_term, utm_term)
-                                WHERE account_id = :acc_id AND external_id = :ext_id
-                            """),
-                            batch_updates,
-                        )
-
-                if len(leads) < 250:
-                    break
-                page += 1
-            except Exception as e:
-                print(f"[Enrich] Error on page {page} for account {account_id}: {e}")
-                break
-
-
 @app.post("/analytics/{account_id}/enrich")
 def trigger_account_enrichment(
     account_id: int,
-    background_tasks: BackgroundTasks,
+    authorization: str | None = Header(default=None),
     user: dict = Depends(get_current_user),
 ):
-    """Запускает фоновое обогащение сделок аккаунта через 5-летний токен AmoCRM."""
+    """Отправляет задачу на внеочередное обогащение в микросервис 00_crm_sync через очередь."""
     check_account_access(user, account_id)
-    background_tasks.add_task(_run_python_enrichment, account_id)
-    return {"ok": True, "message": "Обогащение данных из AmoCRM запущено в фоне"}
+    try:
+        req = urllib.request.Request(
+            f"http://backend:3000/admin/accounts/{account_id}/enrich",
+            method="POST",
+            headers={"Authorization": authorization or "", "Content-Type": "application/json"},
+            data=b"{}",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return {"ok": True, "message": "Задача на обогащение передана микросервису 00_crm_sync"}
 
 
 @app.get("/analytics/{account_id}")
