@@ -354,27 +354,12 @@ export default function BiAnalyticsPage() {
       {/* Page Header */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <span className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-bold border border-indigo-500/20">
-              Модуль 02 • Python BI
-            </span>
-            <h1 className="text-xl lg:text-2xl font-bold text-slate-900 dark:text-white">
-              Детальная аналитика продаж AmoCRM
-            </h1>
-          </div>
+          <h1 className="text-xl lg:text-2xl font-bold text-slate-900 dark:text-white">
+            Детальная аналитика продаж AmoCRM
+          </h1>
           {data?.account && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex flex-wrap items-center gap-3">
-              <span>
-                Аккаунт: <strong className="text-slate-700 dark:text-slate-200">{data.account.subdomain}.{data.account.baseDomain}</strong>
-              </span>
-              <span>•</span>
-              <span>
-                Глубокое обогащение БД:{' '}
-                <strong className="text-emerald-600 dark:text-emerald-400">
-                  {kpis?.enrichedCount || 0} из {kpis?.totalLeads || 0} сделок
-                </strong>{' '}
-                (Уникальных контактов: {kpis?.uniqueContacts || 0})
-              </span>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Аккаунт: <strong className="text-slate-700 dark:text-slate-200">{data.account.subdomain}.{data.account.baseDomain}</strong>
             </p>
           )}
         </div>
@@ -387,13 +372,6 @@ export default function BiAnalyticsPage() {
           >
             <RefreshCw size={15} className={enrichMut.isPending ? 'animate-spin' : ''} />
             <span>{enrichMut.isPending ? 'Обогащаем БД...' : 'Обогатить БД из AmoCRM'}</span>
-          </button>
-          <button
-            onClick={() => biQuery.refetch()}
-            className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            title="Обновить отчёт"
-          >
-            <RefreshCw size={16} className={biQuery.isFetching ? 'animate-spin text-blue-500' : ''} />
           </button>
         </div>
       </div>
