@@ -274,22 +274,7 @@ export default function StatsPage() {
           </div>
         )}
 
-        {/* Freshness banner */}
-        {freshness && (
-          <div
-            className={`mb-4 p-3 rounded text-sm border ${
-              freshness.isStale
-                ? 'bg-yellow-50 dark:bg-yellow-950/40 text-yellow-800 dark:text-yellow-200 border-yellow-200 dark:border-yellow-900/50'
-                : 'bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-200 border-green-200 dark:border-green-900/50'
-            }`}
-          >
-            {freshness.isStale ? t('data_stale') : '✓ '}
-            {t('last_synced')}
-            {freshness.lastSyncedAt
-              ? new Date(freshness.lastSyncedAt).toLocaleString(lang === 'uz' ? 'uz-UZ' : 'ru-RU')
-              : t('sync_never')}
-          </div>
-        )}
+
 
         {/* Pipeline + Status */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-lg shadow-sm mb-4 flex flex-col md:flex-row md:items-end gap-4">

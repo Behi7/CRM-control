@@ -198,13 +198,62 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                   {currentAccObj ? `${currentAccObj.subdomain}.${currentAccObj.baseDomain}` : `Account #${activeAccountId}`}
                 </div>
               )}
+
+              {currentAccObj && (() => {
+                const lastSync = currentAccObj.lastSyncedAt;
+                const isStale = !lastSync || (Date.now() - new Date(lastSync).getTime() > 30 * 60 * 1000);
+                const syncDateStr = lastSync
+                  ? new Date(lastSync).toLocaleString(lang === 'uz' ? 'uz-UZ' : 'ru-RU')
+                  : (lang === 'uz' ? 'hech qachon' : 'никогда');
+                return (
+                  <div
+                    className={`mt-2.5 p-2.5 rounded-xl text-[11px] leading-snug border ${
+                      isStale
+                        ? 'bg-yellow-500/10 text-yellow-200 border-yellow-500/30'
+                        : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/30'
+                    }`}
+                  >
+                    <div className="font-semibold">
+                      {isStale
+                        ? (lang === 'uz' ? "⚠️ Ma'lumotlar eskirgan." : '⚠️ Данные устарели.')
+                        : (lang === 'uz' ? '✓ Maʼlumotlar yangi' : '✓ Данные актуальны')}
+                    </div>
+                    <div className="mt-0.5 text-[10px] opacity-90">
+                      {lang === 'uz' ? 'Oxirgi sinxronizatsiya: ' : 'Последняя синхронизация: '}
+                      <span className="font-medium">{syncDateStr}</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           ) : (
-            <div
-              className="w-10 h-10 mx-auto rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-blue-400"
-              title={currentAccObj ? `${currentAccObj.subdomain}.${currentAccObj.baseDomain}` : `Account #${activeAccountId}`}
-            >
-              #{activeAccountId}
+            <div className="flex flex-col items-center gap-1.5">
+              <div
+                className="w-10 h-10 mx-auto rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-blue-400"
+                title={currentAccObj ? `${currentAccObj.subdomain}.${currentAccObj.baseDomain}` : `Account #${activeAccountId}`}
+              >
+                #{activeAccountId}
+              </div>
+              {currentAccObj && (() => {
+                const lastSync = currentAccObj.lastSyncedAt;
+                const isStale = !lastSync || (Date.now() - new Date(lastSync).getTime() > 30 * 60 * 1000);
+                const syncDateStr = lastSync
+                  ? new Date(lastSync).toLocaleString(lang === 'uz' ? 'uz-UZ' : 'ru-RU')
+                  : (lang === 'uz' ? 'hech qachon' : 'никогда');
+                const tip = `${isStale ? '⚠️ Данные устарели. ' : '✓ '}Последняя синхронизация: ${syncDateStr}`;
+                return (
+                  <div
+                    className={`w-10 py-1 rounded-md text-center text-[11px] border ${
+                      isStale
+                        ? 'bg-yellow-500/10 text-yellow-300 border-yellow-500/30'
+                        : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                    }`}
+                    title={tip}
+                  >
+                    {isStale ? '⚠️' : '✓'}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -270,21 +319,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               )}
             </button>
 
-            <button
-              onClick={() => {
-                setMobileOpen(false);
-                navigate(searchUrl);
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all cursor-pointer ${
-                isSearchActive
-                  ? 'bg-slate-800 text-white font-semibold'
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-              title={labels.search}
-            >
-              <Search size={18} className="shrink-0" />
-              {!collapsed && <span className="text-xs truncate">{labels.search}</span>}
-            </button>
+
 
             <div
               className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left text-slate-500 cursor-not-allowed opacity-75"

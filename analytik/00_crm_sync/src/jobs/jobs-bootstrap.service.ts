@@ -14,6 +14,7 @@ export class JobsBootstrapService implements OnModuleInit {
         where: { status: 'connected', syncStatus: 'active' },
       });
       for (const a of accounts) {
+        await this.scheduler.scheduleAccountJobs(a.id);
         if (['pending', 'in_progress'].includes(a.backfillStatus)) {
           await this.scheduler.startBackfill(a.id);
           this.logger.log(`Restarted backfill for account ${a.id}`);
