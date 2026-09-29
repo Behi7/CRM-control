@@ -1,15 +1,183 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { userApi, adminApi, FilterParams } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
-import { Sparkles, HelpCircle } from 'lucide-react';
+import {
+  Sparkles,
+  HelpCircle,
+  Filter,
+  Users,
+  Tag as TagIcon,
+  ChevronDown,
+  Check,
+  Search,
+  X,
+} from 'lucide-react';
 import AiChatDrawer from '../components/AiChatDrawer';
-import ThemeToggle from '../components/ThemeToggle';
-import LanguageSwitcher from '../components/LanguageSwitcher';
-import { ManagerFilter } from '../components/ManagerFilter';
 import { decodeJwt } from '../lib/jwt';
+
+interface MultiSelectOption {
+  id: number;
+  name: string;
+}
+
+interface MultiSelectDropdownProps {
+  label: string;
+  placeholder: string;
+  options: MultiSelectOption[];
+  selectedIds: number[];
+  onChange: (ids: number[]) => void;
+  prefix?: string;
+  icon?: React.ReactNode;
+}
+
+function MultiSelectDropdown({
+  label,
+  placeholder,
+  options,
+  selectedIds,
+  onChange,
+  prefix = '',
+  icon,
+}: MultiSelectDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = options.filter((o) =>
+    o.name.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+
+  const toggleId = (id: number) => {
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter((x) => x !== id));
+    } else {
+      onChange([...selectedIds, id]);
+    }
+  };
+
+  const selectAllFiltered = () => {
+    const next = Array.from(new Set([...selectedIds, ...filtered.map((o) => o.id)]));
+    onChange(next);
+  };
+
+  const clearAll = () => {
+    onChange([]);
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+          selectedIds.length > 0
+            ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-400 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300'
+            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'
+        }`}
+      >
+        {icon}
+        <span>
+          {selectedIds.length === 0
+            ? `${placeholder} (${options.length})`
+            : `${label}: выбрано ${selectedIds.length}`}
+        </span>
+        {selectedIds.length > 0 && (
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              clearAll();
+            }}
+            className="ml-0.5 px-1.5 py-0.2 rounded-full bg-indigo-600 text-white text-[10px] font-bold hover:bg-rose-500 transition-colors"
+            title="Сбросить выбор"
+          >
+            ✕
+          </span>
+        )}
+        <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-50 p-3 space-y-2">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск по списку..."
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] px-1 pt-0.5">
+            <button
+              type="button"
+              onClick={selectAllFiltered}
+              className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+            >
+              Выбрать все ({filtered.length})
+            </button>
+            {selectedIds.length > 0 && (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="text-rose-500 hover:underline font-medium cursor-pointer"
+              >
+                Сбросить ({selectedIds.length})
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 pr-1">
+            {filtered.length === 0 ? (
+              <div className="py-4 text-center text-xs text-slate-400">Ничего не найдено</div>
+            ) : (
+              filtered.map((item) => {
+                const checked = selectedIds.includes(item.id);
+                return (
+                  <label
+                    key={item.id}
+                    onClick={() => toggleId(item.id)}
+                    className="flex items-center justify-between gap-2 py-2 px-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/70 cursor-pointer text-xs select-none"
+                  >
+                    <div className="flex items-center gap-2.5 truncate">
+                      <div
+                        className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${
+                          checked
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
+                        }`}
+                      >
+                        {checked && <Check size={11} strokeWidth={3} />}
+                      </div>
+                      <span className="truncate font-medium text-slate-800 dark:text-slate-200">
+                        {prefix}
+                        {item.name}
+                      </span>
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Date presets
 type DatePreset = 'all' | 'today' | 'yesterday' | '7days' | '30days' | 'thismonth' | 'custom';
@@ -326,182 +494,171 @@ export default function StatsPage() {
 
 
 
-        {/* Pipeline + Status */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-lg shadow-sm mb-4 flex flex-col md:flex-row md:items-end gap-4">
-          <div className="md:w-72 shrink-0">
-            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-100">{t('pipeline')}</label>
+        {/* Unified Filter Bar (matching Module 02 UI) */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs mb-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              <Filter size={14} />
+              <span>Фильтры:</span>
+            </div>
+
+            {/* Pipeline selector */}
             <select
               value={pipelineId || ''}
               onChange={(e) => {
                 const nextPipelineId = parseInt(e.target.value, 10) || null;
                 setPipelineId(nextPipelineId);
               }}
-              className="w-full p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+              className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
             >
-              <option value="">{t('select_pipeline')}</option>
-              {pipelines.data?.items.map((p: any) => (
+              {pipelines.data?.items?.map((p: any) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  Воронка: {p.name}
                 </option>
               ))}
             </select>
-          </div>
 
-          <div className="flex-1">
-            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-100">{t('deal_status')}</label>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { id: 'all', label: t('status_all') },
-                { id: 'won', label: t('status_won') },
-                { id: 'lost', label: t('status_lost') },
-                { id: 'open', label: t('status_open') },
-              ].map((opt) => {
-                const active = selectedStatus === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedStatus(opt.id);
-                    }}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
-                      active
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+            {/* Deal status selector */}
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
+            >
+              <option value="all">{t('status_all')}</option>
+              <option value="won">{t('status_won')}</option>
+              <option value="lost">{t('status_lost')}</option>
+              <option value="open">{t('status_open')}</option>
+            </select>
 
-        {/* Manager Filter */}
-        <ManagerFilter
-          managers={managers.data?.items}
-          selectedManagers={selectedManagers}
-          onChange={(nextManagerIds) => {
-            setSelectedManagers(nextManagerIds);
-          }}
-        />
+            {/* Multi-select Managers */}
+            <MultiSelectDropdown
+              label="Менеджеры"
+              placeholder="Все менеджеры"
+              options={managers.data?.items || []}
+              selectedIds={selectedManagers}
+              icon={<Users size={13} />}
+              onChange={(nextIds) => setSelectedManagers(nextIds)}
+            />
 
-        {/* Date Filter */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-lg shadow-sm mb-4">
-          <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-100">{t('created_period')}</label>
-          <div className="flex flex-wrap gap-2 mb-3">
-            {datePresets.map((preset) => {
-              const active = datePreset === preset.id;
-              return (
+            {/* Multi-select Tags */}
+            <MultiSelectDropdown
+              label="Теги"
+              placeholder="Все теги"
+              options={tags.data?.items || []}
+              selectedIds={selectedTags}
+              prefix="#"
+              icon={<TagIcon size={13} />}
+              onChange={(nextIds) => setSelectedTags(nextIds)}
+            />
+
+            {/* Date presets */}
+            <div className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+              {datePresets.map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
                   onClick={() => handlePresetChange(preset.id)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
-                    active
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                      : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750'
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                    datePreset === preset.id
+                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-2xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   {preset.label}
                 </button>
-              );
-            })}
+              ))}
+            </div>
+
+            {datePreset === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => handleCustomDateChange(e.target.value, dateTo)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs"
+                />
+                <span className="text-slate-400">—</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => handleCustomDateChange(dateFrom, e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs"
+                />
+              </div>
+            )}
+
+            {/* Action buttons: Применить & Сбросить */}
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={handleApplyStFilters}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  isStDirty
+                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md ring-2 ring-indigo-400/40'
+                    : 'bg-indigo-600/90 hover:bg-indigo-600 text-white shadow-xs'
+                }`}
+              >
+                <Check size={14} />
+                <span>Применить</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleResetStFilters}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-700 text-xs font-medium transition-colors cursor-pointer"
+              >
+                <X size={14} />
+                <span>Сбросить</span>
+              </button>
+            </div>
           </div>
-          {datePreset === 'custom' && (
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => handleCustomDateChange(e.target.value, dateTo)}
-                className="p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded text-sm outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-slate-400">—</span>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => handleCustomDateChange(dateFrom, e.target.value)}
-                className="p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded text-sm outline-none focus:ring-2 focus:ring-blue-500"
-              />
+
+          {/* Active multi-select badges */}
+          {(selectedManagers.length > 0 || selectedTags.length > 0) && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              {selectedManagers.map((id) => {
+                const m = (managers.data?.items || []).find((x: any) => x.id === id);
+                if (!m) return null;
+                return (
+                  <span
+                    key={`m-${id}`}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 text-[11px] font-medium"
+                  >
+                    <Users size={11} />
+                    <span>{m.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedManagers(selectedManagers.filter((x) => x !== id))}
+                      className="ml-0.5 hover:text-rose-500 cursor-pointer"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                );
+              })}
+              {selectedTags.map((id) => {
+                const tg = (tags.data?.items || []).find((x: any) => x.id === id);
+                if (!tg) return null;
+                return (
+                  <span
+                    key={`t-${id}`}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20 text-[11px] font-medium"
+                  >
+                    <span>#{tg.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTags(selectedTags.filter((x) => x !== id))}
+                      className="ml-0.5 hover:text-rose-500 cursor-pointer"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Tag Filter */}
-        {(tags.data?.items?.length ?? 0) > 0 && (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-lg shadow-sm mb-4">
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">{t('filter_tags')}</label>
-              {selectedTags.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedTags([]);
-                  }}
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                >
-                  {t('reset')} ({selectedTags.length})
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {tags.data?.items?.map((tg: any) => {
-                const isSelected = selectedTags.includes(tg.id);
-                return (
-                  <button
-                    key={tg.id}
-                    type="button"
-                    onClick={() => {
-                      const nextTagIds = isSelected
-                        ? selectedTags.filter((x) => x !== tg.id)
-                        : [...selectedTags, tg.id];
-                      setSelectedTags(nextTagIds);
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
-                      isSelected
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750'
-                    }`}
-                  >
-                    {tg.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Apply & Reset Filters Bar */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-lg shadow-sm mb-4 flex items-center justify-between">
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            {isStDirty
-              ? '⚡ Вы изменили параметры фильтра. Нажмите «Применить», чтобы обновить таблицу.'
-              : 'Показаны данные по применённым фильтрам'}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleApplyStFilters}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                isStDirty
-                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md ring-2 ring-blue-400/40'
-                  : 'bg-blue-600/90 hover:bg-blue-600 text-white shadow-xs'
-              }`}
-            >
-              Применить
-            </button>
-            <button
-              type="button"
-              onClick={handleResetStFilters}
-              className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 text-sm font-medium transition-colors cursor-pointer"
-            >
-              Сбросить
-            </button>
-          </div>
-        </div>
-
-        {/* Stages Stats Table */}
+                {/* Stages Stats Table */}
         {stats.data && (
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm overflow-x-auto">
             <table className="w-full text-sm">
