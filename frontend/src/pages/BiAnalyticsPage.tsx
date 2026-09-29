@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -11,20 +11,184 @@ import {
   RefreshCw,
   ExternalLink,
   Award,
-  Layers,
   Tag as TagIcon,
   ShieldAlert,
   Repeat,
   Clock,
   CheckCircle2,
   XCircle,
+  ChevronDown,
+  Check,
+  Search,
+  X,
 } from 'lucide-react';
 import { py2Api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { decodeJwt } from '../lib/jwt';
 
 type DatePreset = 'all' | 'today' | 'yesterday' | '7days' | '30days' | 'thismonth' | 'custom';
-type BiTab = 'overview' | 'funnel' | 'managers' | 'marketing' | 'losses_ltv';
+type BiTab = 'overview' | 'managers' | 'marketing' | 'losses_ltv';
+
+interface MultiSelectOption {
+  id: number;
+  name: string;
+}
+
+interface MultiSelectDropdownProps {
+  label: string;
+  placeholder: string;
+  options: MultiSelectOption[];
+  selectedIds: number[];
+  onChange: (ids: number[]) => void;
+  prefix?: string;
+  icon?: React.ReactNode;
+}
+
+function MultiSelectDropdown({
+  label,
+  placeholder,
+  options,
+  selectedIds,
+  onChange,
+  prefix = '',
+  icon,
+}: MultiSelectDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = options.filter((o) =>
+    o.name.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+
+  const toggleId = (id: number) => {
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter((x) => x !== id));
+    } else {
+      onChange([...selectedIds, id]);
+    }
+  };
+
+  const selectAllFiltered = () => {
+    const next = Array.from(new Set([...selectedIds, ...filtered.map((o) => o.id)]));
+    onChange(next);
+  };
+
+  const clearAll = () => {
+    onChange([]);
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+          selectedIds.length > 0
+            ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-400 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300'
+            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'
+        }`}
+      >
+        {icon}
+        <span>
+          {selectedIds.length === 0
+            ? `${placeholder} (${options.length})`
+            : `${label}: выбрано ${selectedIds.length}`}
+        </span>
+        {selectedIds.length > 0 && (
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              clearAll();
+            }}
+            className="ml-0.5 px-1.5 py-0.2 rounded-full bg-indigo-600 text-white text-[10px] font-bold hover:bg-rose-500 transition-colors"
+            title="Сбросить выбор"
+          >
+            ✕
+          </span>
+        )}
+        <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-50 p-3 space-y-2">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск по списку..."
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] px-1 pt-0.5">
+            <button
+              type="button"
+              onClick={selectAllFiltered}
+              className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+            >
+              Выбрать все ({filtered.length})
+            </button>
+            {selectedIds.length > 0 && (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="text-rose-500 hover:underline font-medium cursor-pointer"
+              >
+                Сбросить ({selectedIds.length})
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 pr-1">
+            {filtered.length === 0 ? (
+              <div className="py-4 text-center text-xs text-slate-400">Ничего не найдено</div>
+            ) : (
+              filtered.map((item) => {
+                const checked = selectedIds.includes(item.id);
+                return (
+                  <label
+                    key={item.id}
+                    onClick={() => toggleId(item.id)}
+                    className="flex items-center justify-between gap-2 py-2 px-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/70 cursor-pointer text-xs select-none"
+                  >
+                    <div className="flex items-center gap-2.5 truncate">
+                      <div
+                        className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${
+                          checked
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
+                        }`}
+                      >
+                        {checked && <Check size={11} strokeWidth={3} />}
+                      </div>
+                      <span className="truncate font-medium text-slate-800 dark:text-slate-200">
+                        {prefix}
+                        {item.name}
+                      </span>
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function getPresetDates(preset: DatePreset): { from: string; to: string } {
   const now = new Date();
@@ -80,8 +244,20 @@ export default function BiAnalyticsPage() {
   const [pipelineId, setPipelineId] = useState<number | null>(
     Number(searchParams.get('pipeline')) || null,
   );
-  const [selectedManagerId, setSelectedManagerId] = useState<number | null>(null);
-  const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
+  const [selectedManagerIds, setSelectedManagerIds] = useState<number[]>(() =>
+    (searchParams.get('managers') || '')
+      .split(',')
+      .filter(Boolean)
+      .map(Number)
+      .filter((n) => Number.isInteger(n) && n > 0),
+  );
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>(() =>
+    (searchParams.get('tags') || '')
+      .split(',')
+      .filter(Boolean)
+      .map(Number)
+      .filter((n) => Number.isInteger(n) && n > 0),
+  );
   const [datePreset, setDatePreset] = useState<DatePreset>(
     (searchParams.get('preset') as DatePreset) || 'all',
   );
@@ -90,20 +266,37 @@ export default function BiAnalyticsPage() {
   const [selectedCustomFieldName, setSelectedCustomFieldName] = useState<string>('ALL');
   const [enrichBanner, setEnrichBanner] = useState<string | null>(null);
 
+  const syncUrlParams = (
+    nextPipe: number | null,
+    nextManagers: number[],
+    nextTags: number[],
+    nextPreset: DatePreset,
+    nextFrom: string,
+    nextTo: string,
+  ) => {
+    const next = new URLSearchParams(searchParams);
+    if (nextPipe) next.set('pipeline', String(nextPipe));
+    else next.delete('pipeline');
+    if (nextManagers.length > 0) next.set('managers', nextManagers.join(','));
+    else next.delete('managers');
+    if (nextTags.length > 0) next.set('tags', nextTags.join(','));
+    else next.delete('tags');
+    if (nextPreset !== 'all') next.set('preset', nextPreset);
+    else next.delete('preset');
+    if (nextFrom) next.set('dateFrom', nextFrom);
+    else next.delete('dateFrom');
+    if (nextTo) next.set('dateTo', nextTo);
+    else next.delete('dateTo');
+    setSearchParams(next);
+  };
+
   const handlePresetChange = (preset: DatePreset) => {
     setDatePreset(preset);
     if (preset !== 'custom') {
       const { from, to } = getPresetDates(preset);
       setDateFrom(from);
       setDateTo(to);
-      const next = new URLSearchParams(searchParams);
-      if (preset !== 'all') next.set('preset', preset);
-      else next.delete('preset');
-      if (from) next.set('dateFrom', from);
-      else next.delete('dateFrom');
-      if (to) next.set('dateTo', to);
-      else next.delete('dateTo');
-      setSearchParams(next);
+      syncUrlParams(pipelineId, selectedManagerIds, selectedTagIds, preset, from, to);
     }
   };
 
@@ -114,16 +307,16 @@ export default function BiAnalyticsPage() {
       pipelineId,
       dateFrom,
       dateTo,
-      selectedManagerId,
-      selectedTagId,
+      selectedManagerIds,
+      selectedTagIds,
     ],
     queryFn: () =>
       py2Api.analytics(effectiveAccountId!, {
         pipelineId,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
-        managerIds: selectedManagerId ? [selectedManagerId] : undefined,
-        tagIds: selectedTagId ? [selectedTagId] : undefined,
+        managerIds: selectedManagerIds.length > 0 ? selectedManagerIds : undefined,
+        tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
       }),
     enabled: !!effectiveAccountId,
   });
@@ -141,9 +334,8 @@ export default function BiAnalyticsPage() {
   const data = biQuery.data;
   const kpis = data?.kpis;
   const pipelines = data?.filtersMeta?.pipelines || [];
-  const managersList = data?.filtersMeta?.managers || [];
-  const tagsList = data?.filtersMeta?.tags || [];
-  const funnel = data?.funnel || [];
+  const managersList: MultiSelectOption[] = data?.filtersMeta?.managers || [];
+  const tagsList: MultiSelectOption[] = data?.filtersMeta?.tags || [];
   const managers = data?.managers || [];
   const timeseries = data?.timeseries || [];
   const marketing = data?.marketing || { utmSources: [], tagsBreakdown: [], customFieldsBreakdown: [] };
@@ -224,7 +416,11 @@ export default function BiAnalyticsPage() {
           {/* Pipeline selector */}
           <select
             value={pipelineId || ''}
-            onChange={(e) => setPipelineId(e.target.value ? Number(e.target.value) : null)}
+            onChange={(e) => {
+              const nextPipe = e.target.value ? Number(e.target.value) : null;
+              setPipelineId(nextPipe);
+              syncUrlParams(nextPipe, selectedManagerIds, selectedTagIds, datePreset, dateFrom, dateTo);
+            }}
             className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
           >
             <option value="">Все воронки ({pipelines.length})</option>
@@ -235,33 +431,32 @@ export default function BiAnalyticsPage() {
             ))}
           </select>
 
-          {/* Manager selector */}
-          <select
-            value={selectedManagerId || ''}
-            onChange={(e) => setSelectedManagerId(e.target.value ? Number(e.target.value) : null)}
-            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
-          >
-            <option value="">Все менеджеры ({managersList.length})</option>
-            {managersList.map((m: any) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
+          {/* Multi-select Managers */}
+          <MultiSelectDropdown
+            label="Менеджеры"
+            placeholder="Все менеджеры"
+            options={managersList}
+            selectedIds={selectedManagerIds}
+            icon={<Users size={13} />}
+            onChange={(nextIds) => {
+              setSelectedManagerIds(nextIds);
+              syncUrlParams(pipelineId, nextIds, selectedTagIds, datePreset, dateFrom, dateTo);
+            }}
+          />
 
-          {/* Tag selector */}
-          <select
-            value={selectedTagId || ''}
-            onChange={(e) => setSelectedTagId(e.target.value ? Number(e.target.value) : null)}
-            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
-          >
-            <option value="">Все теги ({tagsList.length})</option>
-            {tagsList.map((t: any) => (
-              <option key={t.id} value={t.id}>
-                #{t.name}
-              </option>
-            ))}
-          </select>
+          {/* Multi-select Tags */}
+          <MultiSelectDropdown
+            label="Теги"
+            placeholder="Все теги"
+            options={tagsList}
+            selectedIds={selectedTagIds}
+            prefix="#"
+            icon={<TagIcon size={13} />}
+            onChange={(nextIds) => {
+              setSelectedTagIds(nextIds);
+              syncUrlParams(pipelineId, selectedManagerIds, nextIds, datePreset, dateFrom, dateTo);
+            }}
+          />
 
           {/* Date presets */}
           <div className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
@@ -294,29 +489,98 @@ export default function BiAnalyticsPage() {
               <input
                 type="date"
                 value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
+                onChange={(e) => {
+                  setDateFrom(e.target.value);
+                  syncUrlParams(pipelineId, selectedManagerIds, selectedTagIds, 'custom', e.target.value, dateTo);
+                }}
                 className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs"
               />
               <span className="text-slate-400">—</span>
               <input
                 type="date"
                 value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
+                onChange={(e) => {
+                  setDateTo(e.target.value);
+                  syncUrlParams(pipelineId, selectedManagerIds, selectedTagIds, 'custom', dateFrom, e.target.value);
+                }}
                 className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs"
               />
             </div>
           )}
         </div>
+
+        {/* Active multi-select badges */}
+        {(selectedManagerIds.length > 0 || selectedTagIds.length > 0) && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+            {selectedManagerIds.map((id) => {
+              const m = managersList.find((x) => x.id === id);
+              if (!m) return null;
+              return (
+                <span
+                  key={`m-${id}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 text-[11px] font-medium"
+                >
+                  <Users size={11} />
+                  <span>{m.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = selectedManagerIds.filter((x) => x !== id);
+                      setSelectedManagerIds(next);
+                      syncUrlParams(pipelineId, next, selectedTagIds, datePreset, dateFrom, dateTo);
+                    }}
+                    className="ml-0.5 hover:text-rose-500 cursor-pointer"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              );
+            })}
+            {selectedTagIds.map((id) => {
+              const t = tagsList.find((x) => x.id === id);
+              if (!t) return null;
+              return (
+                <span
+                  key={`t-${id}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20 text-[11px] font-medium"
+                >
+                  <span>#{t.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = selectedTagIds.filter((x) => x !== id);
+                      setSelectedTagIds(next);
+                      syncUrlParams(pipelineId, selectedManagerIds, next, datePreset, dateFrom, dateTo);
+                    }}
+                    className="ml-0.5 hover:text-rose-500 cursor-pointer"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedManagerIds([]);
+                setSelectedTagIds([]);
+                syncUrlParams(pipelineId, [], [], datePreset, dateFrom, dateTo);
+              }}
+              className="text-[11px] text-rose-500 hover:underline font-medium ml-2 cursor-pointer"
+            >
+              Сбросить все фильтры
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Navigation Tabs inside Module 02 */}
+      {/* Navigation Tabs inside Module 02 (Funnel & Money Leaks removed as stage time analysis is in Module 01) */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         {[
           { id: 'overview', label: '1. Обзор и Финансы', icon: DollarSign },
-          { id: 'funnel', label: '2. Воронка и Утечки денег', icon: Layers },
-          { id: 'managers', label: '3. Менеджеры и Дисциплина', icon: Award },
-          { id: 'marketing', label: '4. Маркетинг, UTM и Поля', icon: TagIcon },
-          { id: 'losses_ltv', label: '5. Причины отказа, LTV и Риски', icon: ShieldAlert },
+          { id: 'managers', label: '2. Менеджеры и Дисциплина', icon: Award },
+          { id: 'marketing', label: '3. Маркетинг, UTM и Поля', icon: TagIcon },
+          { id: 'losses_ltv', label: '4. Причины отказа, LTV и Риски', icon: ShieldAlert },
         ].map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -457,7 +721,7 @@ export default function BiAnalyticsPage() {
                 </div>
               </div>
 
-              {/* Monthly Timeseries Table & Visual Bars */}
+              {/* Monthly Timeseries Table */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
                 <h2 className="text-base font-bold mb-4 text-slate-900 dark:text-white">
                   Динамика лидов, продаж и выручки по месяцам
@@ -501,84 +765,7 @@ export default function BiAnalyticsPage() {
             </div>
           )}
 
-          {/* ================= TAB 2: FUNNEL & MONEY LEAKS ================= */}
-          {activeTab === 'funnel' && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                    Глубокая воронка конверсий и Карта утечек денег (Money Leaks)
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Показывает, сколько сделок прошло через каждый этап, конверсию шага и на каком этапе срывается больше всего бюджета
-                  </p>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
-                    <tr>
-                      <th className="p-3 text-left">Этап воронки</th>
-                      <th className="p-3 text-right">Дошло сделок</th>
-                      <th className="p-3 text-left w-44">Конверсия от старта</th>
-                      <th className="p-3 text-right">Шаг (CR%)</th>
-                      <th className="p-3 text-right">Ср. время</th>
-                      <th className="p-3 text-right">Сейчас в работе (Open)</th>
-                      <th className="p-3 text-right text-rose-600 dark:text-rose-400">
-                        💸 Ушло в отказ с этапа (Money Leak)
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                    {funnel.map((st: any) => (
-                      <tr key={st.stageId} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                        <td className="p-3 font-semibold text-slate-900 dark:text-white">{st.stageName}</td>
-                        <td className="p-3 text-right font-bold">{st.reachedLeads}</td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-2.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full"
-                                style={{ width: `${Math.min(st.conversionFromStart, 100)}%` }}
-                              />
-                            </div>
-                            <span className="w-10 text-right font-semibold">{st.conversionFromStart}%</span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right font-medium text-indigo-600 dark:text-indigo-400">
-                          {st.conversionFromPrev}%
-                        </td>
-                        <td className="p-3 text-right text-slate-500">{st.avgStageHours} ч.</td>
-                        <td className="p-3 text-right">
-                          <span className="font-semibold text-blue-600 dark:text-blue-400">
-                            {st.currentOpenLeads} шт.
-                          </span>{' '}
-                          <span className="text-slate-400">({fmtMoney(st.currentOpenValue)})</span>
-                        </td>
-                        <td className="p-3 text-right">
-                          {st.lostAtStageLeads > 0 ? (
-                            <div>
-                              <span className="font-bold text-rose-600 dark:text-rose-400">
-                                {st.lostAtStageLeads} шт.
-                              </span>{' '}
-                              <span className="text-rose-500 font-medium">
-                                ({fmtMoney(st.lostAtStageValue)})
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400">0</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* ================= TAB 3: MANAGERS & DISCIPLINE ================= */}
+          {/* ================= TAB 2: MANAGERS & DISCIPLINE ================= */}
           {activeTab === 'managers' && (
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
               <div>
@@ -646,7 +833,7 @@ export default function BiAnalyticsPage() {
             </div>
           )}
 
-          {/* ================= TAB 4: MARKETING, UTM, TAGS & CUSTOM FIELDS ================= */}
+          {/* ================= TAB 3: MARKETING, UTM, TAGS & CUSTOM FIELDS ================= */}
           {activeTab === 'marketing' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -768,7 +955,7 @@ export default function BiAnalyticsPage() {
             </div>
           )}
 
-          {/* ================= TAB 5: LOSS REASONS, LTV & RISK AUDIT ================= */}
+          {/* ================= TAB 4: LOSS REASONS, LTV & RISK AUDIT ================= */}
           {activeTab === 'losses_ltv' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

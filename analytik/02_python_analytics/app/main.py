@@ -424,90 +424,7 @@ def get_detailed_analytics(
             for r in timeseries_rows
         ]
 
-        # 3. Глубокая воронка продаж + утечки денег по этапам
-        effective_pipeline_id = pipeline_id or (pipelines[0]["id"] if pipelines else None)
-        funnel = []
-        if effective_pipeline_id:
-            funnel_params = {**params, "eff_pipe_id": effective_pipeline_id}
-            # Для каждого этапа считаем:
-            # - сколько сделок из выборки побывало на этапе (через lead_stage_history или current_stage_id)
-            # - сколько сейчас открыто на этапе
-            # - сколько сделок ушло в lost, когда этот этап был последним в lead_stage_history
-            funnel_rows = conn.execute(
-                text(f"""
-                    WITH filtered_leads AS (
-                        SELECT l.*
-                        FROM leads l
-                        WHERE {where_sql} AND l.pipeline_id = :eff_pipe_id
-                    ),
-                    last_stage_per_lead AS (
-                        SELECT DISTINCT ON (h.lead_id)
-                            h.lead_id,
-                            h.stage_id
-                        FROM lead_stage_history h
-                        JOIN filtered_leads fl ON fl.id = h.lead_id
-                        ORDER BY h.lead_id, h.entered_at DESC, h.id DESC
-                    ),
-                    stage_touch AS (
-                        SELECT
-                            s.id AS stage_id,
-                            COUNT(DISTINCT fl.id) AS reached_leads,
-                            COALESCE(SUM(DISTINCT fl.price), 0) AS reached_value,
-                            COALESCE(AVG(h.duration_seconds) / 3600.0, 0) AS avg_hours
-                        FROM stages s
-                        LEFT JOIN lead_stage_history h ON h.stage_id = s.id
-                        LEFT JOIN filtered_leads fl ON fl.id = h.lead_id OR fl.current_stage_id = s.id
-                        WHERE s.pipeline_id = :eff_pipe_id AND s.is_archived = false
-                        GROUP BY s.id
-                    )
-                    SELECT
-                        s.id AS "stageId",
-                        s.name AS "stageName",
-                        COALESCE(s.sort_order, 0) AS "sortOrder",
-                        COALESCE(st.reached_leads, 0) AS "reachedLeads",
-                        COALESCE(st.reached_value, 0) AS "reachedValue",
-                        COALESCE(st.avg_hours, 0) AS "avgStageHours",
-                        COUNT(DISTINCT fl_open.id) AS "currentOpenLeads",
-                        COALESCE(SUM(fl_open.price), 0) AS "currentOpenValue",
-                        COUNT(DISTINCT fl_lost.id) AS "lostAtStageLeads",
-                        COALESCE(SUM(fl_lost.price), 0) AS "lostAtStageValue"
-                    FROM stages s
-                    LEFT JOIN stage_touch st ON st.stage_id = s.id
-                    LEFT JOIN filtered_leads fl_open ON fl_open.current_stage_id = s.id AND fl_open.status = 'open'
-                    LEFT JOIN last_stage_per_lead lsp ON lsp.stage_id = s.id
-                    LEFT JOIN filtered_leads fl_lost ON fl_lost.id = lsp.lead_id AND fl_lost.status = 'lost'
-                    WHERE s.pipeline_id = :eff_pipe_id AND s.is_archived = false
-                      AND s.external_id NOT IN ('142', '143')
-                    GROUP BY s.id, s.name, s.sort_order, st.reached_leads, st.reached_value, st.avg_hours
-                    ORDER BY COALESCE(s.sort_order, 0) ASC, s.id ASC
-                """),
-                funnel_params,
-            ).mappings().all()
-
-            max_reached = max([int(r["reachedLeads"] or 0) for r in funnel_rows], default=0)
-            prev_reached = max_reached
-            for idx, r in enumerate(funnel_rows):
-                reached = int(r["reachedLeads"] or 0)
-                conv_start = round((reached / max_reached * 100), 1) if max_reached > 0 else 0.0
-                conv_prev = round((reached / prev_reached * 100), 1) if (idx > 0 and prev_reached > 0) else 100.0
-                if reached > 0:
-                    prev_reached = reached
-                funnel.append({
-                    "stageId": r["stageId"],
-                    "stageName": r["stageName"],
-                    "sortOrder": int(r["sortOrder"] or 0),
-                    "reachedLeads": reached,
-                    "reachedValue": float(r["reachedValue"] or 0),
-                    "currentOpenLeads": int(r["currentOpenLeads"] or 0),
-                    "currentOpenValue": float(r["currentOpenValue"] or 0),
-                    "lostAtStageLeads": int(r["lostAtStageLeads"] or 0),
-                    "lostAtStageValue": float(r["lostAtStageValue"] or 0),
-                    "avgStageHours": round(float(r["avgStageHours"] or 0), 1),
-                    "conversionFromStart": conv_start,
-                    "conversionFromPrev": min(conv_prev, 100.0),
-                })
-
-        # 4. Рейтинг и дисциплина менеджеров
+        # 3. Рейтинг и дисциплина менеджеров
         manager_rows = conn.execute(
             text(f"""
                 SELECT
@@ -789,7 +706,6 @@ def get_detailed_analytics(
             },
             "kpis": kpis,
             "timeseries": timeseries,
-            "funnel": funnel,
             "managers": managers,
             "marketing": {
                 "utmSources": utm_sources,
