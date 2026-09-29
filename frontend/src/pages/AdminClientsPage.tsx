@@ -78,14 +78,7 @@ export default function AdminClientsPage() {
               </span>
             )}
           </button>
-          <LanguageSwitcher />
-          <ThemeToggle />
-          <button
-            onClick={logout}
-            className="text-sm text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors cursor-pointer"
-          >
-            {t('logout')}
-          </button>
+
         </div>
       </header>
 

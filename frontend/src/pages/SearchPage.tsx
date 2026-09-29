@@ -52,24 +52,7 @@ export default function SearchPage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-6">
       <div className="max-w-5xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <button
-            onClick={() => nav(-1)}
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-          >
-            {t('back')}
-          </button>
-          <div className="flex items-center gap-3">
-            <LanguageSwitcher />
-            <ThemeToggle />
-            <button
-              onClick={logout}
-              className="text-sm text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors cursor-pointer"
-            >
-              {t('logout')}
-            </button>
-          </div>
-        </div>
+
 
         <h1 className="text-2xl font-bold mb-4 text-slate-900 dark:text-slate-100">{t('search_title')}</h1>
 

@@ -32,16 +32,7 @@ export default function AdminNotificationsPage() {
           >
             {t('back')}
           </button>
-          <div className="flex items-center gap-3">
-            <LanguageSwitcher />
-            <ThemeToggle />
-            <button
-              onClick={logout}
-              className="text-sm text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors cursor-pointer"
-            >
-              {t('logout')}
-            </button>
-          </div>
+
         </div>
 
         <h1 className="text-2xl font-bold mb-4 text-slate-900 dark:text-slate-100">{t('notifs_title')}</h1>
