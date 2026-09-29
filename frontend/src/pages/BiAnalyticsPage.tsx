@@ -264,7 +264,6 @@ export default function BiAnalyticsPage() {
   const [dateFrom, setDateFrom] = useState<string>(searchParams.get('dateFrom') || '');
   const [dateTo, setDateTo] = useState<string>(searchParams.get('dateTo') || '');
   const [selectedCustomFieldName, setSelectedCustomFieldName] = useState<string>('ALL');
-  const [enrichBanner, setEnrichBanner] = useState<string | null>(null);
 
   const syncUrlParams = (
     nextPipe: number | null,
@@ -323,8 +322,7 @@ export default function BiAnalyticsPage() {
 
   const enrichMut = useMutation({
     mutationFn: () => py2Api.triggerEnrich(effectiveAccountId!),
-    onSuccess: (res) => {
-      setEnrichBanner(res.message || 'Обогащение данных из AmoCRM запущено в фоне!');
+    onSuccess: () => {
       setTimeout(() => {
         qc.invalidateQueries({ queryKey: ['py2-bi-analytics', effectiveAccountId] });
       }, 4000);
@@ -376,12 +374,7 @@ export default function BiAnalyticsPage() {
         </div>
       </div>
 
-      {enrichBanner && (
-        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-4 py-3 rounded-xl text-xs flex items-center justify-between">
-          <span>{enrichBanner}</span>
-          <button onClick={() => setEnrichBanner(null)} className="font-bold ml-4 cursor-pointer">✕</button>
-        </div>
-      )}
+
 
       {/* Filter Bar */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs space-y-3">
