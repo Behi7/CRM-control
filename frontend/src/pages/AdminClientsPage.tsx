@@ -208,13 +208,7 @@ export default function AdminClientsPage() {
                       onClick={() => nav(`/admin/stats/${a.id}`)}
                       className="text-xs bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-2 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                     >
-                      {lang === 'uz' ? '01. Vaqt' : '01. Тайминг'}
-                    </button>
-                    <button
-                      onClick={() => nav(`/admin/bi/${a.id}`)}
-                      className="text-xs bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 px-2 py-1 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900 font-semibold transition-colors cursor-pointer"
-                    >
-                      {lang === 'uz' ? '02. BI Tahlil' : '02. BI Аналитика'}
+                      {lang === 'uz' ? 'Stat.' : 'Стат.'}
                     </button>
                     <button
                       onClick={() => {
