@@ -27,7 +27,7 @@ import { useAuth } from '../auth/AuthContext';
 import { decodeJwt } from '../lib/jwt';
 
 type DatePreset = 'all' | 'today' | 'yesterday' | '7days' | '30days' | 'thismonth' | 'custom';
-type BiTab = 'overview' | 'managers' | 'marketing' | 'losses_ltv';
+type BiTab = 'overview' | 'managers' | 'marketing' | 'losses_ltv' | 'custom_fields' | 'risk_audit';
 
 interface MultiSelectOption {
   id: number;
@@ -595,13 +595,15 @@ export default function BiAnalyticsPage() {
         )}
       </div>
 
-      {/* Navigation Tabs inside Module 02 (Funnel & Money Leaks removed as stage time analysis is in Module 01) */}
+      {/* Navigation Tabs inside Module 02 */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         {[
           { id: 'overview', label: '1. Обзор и Финансы', icon: DollarSign },
           { id: 'managers', label: '2. Менеджеры и Дисциплина', icon: Award },
-          { id: 'marketing', label: '3. Маркетинг, UTM и Поля', icon: TagIcon },
-          { id: 'losses_ltv', label: '4. Причины отказа, LTV и Риски', icon: ShieldAlert },
+          { id: 'marketing', label: '3. Маркетинг и Теги', icon: TagIcon },
+          { id: 'losses_ltv', label: '4. Причины отказа и LTV', icon: Repeat },
+          { id: 'custom_fields', label: '5. Кастомные поля', icon: Filter },
+          { id: 'risk_audit', label: '6. Сделки в зоне риска', icon: ShieldAlert },
         ].map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -854,7 +856,7 @@ export default function BiAnalyticsPage() {
             </div>
           )}
 
-          {/* ================= TAB 3: MARKETING, UTM, TAGS & CUSTOM FIELDS ================= */}
+          {/* ================= TAB 3: MARKETING, UTM & TAGS ================= */}
           {activeTab === 'marketing' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -920,63 +922,10 @@ export default function BiAnalyticsPage() {
                   </div>
                 </div>
               </div>
-
-              {/* Custom Fields Breakdown */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                      Глубокий срез по кастомным полям сделок AmoCRM (Custom Fields BI)
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      Анализ конверсии и выручки в разрезе любых пользовательских полей вашей CRM
-                    </p>
-                  </div>
-                  <select
-                    value={selectedCustomFieldName}
-                    onChange={(e) => setSelectedCustomFieldName(e.target.value)}
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium"
-                  >
-                    <option value="ALL">Все кастомные поля ({customFieldNames.length})</option>
-                    {customFieldNames.map((name) => (
-                      <option key={name} value={name}>
-                        Поле: {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
-                      <tr>
-                        <th className="p-3 text-left">Название поля в AmoCRM</th>
-                        <th className="p-3 text-left">Значение поля</th>
-                        <th className="p-3 text-right">Сделок</th>
-                        <th className="p-3 text-right">Продаж (Won)</th>
-                        <th className="p-3 text-right">Win Rate %</th>
-                        <th className="p-3 text-right">Выручка</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                      {filteredCustomFields.map((cf: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                          <td className="p-3 font-medium text-indigo-600 dark:text-indigo-400">{cf.fieldName}</td>
-                          <td className="p-3 font-semibold">{cf.fieldValue}</td>
-                          <td className="p-3 text-right">{cf.totalLeads}</td>
-                          <td className="p-3 text-right text-emerald-600 font-semibold">{cf.wonLeads}</td>
-                          <td className="p-3 text-right">{cf.winRate}%</td>
-                          <td className="p-3 text-right font-bold">{fmtMoney(cf.revenue)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             </div>
           )}
 
-          {/* ================= TAB 4: LOSS REASONS, LTV & RISK AUDIT ================= */}
+          {/* ================= TAB 4: LOSS REASONS & LTV ================= */}
           {activeTab === 'losses_ltv' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1052,84 +1001,141 @@ export default function BiAnalyticsPage() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
 
-              {/* Risk Deals Table (Actionable Audit for Sales Head) */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
+          {/* ================= TAB 5: CUSTOM FIELDS BI ================= */}
+          {activeTab === 'custom_fields' && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <AlertTriangle size={18} className="text-amber-500" />
-                    <span>Аудит: ТОП-25 открытых сделок с высоким бюджетом в зоне риска</span>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Глубокий срез по кастомным полям сделок AmoCRM (Custom Fields BI)
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Активные сделки, требующие немедленного контроля РОПа (нет поставленной задачи, задача просрочена или нет движения более 14 дней)
+                    Анализ конверсии и выручки в разрезе любых пользовательских полей вашей CRM
                   </p>
                 </div>
+                <select
+                  value={selectedCustomFieldName}
+                  onChange={(e) => setSelectedCustomFieldName(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium"
+                >
+                  <option value="ALL">Все кастомные поля ({customFieldNames.length})</option>
+                  {customFieldNames.map((name) => (
+                    <option key={name} value={name}>
+                      Поле: {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
-                      <tr>
-                        <th className="p-3 text-left">Сделка</th>
-                        <th className="p-3 text-left">Этап</th>
-                        <th className="p-3 text-left">Ответственный</th>
-                        <th className="p-3 text-right">Бюджет</th>
-                        <th className="p-3 text-right">Без движения</th>
-                        <th className="p-3 text-left">Причина риска</th>
-                        <th className="p-3 text-right">Действие</th>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
+                    <tr>
+                      <th className="p-3 text-left">Название поля в AmoCRM</th>
+                      <th className="p-3 text-left">Значение поля</th>
+                      <th className="p-3 text-right">Сделок</th>
+                      <th className="p-3 text-right">Продаж (Won)</th>
+                      <th className="p-3 text-right">Win Rate %</th>
+                      <th className="p-3 text-right">Выручка</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                    {filteredCustomFields.map((cf: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                        <td className="p-3 font-medium text-indigo-600 dark:text-indigo-400">{cf.fieldName}</td>
+                        <td className="p-3 font-semibold">{cf.fieldValue}</td>
+                        <td className="p-3 text-right">{cf.totalLeads}</td>
+                        <td className="p-3 text-right text-emerald-600 font-semibold">{cf.wonLeads}</td>
+                        <td className="p-3 text-right">{cf.winRate}%</td>
+                        <td className="p-3 text-right font-bold">{fmtMoney(cf.revenue)}</td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                      {(lossesAndLtv.riskDeals || []).map((deal: any) => (
-                        <tr key={deal.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                          <td className="p-3 font-semibold text-slate-900 dark:text-white">
-                            <button
-                              onClick={() =>
-                                navigate(role === 'admin' ? `/admin/lead/${deal.id}` : `/lead/${deal.id}`)
-                              }
-                              className="hover:text-blue-500 text-left cursor-pointer"
-                            >
-                              {deal.name}
-                            </button>
-                          </td>
-                          <td className="p-3 text-slate-600 dark:text-slate-300">{deal.stageName}</td>
-                          <td className="p-3 font-medium">{deal.managerName}</td>
-                          <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
-                            {fmtMoney(deal.price)}
-                          </td>
-                          <td className="p-3 text-right text-slate-500">{deal.idleDays} дн.</td>
-                          <td className="p-3">
-                            {deal.riskType === 'no_task' && (
-                              <span className="px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-600 dark:text-orange-400 font-semibold">
-                                Нет поставленной задачи
-                              </span>
-                            )}
-                            {deal.riskType === 'overdue_task' && (
-                              <span className="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">
-                                Задача просрочена
-                              </span>
-                            )}
-                            {deal.riskType === 'stale_deal' && (
-                              <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold">
-                                Зависла &gt; 14 дней
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-3 text-right">
-                            <a
-                              href={deal.crmUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline font-medium"
-                            >
-                              <span>AmoCRM</span>
-                              <ExternalLink size={12} />
-                            </a>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ================= TAB 6: RISK DEALS AUDIT ================= */}
+          {activeTab === 'risk_audit' && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <AlertTriangle size={18} className="text-amber-500" />
+                  <span>Аудит: ТОП-25 открытых сделок с высоким бюджетом в зоне риска</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Активные сделки, требующие немедленного контроля РОПа (нет поставленной задачи, задача просрочена или нет движения более 14 дней)
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
+                    <tr>
+                      <th className="p-3 text-left">Сделка</th>
+                      <th className="p-3 text-left">Этап</th>
+                      <th className="p-3 text-left">Ответственный</th>
+                      <th className="p-3 text-right">Бюджет</th>
+                      <th className="p-3 text-right">Без движения</th>
+                      <th className="p-3 text-left">Причина риска</th>
+                      <th className="p-3 text-right">Действие</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                    {(lossesAndLtv.riskDeals || []).map((deal: any) => (
+                      <tr key={deal.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                        <td className="p-3 font-semibold text-slate-900 dark:text-white">
+                          <button
+                            onClick={() =>
+                              navigate(role === 'admin' ? `/admin/lead/${deal.id}` : `/lead/${deal.id}`)
+                            }
+                            className="hover:text-blue-500 text-left cursor-pointer"
+                          >
+                            {deal.name}
+                          </button>
+                        </td>
+                        <td className="p-3 text-slate-600 dark:text-slate-300">{deal.stageName}</td>
+                        <td className="p-3 font-medium">{deal.managerName}</td>
+                        <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
+                          {fmtMoney(deal.price)}
+                        </td>
+                        <td className="p-3 text-right text-slate-500">{deal.idleDays} дн.</td>
+                        <td className="p-3">
+                          {deal.riskType === 'no_task' && (
+                            <span className="px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-600 dark:text-orange-400 font-semibold">
+                              Нет поставленной задачи
+                            </span>
+                          )}
+                          {deal.riskType === 'overdue_task' && (
+                            <span className="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">
+                              Задача просрочена
+                            </span>
+                          )}
+                          {deal.riskType === 'stale_deal' && (
+                            <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold">
+                              Зависла &gt; 14 дней
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right">
+                          <a
+                            href={deal.crmUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                          >
+                            <span>AmoCRM</span>
+                            <ExternalLink size={12} />
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
