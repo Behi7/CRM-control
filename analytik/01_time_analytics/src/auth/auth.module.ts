@@ -9,7 +9,7 @@ import { RolesGuard } from './guards/roles.guard';
 @Module({
   imports: [
     PassportModule,
-    JwtModule.registerAsync({ useFactory: () => ({ secret: process.env.JWT_ACCESS_SECRET!, signOptions: { expiresIn: '15m' } }) }),
+    JwtModule.registerAsync({ useFactory: () => ({ secret: process.env.JWT_ACCESS_SECRET!, signOptions: { expiresIn: '30d' } }) }),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard],

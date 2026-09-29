@@ -12,15 +12,47 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [role, setRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<string | null>(() => {
+    const existing = localStorage.getItem('access_token');
+    if (existing) {
+      const payload = decodeJwt(existing);
+      if (payload?.role && (!payload.exp || payload.exp * 1000 > Date.now())) {
+        return payload.role;
+      }
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    const existing = localStorage.getItem('access_token');
+    if (existing) {
+      const payload = decodeJwt(existing);
+      if (payload?.role && (!payload.exp || payload.exp * 1000 > Date.now())) {
+        setAccessToken(existing);
+        return false;
+      }
+    }
+    return true;
+  });
 
   useEffect(() => {
     (async () => {
+      const existing = localStorage.getItem('access_token');
+      if (existing) {
+        const payload = decodeJwt(existing);
+        if (payload?.role && (!payload.exp || payload.exp * 1000 > Date.now())) {
+          setAccessToken(existing);
+          setRole(payload.role);
+          setLoading(false);
+          return;
+        }
+      }
       const token = await authApi.refresh();
       if (token) {
         const payload = decodeJwt(token);
         setRole(payload?.role || null);
+      } else {
+        setAccessToken(null, null);
+        setRole(null);
       }
       setLoading(false);
     })();
@@ -28,13 +60,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const res = await authApi.login(email, password);
-    setAccessToken(res.accessToken);
+    setAccessToken(res.accessToken, res.refreshToken || null);
     setRole(res.role);
   };
 
   const logout = async () => {
-    await authApi.logout();
-    setAccessToken(null);
+    try {
+      await authApi.logout();
+    } catch {
+      // ignore logout error
+    }
+    setAccessToken(null, null);
     setRole(null);
     window.location.href = '/login';
   };
