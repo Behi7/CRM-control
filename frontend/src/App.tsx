@@ -1,17 +1,26 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
+import { useLanguage } from './i18n/LanguageContext';
 import LoginPage from './pages/LoginPage';
 import AdminClientsPage from './pages/AdminClientsPage';
 import AdminNotificationsPage from './pages/AdminNotificationsPage';
 import StatsPage from './pages/StatsPage';
 import StageLeadsPage from './pages/StageLeadsPage';
 import LeadDetailPage from './pages/LeadDetailPage';
-import ClosedLeadsPage from './pages/ClosedLeadsPage';
 import SearchPage from './pages/SearchPage';
 
 export default function App() {
   const { role, loading } = useAuth();
-  if (loading) return <div className="p-8">Загрузка...</div>;
+  const { t } = useLanguage();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 p-8 flex items-center justify-center">
+        {t('loading')}
+      </div>
+    );
+  }
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -22,7 +31,6 @@ export default function App() {
           <Route path="/admin/stats/:accountId" element={<StatsPage />} />
           <Route path="/admin/stage/:stageId" element={<StageLeadsPage />} />
           <Route path="/admin/lead/:leadId" element={<LeadDetailPage />} />
-          <Route path="/admin/closed/:accountId" element={<ClosedLeadsPage />} />
           <Route path="/admin/search/:accountId" element={<SearchPage />} />
         </>
       )}
@@ -31,11 +39,13 @@ export default function App() {
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/stage/:stageId" element={<StageLeadsPage />} />
           <Route path="/lead/:leadId" element={<LeadDetailPage />} />
-          <Route path="/closed" element={<ClosedLeadsPage />} />
           <Route path="/search" element={<SearchPage />} />
         </>
       )}
-      <Route path="*" element={<Navigate to={role === 'admin' ? '/admin/clients' : role === 'viewer' ? '/stats' : '/login'} replace />} />
+      <Route
+        path="*"
+        element={<Navigate to={role === 'admin' ? '/admin/clients' : role === 'viewer' ? '/stats' : '/login'} replace />}
+      />
     </Routes>
   );
 }

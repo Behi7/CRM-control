@@ -64,22 +64,70 @@ export const adminApi = {
   patchAccount: (id: number, data: any) => api(`/admin/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteAccount: (id: number) => api(`/admin/accounts/${id}`, { method: 'DELETE' }),
   retryBackfill: (id: number) => api(`/admin/accounts/${id}/retry-backfill`, { method: 'POST' }),
+  stopSync: (id: number) => api(`/admin/accounts/${id}/stop-sync`, { method: 'POST' }),
+  startSync: (id: number) => api(`/admin/accounts/${id}/start-sync`, { method: 'POST' }),
   listNotifications: (unreadOnly = false) => api<any[]>(`/admin/notifications?unreadOnly=${unreadOnly}`),
   readNotification: (id: number) => api(`/admin/notifications/${id}/read`, { method: 'POST' }),
+  getAiSettings: (id: number) => api<{ accountId: number; aiEnabled: boolean; aiModel: string; hasToken: boolean; aiCompanyContext: string }>(`/admin/accounts/${id}/ai-settings`),
+  patchAiSettings: (id: number, data: { aiEnabled?: boolean; aiModel?: string; aiToken?: string; aiCompanyContext?: string }) => api(`/admin/accounts/${id}/ai-settings`, { method: 'PATCH', body: JSON.stringify(data) }),
+  testAi: (data: { model: string; token: string }) => api<{ ok: boolean; message: string }>('/admin/ai/test', { method: 'POST', body: JSON.stringify(data) }),
 };
+
+export interface FilterParams {
+  tagIds?: number[];
+  managerIds?: number[];
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+}
+
+function buildFilterQS(f: FilterParams): string {
+  const p = new URLSearchParams();
+  if (f.tagIds?.length) p.set('tagIds', f.tagIds.join(','));
+  if (f.managerIds?.length) p.set('managerIds', f.managerIds.join(','));
+  if (f.dateFrom) p.set('dateFrom', f.dateFrom);
+  if (f.dateTo) p.set('dateTo', f.dateTo);
+  if (f.status && f.status !== 'all') p.set('status', f.status);
+  const qs = p.toString();
+  return qs ? `?${qs}` : '';
+}
 
 export const userApi = {
   pipelines: (accountId: number) => api<{ items: any[]; dataFreshness: any }>(`/accounts/${accountId}/pipelines`),
   tags: (accountId: number) => api<{ items: any[]; dataFreshness: any }>(`/accounts/${accountId}/tags`),
-  stagesStats: (pipelineId: number, tagIds: number[] = []) =>
-    api<{ items: any[]; dataFreshness: any }>(`/pipelines/${pipelineId}/stages-stats${tagIds.length ? `?tagIds=${tagIds.join(',')}` : ''}`),
-  activeLeads: (stageId: number, page = 1, perPage = 50, tagIds: number[] = []) =>
-    api(`/stages/${stageId}/active-leads?page=${page}&perPage=${perPage}${tagIds.length ? `&tagIds=${tagIds.join(',')}` : ''}`),
+  managers: (accountId: number) => api<{ items: any[]; dataFreshness: any }>(`/accounts/${accountId}/managers`),
+  stagesStats: (pipelineId: number, filters: FilterParams = {}) =>
+    api<{ items: any[]; dataFreshness: any }>(`/pipelines/${pipelineId}/stages-stats${buildFilterQS(filters)}`),
+  activeLeads: (stageId: number, page = 1, perPage = 50, filters: FilterParams = {}) => {
+    const p = new URLSearchParams();
+    p.set('page', String(page));
+    p.set('perPage', String(perPage));
+    if (filters.tagIds?.length) p.set('tagIds', filters.tagIds.join(','));
+    if (filters.managerIds?.length) p.set('managerIds', filters.managerIds.join(','));
+    if (filters.dateFrom) p.set('dateFrom', filters.dateFrom);
+    if (filters.dateTo) p.set('dateTo', filters.dateTo);
+    if (filters.status && filters.status !== 'all') p.set('status', filters.status);
+    return api(`/stages/${stageId}/active-leads?${p.toString()}`);
+  },
   leadHistory: (leadId: number) => api(`/leads/${leadId}/history`),
-  searchLeads: (accountId: number, q: string, page = 1, perPage = 50, tagIds: number[] = []) =>
-    api(`/accounts/${accountId}/leads/search?q=${encodeURIComponent(q)}&page=${page}&perPage=${perPage}${tagIds.length ? `&tagIds=${tagIds.join(',')}` : ''}`),
-  searchLeads: (accountId: number, q: string, page = 1, perPage = 50, tagIds: number[] = [], status?: string) =>
-    api(`/accounts/${accountId}/leads/search?q=${encodeURIComponent(q)}&page=${page}&perPage=${perPage}${tagIds.length ? `&tagIds=${tagIds.join(',')}` : ''}${status ? `&status=${encodeURIComponent(status)}` : ''}`),
-  leadsByStatus: (accountId: number, status: string, page = 1, perPage = 50, tagIds: number[] = []) =>
-    api(`/accounts/${accountId}/leads?status=${status}&page=${page}&perPage=${perPage}${tagIds.length ? `&tagIds=${tagIds.join(',')}` : ''}`),
+  searchLeads: (accountId: number, q: string, page = 1, perPage = 50, filters: FilterParams = {}) => {
+    const p = new URLSearchParams();
+    p.set('q', q);
+    p.set('page', String(page));
+    p.set('perPage', String(perPage));
+    if (filters.tagIds?.length) p.set('tagIds', filters.tagIds.join(','));
+    if (filters.managerIds?.length) p.set('managerIds', filters.managerIds.join(','));
+    if (filters.dateFrom) p.set('dateFrom', filters.dateFrom);
+    if (filters.dateTo) p.set('dateTo', filters.dateTo);
+    if (filters.status && filters.status !== 'all') p.set('status', filters.status);
+    return api(`/accounts/${accountId}/leads/search?${p.toString()}`);
+  },
+  getAiStatus: (accountId: number) => api<{ enabled: boolean; configured: boolean; model: string }>(`/accounts/${accountId}/ai/status`),
+  sendAiChat: (accountId: number, data: {
+    message: string;
+    history?: { role: 'user' | 'model'; text: string }[];
+    pipelineId?: number;
+    filters?: FilterParams;
+    lang?: 'ru' | 'uz';
+  }) => api<{ reply: string }>(`/accounts/${accountId}/ai/chat`, { method: 'POST', body: JSON.stringify(data) }),
 };

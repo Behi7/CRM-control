@@ -28,9 +28,10 @@ services:
       timeout: 5s
       retries: 5
 
+  # === Модуль 01 (Ядро + Аналитика времени, Node.js) ===
   backend:
     build:
-      context: ./backend
+      context: ./analytik/01_time_analytics
       dockerfile: Dockerfile
     restart: always
     depends_on:
@@ -67,6 +68,41 @@ services:
         node dist/src/main.js
       "
 
+  # === Модуль 02 (Python / FastAPI) ===
+  analytics_2:
+    build:
+      context: ./analytik/02_python_analytics
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/amocrm_analytics
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
+    ports:
+      - "8001:8001"
+
+  # === Модуль 03 (Python / FastAPI) ===
+  analytics_3:
+    build:
+      context: ./analytik/03_python_analytics
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/amocrm_analytics
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
+    ports:
+      - "8002:8002"
+
+  # === Единая панель (React + Nginx Reverse Proxy) ===
   frontend:
     build:
       context: ./frontend
@@ -76,6 +112,13 @@ services:
       - backend
     ports:
       - "80:80"
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: always
+    command: tunnel --no-autoupdate --url http://frontend:80
+    depends_on:
+      - frontend
 
 volumes:
   pgdata:

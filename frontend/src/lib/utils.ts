@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 
 export function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
-export function formatDate(value: string | Date | null | undefined, fmt: string, fallback = '—'): string {
+export function formatDate(value: string | Date | null | undefined, fmt = 'dd.MM.yyyy HH:mm', fallback = '—'): string {
   if (value == null) return fallback;
   try {
     const d = value instanceof Date ? value : new Date(value);

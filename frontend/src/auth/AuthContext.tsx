@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { authApi, setAccessToken, getAccessToken } from '../api/client';
+import { authApi, setAccessToken } from '../api/client';
+import { decodeJwt } from '../lib/jwt';
 
 interface AuthState {
   role: string | null;
@@ -18,13 +19,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (async () => {
       const token = await authApi.refresh();
       if (token) {
-        // We got new access token via refresh but need role — try to decode JWT
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          setRole(payload.role);
-        } catch {
-          setRole(null);
-        }
+        const payload = decodeJwt(token);
+        setRole(payload?.role || null);
       }
       setLoading(false);
     })();

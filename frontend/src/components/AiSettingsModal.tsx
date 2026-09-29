@@ -1,0 +1,277 @@
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { adminApi } from '../api/client';
+import { useLanguage } from '../i18n/LanguageContext';
+import { Sparkles, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+
+interface AiSettingsModalProps {
+  accountId: number;
+  subdomain: string;
+  onClose: () => void;
+}
+
+export default function AiSettingsModal({ accountId, subdomain, onClose }: AiSettingsModalProps) {
+  const qc = useQueryClient();
+  const { t, lang } = useLanguage();
+  const [model, setModel] = useState('gemini-2.5-flash');
+  const [token, setToken] = useState('');
+  const [companyContext, setCompanyContext] = useState('');
+  const [enabled, setEnabled] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [err, setErr] = useState('');
+
+  const settingsQuery = useQuery({
+    queryKey: ['ai-settings', accountId],
+    queryFn: () => adminApi.getAiSettings(accountId),
+  });
+
+  useEffect(() => {
+    if (settingsQuery.data) {
+      setModel(settingsQuery.data.aiModel || 'gemini-2.5-flash');
+      setCompanyContext(settingsQuery.data.aiCompanyContext || '');
+      setEnabled(settingsQuery.data.aiEnabled ?? false);
+    }
+  }, [settingsQuery.data]);
+
+  const saveMut = useMutation({
+    mutationFn: (data: any) => adminApi.patchAiSettings(accountId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounts'] });
+      qc.invalidateQueries({ queryKey: ['ai-settings', accountId] });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    },
+    onError: (e: any) => {
+      setErr(e.message || (lang === 'uz' ? 'Saqlashda xatolik yuz berdi' : 'Ошибка сохранения'));
+    },
+  });
+
+  const handleTest = async () => {
+    if (!token && !settingsQuery.data?.hasToken) {
+      setErr(lang === 'uz' ? 'Aloqani tekshirish uchun tokenni kiriting' : 'Введите токен для проверки соединения');
+      return;
+    }
+    setErr('');
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const res = await adminApi.testAi({
+        model: model || 'gemini-2.5-flash',
+        token: token,
+      });
+      setTestResult(res);
+    } catch (e: any) {
+      setTestResult({
+        ok: false,
+        message: e.message || (lang === 'uz' ? 'Aloqa tekshirishda xatolik' : 'Ошибка тестирования связи'),
+      });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr('');
+    try {
+      const payload: any = {
+        aiEnabled: enabled,
+        aiModel: model.trim(),
+        aiCompanyContext: companyContext.trim(),
+      };
+      if (token.trim()) {
+        payload.aiToken = token.trim();
+      }
+      await saveMut.mutateAsync(payload);
+    } catch (e: any) {
+      // Handled by onError
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl max-w-xl w-full border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Header */}
+        <div className="px-6 py-4 bg-gradient-to-r from-purple-700 to-indigo-700 text-white flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-white/10 rounded-lg">
+              <Sparkles size={18} className="text-yellow-300 fill-yellow-300" />
+            </div>
+            <div>
+              <h2 className="font-bold text-lg">{t('ai_settings_title', { subdomain })}</h2>
+              <p className="text-xs text-purple-200">{t('ai_settings_subtitle')}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 text-white/70 hover:text-white hover:bg-white/10 rounded-md transition-colors cursor-pointer"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Form Body */}
+        {settingsQuery.isLoading ? (
+          <div className="p-8 flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400">
+            <Loader2 size={20} className="animate-spin" />
+            <span>{t('loading')}</span>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            {err && (
+              <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 text-xs rounded-lg flex items-start gap-2">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <span>{err}</span>
+              </div>
+            )}
+
+            {saveSuccess && (
+              <div className="p-3 bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-900/50 text-green-700 dark:text-green-300 text-xs rounded-lg flex items-center gap-2">
+                <CheckCircle2 size={16} className="shrink-0" />
+                <span>{t('ai_saved_success')}</span>
+              </div>
+            )}
+
+            {/* Toggle Enabled */}
+            <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700">
+              <div>
+                <span className="font-medium text-sm text-slate-900 dark:text-slate-100">{t('ai_enable_label')}</span>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{t('ai_enable_desc')}</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => setEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+              </label>
+            </div>
+
+            {/* 1. Model field */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {t('ai_model_label')}
+              </label>
+              <input
+                type="text"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="gemini-2.5-flash"
+                className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                required
+              />
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                {lang === 'uz' ? 'Tavsiya etiladi:' : 'Рекомендуется:'}{' '}
+                <code
+                  className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-purple-700 dark:text-purple-300 cursor-pointer"
+                  onClick={() => setModel('gemini-2.5-flash')}
+                >
+                  gemini-2.5-flash
+                </code>{' '}
+                {lang === 'uz' ? 'yoki' : 'или'}{' '}
+                <code
+                  className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-purple-700 dark:text-purple-300 cursor-pointer"
+                  onClick={() => setModel('gemini-1.5-flash')}
+                >
+                  gemini-1.5-flash
+                </code>
+              </p>
+            </div>
+
+            {/* 2. Token field */}
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {t('ai_token_label')}
+                </label>
+                {settingsQuery.data?.hasToken && (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                    <CheckCircle2 size={12} /> {lang === 'uz' ? 'Kalit saqlangan' : 'Ключ сохранен'}
+                  </span>
+                )}
+              </div>
+              <div className="relative">
+                <input
+                  type="password"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder={settingsQuery.data?.hasToken ? t('ai_token_saved_hint') : t('ai_token_placeholder')}
+                  className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                />
+              </div>
+              <div className="flex justify-between items-center mt-1">
+                <p className="text-xs text-slate-400 dark:text-slate-500">
+                  {lang === 'uz' ? 'Kalit ma’lumotlar bazasida AES-256-GCM bilan shifrlanadi' : 'Ключ шифруется по стандарту AES-256-GCM в базе данных'}
+                </p>
+                {token.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleTest}
+                    disabled={isTesting}
+                    className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 font-medium hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    {isTesting ? <Loader2 size={12} className="animate-spin" /> : null}
+                    {isTesting ? t('ai_testing') : t('ai_test_btn')}
+                  </button>
+                )}
+              </div>
+
+              {testResult && (
+                <div
+                  className={`mt-2 p-2.5 rounded text-xs flex items-center gap-2 ${
+                    testResult.ok
+                      ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50'
+                      : 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50'
+                  }`}
+                >
+                  {testResult.ok ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                  <span>{testResult.message}</span>
+                </div>
+              )}
+            </div>
+
+            {/* 3. Company Context field */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {t('ai_context_label')}
+              </label>
+              <textarea
+                value={companyContext}
+                onChange={(e) => setCompanyContext(e.target.value)}
+                rows={4}
+                placeholder={t('ai_context_placeholder')}
+                className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-purple-500 focus:outline-none resize-y"
+              />
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                {t('ai_context_hint')}
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                type="submit"
+                disabled={saveMut.isPending}
+                className="px-5 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg shadow-sm transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {saveMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                <span>{saveMut.isPending ? t('ai_saving') : t('ai_save_btn')}</span>
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
