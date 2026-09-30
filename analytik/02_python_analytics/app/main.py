@@ -284,7 +284,7 @@ def get_detailed_analytics(
             "uniqueContacts": int(kpi_row["unique_contacts"] or 0),
         }
 
-        # 2. Динамика по времени (по месяцам или неделям в зависимости от диапазона)
+        # 2. Динамика по времени (по месяцам + данные для японских свечей чека и конверсии)
         timeseries_rows = conn.execute(
             text(f"""
                 SELECT
@@ -294,7 +294,27 @@ def get_detailed_analytics(
                     COUNT(*) FILTER (WHERE l.status = 'lost') AS "lostLeads",
                     COUNT(*) FILTER (WHERE l.status = 'open') AS "openLeads",
                     COALESCE(SUM(l.price) FILTER (WHERE l.status = 'won'), 0) AS revenue,
-                    COALESCE(SUM(l.price), 0) AS "pipelineValue"
+                    COALESCE(SUM(l.price) FILTER (WHERE l.status = 'open'), 0) AS "openValue",
+                    COALESCE(SUM(l.price) FILTER (WHERE l.status = 'lost'), 0) AS "lostValue",
+                    COALESCE(SUM(l.price), 0) AS "pipelineValue",
+                    COALESCE(MIN(l.price) FILTER (WHERE l.price > 0), 0) AS "minCheck",
+                    COALESCE(
+                        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY l.price)
+                        FILTER (WHERE l.price > 0),
+                        0
+                    ) AS "q25Check",
+                    COALESCE(
+                        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY l.price)
+                        FILTER (WHERE l.price > 0),
+                        0
+                    ) AS "medianCheck",
+                    COALESCE(AVG(l.price) FILTER (WHERE l.price > 0), 0) AS "avgCheck",
+                    COALESCE(
+                        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY l.price)
+                        FILTER (WHERE l.price > 0),
+                        0
+                    ) AS "q75Check",
+                    COALESCE(MAX(l.price) FILTER (WHERE l.price > 0), 0) AS "maxCheck"
                 FROM leads l
                 WHERE {where_sql}
                 GROUP BY 1
@@ -311,8 +331,17 @@ def get_detailed_analytics(
                 "wonLeads": int(r["wonLeads"]),
                 "lostLeads": int(r["lostLeads"]),
                 "openLeads": int(r["openLeads"]),
+                "winRate": round(int(r["wonLeads"]) / int(r["totalLeads"]) * 100, 1) if int(r["totalLeads"]) > 0 else 0.0,
                 "revenue": float(r["revenue"]),
+                "openValue": float(r["openValue"]),
+                "lostValue": float(r["lostValue"]),
                 "pipelineValue": float(r["pipelineValue"]),
+                "minCheck": float(r["minCheck"] or 0),
+                "q25Check": float(r["q25Check"] or 0),
+                "medianCheck": float(r["medianCheck"] or 0),
+                "avgCheck": round(float(r["avgCheck"] or 0), 2),
+                "q75Check": float(r["q75Check"] or 0),
+                "maxCheck": float(r["maxCheck"] or 0),
             }
             for r in timeseries_rows
         ]

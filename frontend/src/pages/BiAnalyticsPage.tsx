@@ -779,6 +779,266 @@ export default function BiAnalyticsPage() {
 
               </div>
 
+              {/* Analytical Charts Row: Portfolio Donut % + Japanese Candlesticks of Deal Check + Monthly Stacked Bars */}
+              {(() => {
+                const totalPortfolio = (kpis.totalRevenue || 0) + (kpis.openPipelineValue || 0) + (kpis.lostRevenue || 0);
+                const wonMoneyPct = totalPortfolio > 0 ? Math.round((kpis.totalRevenue / totalPortfolio) * 1000) / 10 : 0;
+                const openMoneyPct = totalPortfolio > 0 ? Math.round((kpis.openPipelineValue / totalPortfolio) * 1000) / 10 : 0;
+                const lostMoneyPct = totalPortfolio > 0 ? Math.max(0, Math.round((100 - wonMoneyPct - openMoneyPct) * 10) / 10) : 0;
+
+                const totalDealsCount = kpis.totalLeads || 1;
+                const wonCountPct = Math.round(((kpis.wonLeads || 0) / totalDealsCount) * 1000) / 10;
+                const openCountPct = Math.round(((kpis.openLeads || 0) / totalDealsCount) * 1000) / 10;
+                const lostCountPct = Math.max(0, Math.round((100 - wonCountPct - openCountPct) * 10) / 10);
+
+                // Donut SVG math (r=54, C=339.29)
+                const C = 2 * Math.PI * 54;
+                const wonDash = (wonMoneyPct / 100) * C;
+                const openDash = (openMoneyPct / 100) * C;
+                const lostDash = (lostMoneyPct / 100) * C;
+
+                const maxMonthLeads = Math.max(...timeseries.map((t: any) => t.totalLeads || 0), 1);
+                const maxMonthCheck = Math.max(...timeseries.map((t: any) => t.maxCheck || t.avgCheck || 0), 1);
+
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* 1. Donut Chart: Portfolio Structure % */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                          Структура денежного портфеля и сделок (%)
+                        </h3>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Процентное распределение бюджета: Выручка vs В работе vs Отказ
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-center gap-6 my-4">
+                        <div className="relative w-36 h-36 flex items-center justify-center">
+                          <svg viewBox="0 0 140 140" className="w-36 h-36 -rotate-90">
+                            <circle cx="70" cy="70" r="54" fill="none" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeWidth="16" />
+                            <circle
+                              cx="70"
+                              cy="70"
+                              r="54"
+                              fill="none"
+                              stroke="#10b981"
+                              strokeWidth="16"
+                              strokeDasharray={`${wonDash} ${C}`}
+                              strokeDashoffset={0}
+                            />
+                            <circle
+                              cx="70"
+                              cy="70"
+                              r="54"
+                              fill="none"
+                              stroke="#3b82f6"
+                              strokeWidth="16"
+                              strokeDasharray={`${openDash} ${C}`}
+                              strokeDashoffset={-wonDash}
+                            />
+                            <circle
+                              cx="70"
+                              cy="70"
+                              r="54"
+                              fill="none"
+                              stroke="#f43f5e"
+                              strokeWidth="16"
+                              strokeDasharray={`${lostDash} ${C}`}
+                              strokeDashoffset={-(wonDash + openDash)}
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                            <span className="text-[10px] uppercase text-slate-400 font-semibold">Win Rate</span>
+                            <span className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400">
+                              {kpis.winRateClosed}%
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2.5 text-xs flex-1">
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
+                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                                Выиграно
+                              </span>
+                              <span className="font-bold">{wonMoneyPct}%</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500">{fmtMoney(kpis.totalRevenue)} ({wonCountPct}% лидов)</div>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 font-semibold text-blue-600 dark:text-blue-400">
+                                <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                                В работе
+                              </span>
+                              <span className="font-bold">{openMoneyPct}%</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500">{fmtMoney(kpis.openPipelineValue)} ({openCountPct}% лидов)</div>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 font-semibold text-rose-600 dark:text-rose-400">
+                                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                                В отказе
+                              </span>
+                              <span className="font-bold">{lostMoneyPct}%</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500">{fmtMoney(kpis.lostRevenue)} ({lostCountPct}% лидов)</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 100% Stacked Bar of Leads */}
+                      <div className="space-y-1.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                        <div className="flex justify-between text-[11px] text-slate-500">
+                          <span>Структура всех лидов ({fmtCount(kpis.totalLeads)} шт.):</span>
+                          <span>Won {wonCountPct}% • Open {openCountPct}% • Lost {lostCountPct}%</span>
+                        </div>
+                        <div className="w-full h-3 rounded-full overflow-hidden flex bg-slate-100 dark:bg-slate-800">
+                          <div style={{ width: `${wonCountPct}%` }} className="bg-emerald-500 h-full" title={`Успешно: ${wonCountPct}%`} />
+                          <div style={{ width: `${openCountPct}%` }} className="bg-blue-500 h-full" title={`В работе: ${openCountPct}%`} />
+                          <div style={{ width: `${lostCountPct}%` }} className="bg-rose-500 h-full" title={`Отказ: ${lostCountPct}%`} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. Stacked Outcome Candles + Win Rate Line per Month */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                            Свечи объёма лидов и исходов по месяцам
+                          </h3>
+                          <p className="text-[11px] text-slate-500">
+                            Высота свечи — всего сделок (Зелёный: Won, Синий: Open, Красный: Lost) + % конверсии
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="h-48 flex items-end gap-2 pt-6 pb-2 px-1 overflow-x-auto">
+                        {timeseries.slice(-12).map((m: any) => {
+                          const totalH = Math.max(12, Math.round(((m.totalLeads || 0) / maxMonthLeads) * 140));
+                          const wonH = m.totalLeads > 0 ? Math.round((m.wonLeads / m.totalLeads) * totalH) : 0;
+                          const openH = m.totalLeads > 0 ? Math.round((m.openLeads / m.totalLeads) * totalH) : 0;
+                          const lostH = Math.max(0, totalH - wonH - openH);
+                          const wr = m.totalLeads > 0 ? Math.round((m.wonLeads / m.totalLeads) * 100) : 0;
+                          return (
+                            <div key={m.period} className="flex-1 min-w-[38px] flex flex-col items-center group relative">
+                              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mb-1">
+                                {wr}%
+                              </span>
+                              <div
+                                style={{ height: `${totalH}px` }}
+                                className="w-5 rounded-md overflow-hidden flex flex-col-reverse shadow-xs border border-slate-200/60 dark:border-slate-700"
+                                title={`${m.period}: Всего ${m.totalLeads} | Won: ${m.wonLeads} | Open: ${m.openLeads} | Lost: ${m.lostLeads}`}
+                              >
+                                <div style={{ height: `${wonH}px` }} className="bg-emerald-500 w-full" />
+                                <div style={{ height: `${openH}px` }} className="bg-blue-500 w-full" />
+                                <div style={{ height: `${lostH}px` }} className="bg-rose-500 w-full" />
+                              </div>
+                              <span className="text-[10px] text-slate-500 mt-1.5 font-medium">
+                                {(m.period || '').slice(2)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-xs bg-emerald-500" /> Продажи</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-xs bg-blue-500" /> В работе</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-xs bg-rose-500" /> Отказы</span>
+                        <span className="font-semibold text-indigo-600 dark:text-indigo-400">Сверху: Win Rate %</span>
+                      </div>
+                    </div>
+
+                    {/* 3. Japanese Candlesticks (Box-and-Whisker) of Deal Check per Month */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                          Биржевые свечи разброса чека (Min / Q25 / Q75 / Max)
+                        </h3>
+                        <p className="text-[11px] text-slate-500">
+                          Тень свечи: Мин–Макс чек за месяц • Тело свечи: Q25–Q75 (ядро чеков) • Линия: Медиана
+                        </p>
+                      </div>
+
+                      <div className="h-48 flex items-end gap-2 pt-6 pb-2 px-1 overflow-x-auto">
+                        {timeseries.slice(-12).map((m: any) => {
+                          const maxC = m.maxCheck || 0;
+                          const minC = m.minCheck || 0;
+                          const q25 = m.q25Check || minC;
+                          const q75 = m.q75Check || maxC;
+                          const med = m.medianCheck || m.avgCheck || 0;
+
+                          const topPx = Math.min(135, Math.max(6, Math.round((maxC / maxMonthCheck) * 135)));
+                          const botPx = Math.min(topPx - 2, Math.max(0, Math.round((minC / maxMonthCheck) * 135)));
+                          const bodyTop = Math.min(topPx, Math.max(botPx + 4, Math.round((q75 / maxMonthCheck) * 135)));
+                          const bodyBot = Math.min(bodyTop - 4, Math.max(botPx, Math.round((q25 / maxMonthCheck) * 135)));
+                          const medPx = Math.min(bodyTop, Math.max(bodyBot, Math.round((med / maxMonthCheck) * 135)));
+
+                          return (
+                            <div
+                              key={m.period}
+                              className="flex-1 min-w-[38px] flex flex-col items-center"
+                              title={`${m.period}
+Макс чек: ${fmtMoney(maxC)}
+Q75: ${fmtMoney(q75)}
+Медиана: ${fmtMoney(med)}
+Q25: ${fmtMoney(q25)}
+Мин чек: ${fmtMoney(minC)}`}
+                            >
+                              <div className="relative w-6 h-[140px] flex items-end justify-center">
+                                {maxC > 0 ? (
+                                  <>
+                                    {/* High-Low Wick */}
+                                    <div
+                                      style={{
+                                        bottom: `${botPx}px`,
+                                        height: `${Math.max(4, topPx - botPx)}px`,
+                                      }}
+                                      className="absolute w-[2px] bg-indigo-400 dark:bg-indigo-500"
+                                    />
+                                    {/* Q25-Q75 Candle Body */}
+                                    <div
+                                      style={{
+                                        bottom: `${bodyBot}px`,
+                                        height: `${Math.max(6, bodyTop - bodyBot)}px`,
+                                      }}
+                                      className="absolute w-4 rounded-xs bg-indigo-500/85 border border-indigo-600 dark:border-indigo-300 shadow-xs"
+                                    />
+                                    {/* Median Marker */}
+                                    <div
+                                      style={{ bottom: `${medPx}px` }}
+                                      className="absolute w-5 h-[2px] bg-amber-300"
+                                    />
+                                  </>
+                                ) : (
+                                  <div className="w-2 h-2 rounded-full bg-slate-200 dark:bg-slate-800 mb-1" />
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-500 mt-1.5 font-medium">
+                                {(m.period || '').slice(2)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <span>Верх/Низ тени: Max/Min</span>
+                        <span className="text-indigo-600 dark:text-indigo-400 font-semibold">Тело: 25%–75% чеков</span>
+                        <span className="text-amber-600 dark:text-amber-400 font-semibold">Жёлтая черта: Медиана</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Monthly Timeseries Table */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
                 <h2 className="text-base font-bold mb-4 text-slate-900 dark:text-white">
@@ -824,7 +1084,118 @@ export default function BiAnalyticsPage() {
           )}
 
           {/* ================= TAB 2: MANAGERS & DISCIPLINE ================= */}
-          {activeTab === 'managers' && (
+          {activeTab === 'managers' && (() => {
+            const totalDeptRev = Math.max(
+              managers.reduce((acc: number, m: any) => acc + (m.revenue || 0), 0),
+              1,
+            );
+            const maxMgrRevOrPipe = Math.max(
+              ...managers.map((m: any) => (m.revenue || 0) + (m.openValue || 0)),
+              1,
+            );
+
+            return (
+            <div className="space-y-6">
+              {/* Visual Charts for Managers: Revenue vs Pipeline Bars & Discipline Health */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Chart 1: Revenue & Pipeline Potential Share */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                        Выручка, потенциал в работе и доля в отделе (%)
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Зелёный — принесённая выручка (Won) • Синий — активный пайплайн в работе
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                    {managers.slice(0, 12).map((m: any) => {
+                      const revShare = Math.round(((m.revenue || 0) / totalDeptRev) * 1000) / 10;
+                      const wonW = Math.round(((m.revenue || 0) / maxMgrRevOrPipe) * 100);
+                      const openW = Math.round(((m.openValue || 0) / maxMgrRevOrPipe) * 100);
+                      return (
+                        <div key={m.managerId} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[180px]">
+                              {m.managerName}
+                            </span>
+                            <div className="flex items-center gap-2 text-[11px]">
+                              <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                                {fmtMoney(m.revenue)}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
+                                {revShare}% отдела
+                              </span>
+                            </div>
+                          </div>
+                          <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                            <div
+                              style={{ width: `${wonW}%` }}
+                              className="bg-emerald-500 h-full"
+                              title={`Выручка: ${fmtMoney(m.revenue)}`}
+                            />
+                            <div
+                              style={{ width: `${openW}%` }}
+                              className="bg-blue-500 h-full"
+                              title={`В работе: ${fmtMoney(m.openValue)}`}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Chart 2: 100% Stacked CRM Discipline Health per Manager */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Индикатор дисциплины открытых сделок (100% шкала здоровья)
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Зелёный: задача поставлена вовремя • Оранжевый: без задач • Красный: задача просрочена
+                    </p>
+                  </div>
+                  <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                    {managers
+                      .filter((m: any) => (m.openLeads || 0) > 0)
+                      .slice(0, 12)
+                      .map((m: any) => {
+                        const openTot = Math.max(m.openLeads || 0, 1);
+                        const noTask = Math.min(openTot, m.noTaskLeads || 0);
+                        const overdue = Math.min(openTot - noTask, m.overdueTasksLeads || 0);
+                        const healthy = Math.max(0, openTot - noTask - overdue);
+
+                        const healthyPct = Math.round((healthy / openTot) * 100);
+                        const noTaskPct = Math.round((noTask / openTot) * 100);
+                        const overduePct = Math.max(0, 100 - healthyPct - noTaskPct);
+
+                        return (
+                          <div key={`disc-${m.managerId}`} className="space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[180px]">
+                                {m.managerName} <span className="text-slate-400 font-normal">({m.openLeads} откр.)</span>
+                              </span>
+                              <div className="flex items-center gap-2 text-[11px]">
+                                <span className="text-emerald-600 font-semibold">Норма: {healthyPct}%</span>
+                                {noTask > 0 && <span className="text-orange-500 font-semibold">Без задач: {noTaskPct}%</span>}
+                                {overdue > 0 && <span className="text-rose-500 font-semibold">Просроч.: {overduePct}%</span>}
+                              </div>
+                            </div>
+                            <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                              <div style={{ width: `${healthyPct}%` }} className="bg-emerald-500 h-full" />
+                              <div style={{ width: `${noTaskPct}%` }} className="bg-orange-500 h-full" />
+                              <div style={{ width: `${overduePct}%` }} className="bg-rose-500 h-full" />
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-white">
@@ -889,11 +1260,73 @@ export default function BiAnalyticsPage() {
                 </table>
               </div>
             </div>
-          )}
+            </div>
+            );
+          })()}
 
           {/* ================= TAB 3: MARKETING, LEAD SOURCES & TAGS ================= */}
-          {activeTab === 'marketing' && (
+          {activeTab === 'marketing' && (() => {
+            const sourcesArr: any[] = marketing.utmSources || [];
+            const totalSrcRevenue = Math.max(
+              sourcesArr.reduce((acc: number, s: any) => acc + (s.revenue || 0), 0),
+              1,
+            );
+            return (
             <div className="space-y-6">
+              {/* Dual Comparison Chart: Share of Leads % vs Share of Revenue % per Source */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Сравнение источников: Доля лидов (%) vs Доля выручки (%) и Конверсия (CR%)
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Показывает, какие источники дают реальные деньги в кассу (зелёная шкала), а какие генерируют только поток заявок без оплат (синяя шкала)
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs">
+                    <span className="flex items-center gap-1.5 font-semibold text-blue-600 dark:text-blue-400">
+                      <span className="w-2.5 h-2.5 rounded-xs bg-blue-500" /> Доля лидов %
+                    </span>
+                    <span className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
+                      <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500" /> Доля выручки %
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {sourcesArr.slice(0, 8).map((s: any) => {
+                    const leadPct = s.sharePercent ?? 0;
+                    const revPct = Math.round(((s.revenue || 0) / totalSrcRevenue) * 1000) / 10;
+                    return (
+                      <div key={`chart-${s.source}`} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-800 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-900 dark:text-white truncate max-w-[210px]">{s.source}</span>
+                          <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold">
+                            CR: {s.winRate}%
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="w-24 text-slate-500">Лиды ({fmtCount(s.totalLeads)}):</span>
+                            <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                              <div style={{ width: `${Math.min(100, leadPct)}%` }} className="bg-blue-500 h-full rounded-full" />
+                            </div>
+                            <span className="w-11 text-right font-semibold text-blue-600 dark:text-blue-400">{leadPct}%</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="w-24 text-slate-500">Выручка:</span>
+                            <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                              <div style={{ width: `${Math.min(100, revPct)}%` }} className="bg-emerald-500 h-full rounded-full" />
+                            </div>
+                            <span className="w-11 text-right font-semibold text-emerald-600 dark:text-emerald-400">{revPct}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* AmoCRM Lead Sources */}
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
@@ -972,10 +1405,73 @@ export default function BiAnalyticsPage() {
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* ================= TAB 4: LOSS REASONS ================= */}
-          {activeTab === 'losses_ltv' && (
+          {activeTab === 'losses_ltv' && (() => {
+            const reasons: any[] = lossesAndLtv.lossReasons || [];
+            const maxLostCount = Math.max(...reasons.map((r: any) => r.lostLeads || 0), 1);
+            let cum = 0;
+            const paretoItems = reasons.slice(0, 12).map((r: any) => {
+              cum = Math.min(100, Math.round((cum + (r.sharePercent || 0)) * 10) / 10);
+              return { ...r, cumulativePercent: cum };
+            });
+
+            return (
+            <div className="space-y-6">
+              {/* Pareto 80/20 Chart (Bars + Cumulative % Line) */}
+              {paretoItems.length > 0 && (
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                        Диаграмма Парето (80/20) по причинам отказа (Свечи потерь + Накопительный %)
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Столбцы — количество потерянных сделок • Линия сверху — накопительный процент от всех отказов (зона до 80% выделена красным)
+                      </p>
+                    </div>
+                    <span className="text-xs px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">
+                      Зона Парето 80% потерь
+                    </span>
+                  </div>
+
+                  <div className="h-52 flex items-end gap-3 pt-8 pb-2 px-2 overflow-x-auto">
+                    {paretoItems.map((item: any) => {
+                      const barH = Math.max(12, Math.round(((item.lostLeads || 0) / maxLostCount) * 140));
+                      const inParetoZone = item.cumulativePercent <= 85;
+                      return (
+                        <div key={`pareto-${item.reason}`} className="flex-1 min-w-[76px] flex flex-col items-center">
+                          <span
+                            className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded mb-1 ${
+                              inParetoZone
+                                ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                            }`}
+                          >
+                            ∑ {item.cumulativePercent}%
+                          </span>
+                          <div
+                            style={{ height: `${barH}px` }}
+                            className={`w-8 rounded-t-lg transition-all ${
+                              inParetoZone
+                                ? 'bg-gradient-to-t from-rose-600 to-rose-400 shadow-xs'
+                                : 'bg-slate-300 dark:bg-slate-700'
+                            }`}
+                            title={`${item.reason}: ${item.lostLeads} сделок (${item.sharePercent}%) | Накопительно: ${item.cumulativePercent}%`}
+                          />
+                          <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 mt-1.5 truncate max-w-[84px] text-center">
+                            {item.reason}
+                          </span>
+                          <span className="text-[10px] text-rose-500 font-bold">{item.sharePercent}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -1036,7 +1532,9 @@ export default function BiAnalyticsPage() {
                 </table>
               </div>
             </div>
-          )}
+            </div>
+            );
+          })()}
 
           {/* ================= TAB 5: CUSTOM FIELDS BI (LISTS & OPTIONS) ================= */}
           {activeTab === 'custom_fields' && (() => {
@@ -1141,6 +1639,7 @@ export default function BiAnalyticsPage() {
                             <th className="p-3 text-right">Продаж (Won)</th>
                             <th className="p-3 text-right">Отказ (Lost)</th>
                             <th className="p-3 text-right">В работе</th>
+                            <th className="p-3 text-center">Структура (Won / Open / Lost %)</th>
                             <th className="p-3 text-right">Win Rate %</th>
                             <th className="p-3 text-right">Выручка</th>
                             <th className="p-3 text-right">Средний чек</th>
@@ -1168,6 +1667,26 @@ export default function BiAnalyticsPage() {
                               </td>
                               <td className="p-3 text-right text-rose-500">{fmtCount(opt.lostLeads)}</td>
                               <td className="p-3 text-right text-blue-500">{fmtCount(opt.openLeads)}</td>
+                              <td className="p-3">
+                                {(() => {
+                                  const tot = Math.max(opt.totalLeads || 0, 1);
+                                  const wP = Math.round(((opt.wonLeads || 0) / tot) * 100);
+                                  const oP = Math.round(((opt.openLeads || 0) / tot) * 100);
+                                  const lP = Math.max(0, 100 - wP - oP);
+                                  return (
+                                    <div className="flex items-center gap-1.5 justify-center">
+                                      <div
+                                        className="w-24 h-2 rounded-full overflow-hidden flex bg-slate-200 dark:bg-slate-700"
+                                        title={`Won: ${wP}% | Open: ${oP}% | Lost: ${lP}%`}
+                                      >
+                                        <div style={{ width: `${wP}%` }} className="bg-emerald-500 h-full" />
+                                        <div style={{ width: `${oP}%` }} className="bg-blue-500 h-full" />
+                                        <div style={{ width: `${lP}%` }} className="bg-rose-500 h-full" />
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </td>
                               <td className="p-3 text-right">
                                 <span
                                   className={`px-2 py-0.5 rounded font-bold ${
@@ -1208,7 +1727,61 @@ export default function BiAnalyticsPage() {
           })()}
 
           {/* ================= TAB 6: RISK DEALS AUDIT ================= */}
-          {activeTab === 'risk_audit' && (
+          {activeTab === 'risk_audit' && (() => {
+            const riskDeals: any[] = lossesAndLtv.riskDeals || [];
+            const riskBudget = riskDeals.reduce((acc: number, d: any) => acc + (d.price || 0), 0);
+            const openPipe = Math.max(kpis?.openPipelineValue || 0, riskBudget, 1);
+            const riskSharePct = Math.min(100, Math.round((riskBudget / openPipe) * 1000) / 10);
+            const safeSharePct = Math.max(0, Math.round((100 - riskSharePct) * 10) / 10);
+
+            const noTaskBudget = riskDeals.filter((d: any) => d.riskType === 'no_task').reduce((a: number, d: any) => a + (d.price || 0), 0);
+            const overdueBudget = riskDeals.filter((d: any) => d.riskType === 'overdue_task').reduce((a: number, d: any) => a + (d.price || 0), 0);
+            const staleBudget = riskDeals.filter((d: any) => d.riskType === 'stale_deal').reduce((a: number, d: any) => a + (d.price || 0), 0);
+
+            return (
+            <div className="space-y-6">
+              {/* Pipeline Risk Thermometer Card */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Термометр риска открытого пайплайна (% бюджета под угрозой)
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Доля бюджета в ТОП-25 проблемных сделках относительно всего открытого пайплайна ({fmtMoney(kpis?.openPipelineValue || 0)})
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
+                      В безопасности: {safeSharePct}%
+                    </span>
+                    <span className="px-3 py-1 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold">
+                      В зоне риска: {fmtMoney(riskBudget)} ({riskSharePct}%)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="w-full h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                  <div style={{ width: `${safeSharePct}%` }} className="bg-emerald-500 h-full" title={`В порядке: ${safeSharePct}%`} />
+                  <div style={{ width: `${riskSharePct}%` }} className="bg-gradient-to-r from-amber-500 to-rose-600 h-full" title={`Под угрозой: ${riskSharePct}%`} />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div className="p-3 rounded-xl bg-orange-500/5 border border-orange-500/20 flex items-center justify-between text-xs">
+                    <span className="text-orange-600 dark:text-orange-400 font-semibold">Без поставленной задачи:</span>
+                    <span className="font-bold text-slate-900 dark:text-white">{fmtMoney(noTaskBudget)}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-rose-500/5 border border-rose-500/20 flex items-center justify-between text-xs">
+                    <span className="text-rose-600 dark:text-rose-400 font-semibold">С просроченной задачей:</span>
+                    <span className="font-bold text-slate-900 dark:text-white">{fmtMoney(overdueBudget)}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 flex items-center justify-between text-xs">
+                    <span className="text-amber-600 dark:text-amber-400 font-semibold">Без движения &gt; 14 дней:</span>
+                    <span className="font-bold text-slate-900 dark:text-white">{fmtMoney(staleBudget)}</span>
+                  </div>
+                </div>
+              </div>
+
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1286,7 +1859,9 @@ export default function BiAnalyticsPage() {
                 </table>
               </div>
             </div>
-          )}
+            </div>
+            );
+          })()}
         </>
       )}
     </div>
