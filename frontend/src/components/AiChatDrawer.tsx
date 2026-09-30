@@ -32,6 +32,7 @@ interface AiChatDrawerProps {
   modelName?: string;
   biData?: any;
   activeBiTab?: string;
+  variant?: 'overlay' | 'docked';
 }
 
 const BI_AVAILABLE_BLOCKS = [
@@ -140,31 +141,69 @@ export default function AiChatDrawer({
   modelName,
   biData,
   activeBiTab,
+  variant = 'overlay',
 }: AiChatDrawerProps) {
   const { lang, t } = useLanguage();
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [selectedBiBlocks, setSelectedBiBlocks] = useState<string[]>(() => [tabToBlockId(activeBiTab)]);
 
-  // Keep default block synced with active tab when opened
-  useEffect(() => {
-    if (activeBiTab && biData) {
-      const bId = tabToBlockId(activeBiTab);
-      setSelectedBiBlocks((prev) => (prev.includes(bId) ? prev : [bId, ...prev]));
-    }
-  }, [activeBiTab, biData]);
+  const storageKey = biData
+    ? `amocrm_ai_chat_bi_${accountId}`
+    : `amocrm_ai_chat_${accountId}_${pipelineId || 'all'}`;
 
-  // Update welcome message when lang changes or initially
-  useEffect(() => {
-    setMessages([
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
       {
         id: 'welcome',
         role: 'model',
         text: t('ai_welcome_text'),
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       },
-    ]);
-  }, [lang]);
+    ];
+  });
+
+  // Save messages to localStorage when updated
+  useEffect(() => {
+    try {
+      if (messages.length > 0) {
+        localStorage.setItem(storageKey, JSON.stringify(messages));
+      }
+    } catch {}
+  }, [messages, storageKey]);
+
+  const [selectedBiBlocks, setSelectedBiBlocks] = useState<string[]>(() => [tabToBlockId(activeBiTab)]);
+  const prevTabRef = useRef(activeBiTab);
+
+  // When activeBiTab changes in the main UI, automatically select ONLY that new block
+  useEffect(() => {
+    if (activeBiTab && activeBiTab !== prevTabRef.current) {
+      prevTabRef.current = activeBiTab;
+      setSelectedBiBlocks([tabToBlockId(activeBiTab)]);
+    }
+  }, [activeBiTab]);
+
+  // Update welcome message ONLY if there are no user messages yet
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length === 1 && prev[0].id === 'welcome') {
+        return [
+          {
+            id: 'welcome',
+            role: 'model',
+            text: t('ai_welcome_text'),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ];
+      }
+      return prev;
+    });
+  }, [lang, t]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -273,72 +312,74 @@ export default function AiChatDrawer({
         },
       ];
 
-  if (!isOpen) return null;
+  const handleClearHistory = () => {
+    const welcomeMsg: ChatMessage = {
+      id: 'welcome',
+      role: 'model',
+      text: t('ai_dialog_cleared'),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages([welcomeMsg]);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify([welcomeMsg]));
+    } catch {}
+  };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
-        onClick={onClose}
-      />
+  if (!isOpen && variant !== 'docked') return null;
 
-      {/* Slide-over panel */}
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-lg bg-white dark:bg-slate-900 shadow-2xl flex flex-col border-l border-slate-200 dark:border-slate-800">
-          {/* Header */}
-          <div className="px-5 py-4 bg-gradient-to-r from-slate-900 via-purple-950 to-indigo-950 text-white flex justify-between items-center shrink-0 shadow">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-9 h-9 rounded-xl bg-purple-600/30 border border-purple-400/40 flex items-center justify-center text-purple-300">
-                  <Sparkles size={20} className="fill-yellow-400 text-yellow-400" />
-                </div>
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                </span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-base text-white">{t('ai_title')}</h3>
-                  <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-purple-200 uppercase tracking-wider font-semibold">
-                    {modelName || 'Gemini'}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300 truncate max-w-xs">
-                  {pipelineName ? t('ai_subtitle_funnel', { name: pipelineName }) : t('ai_subtitle_default')}
-                </p>
-              </div>
+  const chatCard = (
+    <div
+      className={`w-full bg-white dark:bg-slate-900 flex flex-col ${
+        variant === 'docked'
+          ? 'h-full rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden'
+          : 'w-screen max-w-lg shadow-2xl border-l border-slate-200 dark:border-slate-800'
+      }`}
+    >
+      {/* Header */}
+      <div className="px-5 py-4 bg-gradient-to-r from-slate-900 via-purple-950 to-indigo-950 text-white flex justify-between items-center shrink-0 shadow">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="w-9 h-9 rounded-xl bg-purple-600/30 border border-purple-400/40 flex items-center justify-center text-purple-300">
+              <Sparkles size={20} className="fill-yellow-400 text-yellow-400" />
             </div>
-
-            <div className="flex items-center gap-2">
-              <LanguageSwitcher />
-              <button
-                onClick={() =>
-                  setMessages([
-                    {
-                      id: 'welcome',
-                      role: 'model',
-                      text: t('ai_dialog_cleared'),
-                      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    },
-                  ])
-                }
-                title={t('ai_clear_dialog')}
-                className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-              >
-                <Trash2 size={16} />
-              </button>
-              <button
-                onClick={onClose}
-                className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-              >
-                <X size={20} />
-              </button>
-            </div>
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </span>
           </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-base text-white">{t('ai_title')}</h3>
+              <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-purple-200 uppercase tracking-wider font-semibold">
+                {modelName || 'Gemini'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 truncate max-w-xs">
+              {pipelineName ? t('ai_subtitle_funnel', { name: pipelineName }) : t('ai_subtitle_default')}
+            </p>
+          </div>
+        </div>
 
-          {/* Subheader info pill */}
+        <div className="flex items-center gap-2">
+          <LanguageSwitcher />
+          <button
+            onClick={handleClearHistory}
+            title={t('ai_clear_dialog')}
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+          >
+            <Trash2 size={16} />
+          </button>
+          <button
+            onClick={onClose}
+            title={variant === 'docked' ? 'Свернуть панель ИИ' : undefined}
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+          >
+            <X size={20} />
+          </button>
+        </div>
+      </div>
+
+      {/* Subheader info pill */}
           <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2 text-xs text-slate-600 dark:text-slate-400 flex items-center justify-between">
             <div className="flex items-center gap-1.5 truncate">
               <CheckCircle size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -486,7 +527,24 @@ export default function AiChatDrawer({
               {t('ai_footer_hint')}
             </p>
           </div>
-        </div>
+    </div>
+  );
+
+  if (variant === 'docked') {
+    return chatCard;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-hidden">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
+        onClick={onClose}
+      />
+
+      {/* Slide-over panel */}
+      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+        {chatCard}
       </div>
     </div>
   );

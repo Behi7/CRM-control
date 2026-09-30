@@ -239,6 +239,17 @@ export default function BiAnalyticsPage() {
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [chatOpen, setChatOpen] = useState(false);
+  const [isWideScreen, setIsWideScreen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1280 : true,
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsWideScreen(window.innerWidth >= 1280);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const decodedAccountId = (() => {
     const token = localStorage.getItem('access_token');
@@ -444,8 +455,11 @@ export default function BiAnalyticsPage() {
   );
 
   return (
-    <div className="p-4 lg:p-6 max-w-[1600px] mx-auto space-y-6">
-      {/* Page Header */}
+    <div className={`p-4 lg:p-6 mx-auto transition-all ${chatOpen && isWideScreen ? 'max-w-[1920px]' : 'max-w-[1600px]'}`}>
+      <div className="flex gap-6 items-start">
+        {/* Main Analytics Content */}
+        <div className={`space-y-6 transition-all duration-300 ${chatOpen && isWideScreen ? 'flex-1 min-w-0' : 'w-full'}`}>
+          {/* Page Header */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-xl lg:text-2xl font-bold text-slate-900 dark:text-white">
@@ -2147,25 +2161,38 @@ export default function BiAnalyticsPage() {
         </>
       )}
 
-      {/* Floating AI Action Button */}
-      {aiStatus.data?.enabled && !chatOpen && (
-        <button
-          type="button"
-          onClick={() => setChatOpen(true)}
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all cursor-pointer group"
-          title={t('nav_ai_analyst_title')}
-        >
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
-          </span>
-          <Sparkles size={18} className="text-yellow-300 fill-yellow-300 group-hover:scale-110 transition-transform" />
-          <span className="text-sm">{t('nav_ai_analyst')}</span>
-        </button>
-      )}
+        </div>
 
-      {/* AI Chat Drawer */}
-      {effectiveAccountId && (
+        {/* Docked AI Assistant Panel on Desktop (>= 1280px) */}
+        {effectiveAccountId && isWideScreen && (
+          <aside
+            className={`w-[420px] 2xl:w-[460px] shrink-0 sticky top-4 h-[calc(100vh-2rem)] z-30 transition-all ${
+              chatOpen ? 'block' : 'hidden'
+            }`}
+          >
+            <AiChatDrawer
+              accountId={effectiveAccountId}
+              isOpen={chatOpen}
+              onClose={() => setChatOpen(false)}
+              pipelineId={appliedFilters.pipelineId}
+              pipelineName={pipelines.find((p: any) => p.id === appliedFilters.pipelineId)?.name}
+              filters={{
+                managerIds: appliedFilters.managerIds,
+                tagIds: appliedFilters.tagIds,
+                dateFrom: appliedFilters.dateFrom || undefined,
+                dateTo: appliedFilters.dateTo || undefined,
+              }}
+              modelName={aiStatus.data?.model}
+              biData={data}
+              activeBiTab={activeTab}
+              variant="docked"
+            />
+          </aside>
+        )}
+      </div>
+
+      {/* Slide-over Drawer for Mobile / Tablets (< 1280px) */}
+      {effectiveAccountId && !isWideScreen && (
         <AiChatDrawer
           accountId={effectiveAccountId}
           isOpen={chatOpen}
@@ -2181,7 +2208,25 @@ export default function BiAnalyticsPage() {
           modelName={aiStatus.data?.model}
           biData={data}
           activeBiTab={activeTab}
+          variant="overlay"
         />
+      )}
+
+      {/* Floating AI Action Button */}
+      {aiStatus.data?.enabled && !chatOpen && (
+        <button
+          type="button"
+          onClick={() => setChatOpen(true)}
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all cursor-pointer group"
+          title={t('nav_ai_analyst_title')}
+        >
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+          </span>
+          <Sparkles size={18} className="text-yellow-300 fill-yellow-300 group-hover:scale-110 transition-transform" />
+          <span className="text-sm">{t('nav_ai_analyst')}</span>
+        </button>
       )}
     </div>
   );
