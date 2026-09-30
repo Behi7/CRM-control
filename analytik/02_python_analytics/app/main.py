@@ -319,7 +319,7 @@ def get_detailed_analytics(
                 WHERE {where_sql}
                 GROUP BY 1
                 ORDER BY 1 ASC
-                LIMIT 36
+                LIMIT 240
             """),
             params,
         ).mappings().all()

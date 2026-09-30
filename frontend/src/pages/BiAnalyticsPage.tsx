@@ -292,6 +292,7 @@ export default function BiAnalyticsPage() {
   }));
 
   const [selectedCustomFieldName, setSelectedCustomFieldName] = useState<string>('ALL');
+  const [mountainMode, setMountainMode] = useState<'count' | 'money'>('count');
 
   const isDirty =
     pipelineId !== appliedFilters.pipelineId ||
@@ -906,134 +907,262 @@ export default function BiAnalyticsPage() {
                       </div>
                     </div>
 
-                    {/* 2. Stacked Outcome Candles + Win Rate Line per Month */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <div>
-                          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                            Свечи объёма лидов и исходов по месяцам
-                          </h3>
-                          <p className="text-[11px] text-slate-500">
-                            Высота свечи — всего сделок (Зелёный: Won, Синий: Open, Красный: Lost) + % конверсии
-                          </p>
-                        </div>
-                      </div>
+                    {/* 2. Area Mountain Chart across all months of all years (Won vs Lost vs Open) */}
+                    <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+                      {(() => {
+                        const pts = timeseries || [];
+                        const n = pts.length;
+                        const W = Math.max(680, n * 58);
+                        const H = 220;
+                        const padL = 48;
+                        const padR = 24;
+                        const padT = 24;
+                        const padB = 38;
+                        const chartW = W - padL - padR;
+                        const chartH = H - padT - padB;
 
-                      <div className="h-48 flex items-end gap-2 pt-6 pb-2 px-1 overflow-x-auto">
-                        {timeseries.slice(-12).map((m: any) => {
-                          const totalH = Math.max(12, Math.round(((m.totalLeads || 0) / maxMonthLeads) * 140));
-                          const wonH = m.totalLeads > 0 ? Math.round((m.wonLeads / m.totalLeads) * totalH) : 0;
-                          const openH = m.totalLeads > 0 ? Math.round((m.openLeads / m.totalLeads) * totalH) : 0;
-                          const lostH = Math.max(0, totalH - wonH - openH);
-                          const wr = m.totalLeads > 0 ? Math.round((m.wonLeads / m.totalLeads) * 100) : 0;
-                          return (
-                            <div key={m.period} className="flex-1 min-w-[38px] flex flex-col items-center group relative">
-                              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mb-1">
-                                {wr}%
-                              </span>
-                              <div
-                                style={{ height: `${totalH}px` }}
-                                className="w-5 rounded-md overflow-hidden flex flex-col-reverse shadow-xs border border-slate-200/60 dark:border-slate-700"
-                                title={`${m.period}: Всего ${m.totalLeads} | Won: ${m.wonLeads} | Open: ${m.openLeads} | Lost: ${m.lostLeads}`}
-                              >
-                                <div style={{ height: `${wonH}px` }} className="bg-emerald-500 w-full" />
-                                <div style={{ height: `${openH}px` }} className="bg-blue-500 w-full" />
-                                <div style={{ height: `${lostH}px` }} className="bg-rose-500 w-full" />
+                        const getWon = (p: any) => (mountainMode === 'count' ? Number(p.wonLeads || 0) : Number(p.revenue || 0));
+                        const getLost = (p: any) => (mountainMode === 'count' ? Number(p.lostLeads || 0) : Number(p.lostValue || 0));
+                        const getOpen = (p: any) => (mountainMode === 'count' ? Number(p.openLeads || 0) : Number(p.openValue || 0));
+
+                        const maxVal = Math.max(
+                          ...pts.map((p: any) => Math.max(getWon(p), getLost(p), getOpen(p))),
+                          1,
+                        );
+
+                        const xAt = (i: number) => (n <= 1 ? padL + chartW / 2 : padL + (i / (n - 1)) * chartW);
+                        const yAt = (val: number) => padT + chartH - (Math.min(val, maxVal) / maxVal) * chartH;
+                        const baseY = padT + chartH;
+
+                        const buildMountain = (getter: (p: any) => number) => {
+                          if (n === 0) return { line: '', area: '' };
+                          const coords = pts.map((p: any, i: number) => `${xAt(i).toFixed(1)},${yAt(getter(p)).toFixed(1)}`);
+                          const line = coords.join(' ');
+                          const area = `${xAt(0).toFixed(1)},${baseY} ${line} ${xAt(n - 1).toFixed(1)},${baseY}`;
+                          return { line, area };
+                        };
+
+                        const lostMtn = buildMountain(getLost);
+                        const openMtn = buildMountain(getOpen);
+                        const wonMtn = buildMountain(getWon);
+
+                        const totalWonSum = pts.reduce((a: number, p: any) => a + getWon(p), 0);
+                        const totalLostSum = pts.reduce((a: number, p: any) => a + getLost(p), 0);
+                        const totalOpenSum = pts.reduce((a: number, p: any) => a + getOpen(p), 0);
+
+                        return (
+                          <>
+                            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                              <div>
+                                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                                  Динамика по всем месяцам и годам: Успешные vs Нереализованные (Отказ)
+                                </h3>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  Зелёные горы — успешно реализованные сделки (Won) • Красные горы — нереализованные (Отказ) • Синяя линия — в работе
+                                </p>
                               </div>
-                              <span className="text-[10px] text-slate-500 mt-1.5 font-medium">
-                                {(m.period || '').slice(2)}
+
+                              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                                <button
+                                  type="button"
+                                  onClick={() => setMountainMode('count')}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                    mountainMode === 'count'
+                                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                  }`}
+                                >
+                                  По сделкам (шт.)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setMountainMode('money')}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                    mountainMode === 'money'
+                                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                  }`}
+                                >
+                                  По бюджету (сум)
+                                </button>
+                              </div>
+                            </div>
+
+                            {n > 0 ? (
+                              <div className="overflow-x-auto pb-1">
+                                <svg
+                                  viewBox={`0 0 ${W} ${H}`}
+                                  className="w-full h-56 min-w-[640px] select-none"
+                                >
+                                  <defs>
+                                    <linearGradient id="mtnWonGrad" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.55" />
+                                      <stop offset="100%" stopColor="#10b981" stopOpacity="0.04" />
+                                    </linearGradient>
+                                    <linearGradient id="mtnLostGrad" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.45" />
+                                      <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.04" />
+                                    </linearGradient>
+                                    <linearGradient id="mtnOpenGrad" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.30" />
+                                      <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+                                    </linearGradient>
+                                  </defs>
+
+                                  {/* Horizontal Grid Lines */}
+                                  {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+                                    const y = padT + chartH * (1 - ratio);
+                                    const labelVal = Math.round(maxVal * ratio);
+                                    return (
+                                      <g key={ratio}>
+                                        <line
+                                          x1={padL}
+                                          y1={y}
+                                          x2={W - padR}
+                                          y2={y}
+                                          stroke="currentColor"
+                                          className="text-slate-100 dark:text-slate-800"
+                                          strokeDasharray="3 3"
+                                        />
+                                        <text
+                                          x={padL - 6}
+                                          y={y + 3}
+                                          textAnchor="end"
+                                          className="fill-slate-400 text-[9px]"
+                                        >
+                                          {mountainMode === 'money' && labelVal >= 1000000
+                                            ? `${Math.round(labelVal / 1000000)}M`
+                                            : fmtCount(labelVal)}
+                                        </text>
+                                      </g>
+                                    );
+                                  })}
+
+                                  {/* Lost Mountain (Red) */}
+                                  <polygon points={lostMtn.area} fill="url(#mtnLostGrad)" />
+                                  <polyline
+                                    fill="none"
+                                    stroke="#f43f5e"
+                                    strokeWidth="2.2"
+                                    strokeLinejoin="round"
+                                    points={lostMtn.line}
+                                  />
+
+                                  {/* Open Mountain (Blue) */}
+                                  <polygon points={openMtn.area} fill="url(#mtnOpenGrad)" />
+                                  <polyline
+                                    fill="none"
+                                    stroke="#3b82f6"
+                                    strokeWidth="1.8"
+                                    strokeDasharray="4 3"
+                                    strokeLinejoin="round"
+                                    points={openMtn.line}
+                                  />
+
+                                  {/* Won Mountain (Green - Foreground) */}
+                                  <polygon points={wonMtn.area} fill="url(#mtnWonGrad)" />
+                                  <polyline
+                                    fill="none"
+                                    stroke="#10b981"
+                                    strokeWidth="2.6"
+                                    strokeLinejoin="round"
+                                    points={wonMtn.line}
+                                  />
+
+                                  {/* Data points & Month-Year labels */}
+                                  {pts.map((p: any, i: number) => {
+                                    const x = xAt(i);
+                                    const yWon = yAt(getWon(p));
+                                    const yLost = yAt(getLost(p));
+                                    const wVal = getWon(p);
+                                    const lVal = getLost(p);
+                                    return (
+                                      <g key={p.period}>
+                                        {/* Vertical subtle guide */}
+                                        <line
+                                          x1={x}
+                                          y1={padT}
+                                          x2={x}
+                                          y2={baseY}
+                                          stroke="currentColor"
+                                          className="text-slate-100/60 dark:text-slate-800/60"
+                                        />
+                                        {/* Lost point */}
+                                        <circle cx={x} cy={yLost} r="3.5" fill="#f43f5e" stroke="#fff" strokeWidth="1.2">
+                                          <title>{`${p.period} — Нереализовано (Lost): ${fmtMoney(lVal)}`}</title>
+                                        </circle>
+                                        {lVal > 0 && (
+                                          <text
+                                            x={x}
+                                            y={Math.max(12, yLost - 6)}
+                                            textAnchor="middle"
+                                            className="fill-rose-500 text-[9px] font-bold"
+                                          >
+                                            {mountainMode === 'money' && lVal >= 1000000
+                                              ? `${(lVal / 1000000).toFixed(1)}M`
+                                              : fmtCount(lVal)}
+                                          </text>
+                                        )}
+
+                                        {/* Won point */}
+                                        <circle cx={x} cy={yWon} r="4" fill="#10b981" stroke="#fff" strokeWidth="1.5">
+                                          <title>{`${p.period} — Успешно (Won): ${fmtMoney(wVal)}`}</title>
+                                        </circle>
+                                        {wVal > 0 && (
+                                          <text
+                                            x={x}
+                                            y={Math.max(12, yWon - 7)}
+                                            textAnchor="middle"
+                                            className="fill-emerald-600 dark:fill-emerald-400 text-[9px] font-extrabold"
+                                          >
+                                            {mountainMode === 'money' && wVal >= 1000000
+                                              ? `${(wVal / 1000000).toFixed(1)}M`
+                                              : fmtCount(wVal)}
+                                          </text>
+                                        )}
+
+                                        {/* X-axis Period (YYYY-MM) */}
+                                        <text
+                                          x={x}
+                                          y={baseY + 18}
+                                          textAnchor="middle"
+                                          className="fill-slate-600 dark:fill-slate-400 text-[10px] font-semibold"
+                                        >
+                                          {p.period}
+                                        </text>
+                                      </g>
+                                    );
+                                  })}
+                                </svg>
+                              </div>
+                            ) : (
+                              <div className="h-48 flex items-center justify-center text-xs text-slate-400">
+                                Нет помесячных данных за выбранный период
+                              </div>
+                            )}
+
+                            <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-3 border-t border-slate-100 dark:border-slate-800">
+                              <div className="flex flex-wrap items-center gap-4">
+                                <span className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
+                                  <span className="w-3 h-2 rounded-xs bg-emerald-500" />
+                                  Горы Успешных (Won): <strong>{fmtMoney(totalWonSum)}</strong>
+                                </span>
+                                <span className="flex items-center gap-1.5 font-semibold text-rose-600 dark:text-rose-400">
+                                  <span className="w-3 h-2 rounded-xs bg-rose-500" />
+                                  Горы Нереализованных (Отказ): <strong>{fmtMoney(totalLostSum)}</strong>
+                                </span>
+                                <span className="flex items-center gap-1.5 font-semibold text-blue-600 dark:text-blue-400">
+                                  <span className="w-3 h-2 rounded-xs bg-blue-500" />
+                                  В работе (Open): <strong>{fmtMoney(totalOpenSum)}</strong>
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-slate-400">
+                                Всего месяцев на графике: {n}
                               </span>
                             </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-800">
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-xs bg-emerald-500" /> Продажи</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-xs bg-blue-500" /> В работе</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-xs bg-rose-500" /> Отказы</span>
-                        <span className="font-semibold text-indigo-600 dark:text-indigo-400">Сверху: Win Rate %</span>
-                      </div>
-                    </div>
-
-                    {/* 3. Japanese Candlesticks (Box-and-Whisker) of Deal Check per Month */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                          Биржевые свечи разброса чека (Min / Q25 / Q75 / Max)
-                        </h3>
-                        <p className="text-[11px] text-slate-500">
-                          Тень свечи: Мин–Макс чек за месяц • Тело свечи: Q25–Q75 (ядро чеков) • Линия: Медиана
-                        </p>
-                      </div>
-
-                      <div className="h-48 flex items-end gap-2 pt-6 pb-2 px-1 overflow-x-auto">
-                        {timeseries.slice(-12).map((m: any) => {
-                          const maxC = m.maxCheck || 0;
-                          const minC = m.minCheck || 0;
-                          const q25 = m.q25Check || minC;
-                          const q75 = m.q75Check || maxC;
-                          const med = m.medianCheck || m.avgCheck || 0;
-
-                          const topPx = Math.min(135, Math.max(6, Math.round((maxC / maxMonthCheck) * 135)));
-                          const botPx = Math.min(topPx - 2, Math.max(0, Math.round((minC / maxMonthCheck) * 135)));
-                          const bodyTop = Math.min(topPx, Math.max(botPx + 4, Math.round((q75 / maxMonthCheck) * 135)));
-                          const bodyBot = Math.min(bodyTop - 4, Math.max(botPx, Math.round((q25 / maxMonthCheck) * 135)));
-                          const medPx = Math.min(bodyTop, Math.max(bodyBot, Math.round((med / maxMonthCheck) * 135)));
-
-                          return (
-                            <div
-                              key={m.period}
-                              className="flex-1 min-w-[38px] flex flex-col items-center"
-                              title={`${m.period}
-Макс чек: ${fmtMoney(maxC)}
-Q75: ${fmtMoney(q75)}
-Медиана: ${fmtMoney(med)}
-Q25: ${fmtMoney(q25)}
-Мин чек: ${fmtMoney(minC)}`}
-                            >
-                              <div className="relative w-6 h-[140px] flex items-end justify-center">
-                                {maxC > 0 ? (
-                                  <>
-                                    {/* High-Low Wick */}
-                                    <div
-                                      style={{
-                                        bottom: `${botPx}px`,
-                                        height: `${Math.max(4, topPx - botPx)}px`,
-                                      }}
-                                      className="absolute w-[2px] bg-indigo-400 dark:bg-indigo-500"
-                                    />
-                                    {/* Q25-Q75 Candle Body */}
-                                    <div
-                                      style={{
-                                        bottom: `${bodyBot}px`,
-                                        height: `${Math.max(6, bodyTop - bodyBot)}px`,
-                                      }}
-                                      className="absolute w-4 rounded-xs bg-indigo-500/85 border border-indigo-600 dark:border-indigo-300 shadow-xs"
-                                    />
-                                    {/* Median Marker */}
-                                    <div
-                                      style={{ bottom: `${medPx}px` }}
-                                      className="absolute w-5 h-[2px] bg-amber-300"
-                                    />
-                                  </>
-                                ) : (
-                                  <div className="w-2 h-2 rounded-full bg-slate-200 dark:bg-slate-800 mb-1" />
-                                )}
-                              </div>
-                              <span className="text-[10px] text-slate-500 mt-1.5 font-medium">
-                                {(m.period || '').slice(2)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-800">
-                        <span>Верх/Низ тени: Max/Min</span>
-                        <span className="text-indigo-600 dark:text-indigo-400 font-semibold">Тело: 25%–75% чеков</span>
-                        <span className="text-amber-600 dark:text-amber-400 font-semibold">Жёлтая черта: Медиана</span>
-                      </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 );
