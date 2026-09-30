@@ -71,6 +71,8 @@ export class PipelineSyncProcessor {
     }
     // Sync amo users (managers)
     await this.syncAmoUsers(accountId, acc, token);
+    // Sync custom field definitions (lists, multiselects, etc.)
+    await this.syncCustomFields(accountId, acc, token);
   }
 
   async syncAmoUsers(accountId: number, acc: any, token: string) {
@@ -108,6 +110,66 @@ export class PipelineSyncProcessor {
       }
     } catch (e) {
       this.logger.error(`syncAmoUsers error for account ${accountId}: ${e}`);
+    }
+  }
+
+  async syncCustomFields(accountId: number, acc: any, token: string) {
+    try {
+      const allFields: any[] = [];
+      let page = 1;
+      while (true) {
+        const resp = await this.crm.request<any>(accountId, acc.subdomain, acc.baseDomain, token, {
+          method: 'GET',
+          path: '/api/v4/leads/custom_fields',
+          params: { page, limit: 250 },
+        });
+        if (resp.status !== 200) break;
+        const fields = resp.data?._embedded?.custom_fields || [];
+        if (!fields.length) break;
+        allFields.push(...fields);
+        if (fields.length < 250) break;
+        page++;
+      }
+      if (allFields.length > 0) {
+        for (const f of allFields) {
+          const rawEnums = Array.isArray(f.enums)
+            ? f.enums.map((e: any) => ({
+                id: e.id,
+                value: e.value,
+                sort: e.sort ?? 0,
+              }))
+            : null;
+
+          await (this.prisma as any).customFieldDefinition.upsert({
+            where: { accountId_externalId: { accountId, externalId: String(f.id) } },
+            create: {
+              accountId,
+              externalId: String(f.id),
+              name: f.name || `Поле ${f.id}`,
+              code: f.code || null,
+              fieldType: f.type || 'text',
+              sortOrder: f.sort ?? 0,
+              enums: rawEnums ?? undefined,
+              isArchived: false,
+            },
+            update: {
+              name: f.name || `Поле ${f.id}`,
+              code: f.code || null,
+              fieldType: f.type || 'text',
+              sortOrder: f.sort ?? 0,
+              enums: rawEnums ?? undefined,
+              isArchived: false,
+            },
+          });
+        }
+        const activeIds = allFields.map((f: any) => String(f.id));
+        await (this.prisma as any).customFieldDefinition.updateMany({
+          where: { accountId, NOT: { externalId: { in: activeIds } } },
+          data: { isArchived: true },
+        });
+      }
+    } catch (e) {
+      this.logger.error(`syncCustomFields error for account ${accountId}: ${e}`);
     }
   }
 }

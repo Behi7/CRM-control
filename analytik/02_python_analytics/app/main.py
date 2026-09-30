@@ -484,7 +484,7 @@ def get_detailed_analytics(
             for r in tag_rows
         ]
 
-        # Кастомные поля: фильтруем ТОЛЬКО списочные/категориальные поля (поля с выборками)
+        # Кастомные поля: фильтруем ТОЛЬКО официальные списочные поля (select, multiselect)
         cf_rows = conn.execute(
             text(f"""
                 WITH unpacked AS (
@@ -492,72 +492,43 @@ def get_detailed_analytics(
                         l.id AS lead_id,
                         l.status,
                         COALESCE(l.price, 0) AS price,
-                        TRIM(cf->>'name') AS field_name,
+                        COALESCE(cfd.name, TRIM(cf->>'name')) AS field_name,
+                        COALESCE(cfd.sort_order, 0) AS field_sort,
                         TRIM(val_elem.val) AS field_value
                     FROM leads l
                     CROSS JOIN LATERAL jsonb_array_elements(
                         CASE WHEN jsonb_typeof(l.custom_fields) = 'array' THEN l.custom_fields ELSE '[]'::jsonb END
                     ) AS cf
+                    LEFT JOIN custom_field_definitions cfd
+                      ON cfd.account_id = l.account_id
+                     AND cfd.external_id = (cf->>'id')
                     CROSS JOIN LATERAL jsonb_array_elements_text(
                         CASE WHEN jsonb_typeof(cf->'values') = 'array' THEN cf->'values' ELSE '[]'::jsonb END
                     ) AS val_elem(val)
                     WHERE {where_sql}
-                      AND cf->>'name' IS NOT NULL
+                      AND (
+                          cfd.field_type IN ('select', 'multiselect')
+                          OR (cfd.field_type IS NULL AND cf->>'type' IN ('select', 'multiselect'))
+                      )
+                      AND (cfd.is_archived IS NULL OR cfd.is_archived = false)
                       AND TRIM(val_elem.val) <> ''
                 ),
                 field_stats AS (
                     SELECT
                         field_name,
+                        MIN(field_sort) AS field_sort,
                         COUNT(DISTINCT lead_id) AS total_filled,
                         COUNT(DISTINCT field_value) AS distinct_vals,
-                        AVG(LENGTH(field_value)) AS avg_val_len,
-                        MAX(LENGTH(field_value)) AS max_val_len,
                         COUNT(DISTINCT lead_id) FILTER (WHERE status = 'won') AS won_filled,
                         COUNT(DISTINCT lead_id) FILTER (WHERE status = 'lost') AS lost_filled,
                         COUNT(DISTINCT lead_id) FILTER (WHERE status = 'open') AS open_filled,
                         COALESCE(SUM(price) FILTER (WHERE status = 'won'), 0) AS field_won_value
                     FROM unpacked
-                    WHERE UPPER(field_name) NOT LIKE 'UTM_%'
-                      AND UPPER(field_name) NOT IN (
-                          'FBCLID', 'GCLID', 'YCLID', '_YM_UID', '_YM_COUNTER', 'ROISTAT',
-                          'REFERRER', 'OPENSTAT', 'FROM', 'FORMNAME', 'TRANID', 'COOKIES',
-                          'TILDACOOKIE', 'FORMID', 'BUTTON', 'GA UTM'
-                      )
-                      AND UPPER(field_name) NOT LIKE '%ССЫЛКА%'
-                      AND UPPER(field_name) NOT LIKE '%LINK%'
-                      AND UPPER(field_name) NOT LIKE '%URL%'
-                      AND UPPER(field_name) NOT LIKE '%КОММЕНТ%'
-                      AND UPPER(field_name) NOT LIKE '%COMMENT%'
-                      AND UPPER(field_name) NOT LIKE '%IZOH%'
-                      AND UPPER(field_name) NOT LIKE '%ПРИМЕЧАН%'
-                      AND UPPER(field_name) NOT LIKE '%ТЕЛЕФОН%'
-                      AND UPPER(field_name) NOT LIKE '%PHONE%'
-                      AND UPPER(field_name) NOT LIKE '%EMAIL%'
-                      AND UPPER(field_name) NOT LIKE '%ПОЧТА%'
-                      AND UPPER(field_name) NOT LIKE '%ДАТА%'
-                      AND UPPER(field_name) NOT LIKE '%DATE%'
-                      AND UPPER(field_name) NOT LIKE '%SANASI%'
-                      AND UPPER(field_name) NOT LIKE '%SANA%'
-                      AND UPPER(field_name) NOT LIKE '%VAQT%'
-                      AND UPPER(field_name) NOT LIKE '%ПАСПОРТ%'
-                      AND UPPER(field_name) NOT LIKE '%PASPORT%'
-                      AND UPPER(field_name) NOT LIKE '%ИНН%'
-                      AND UPPER(field_name) NOT LIKE '%АДРЕС%'
-                      AND UPPER(field_name) NOT LIKE '%MANZIL%'
-                      AND UPPER(field_name) NOT LIKE '%ФИО%'
-                      AND UPPER(field_name) NOT LIKE '%ФАМИЛИЯ%'
-                      AND UPPER(field_name) NOT LIKE '%ИМЯ%'
                     GROUP BY field_name
-                    HAVING COUNT(DISTINCT field_value) BETWEEN 1 AND 45
-                       AND (
-                           COUNT(DISTINCT lead_id) >= GREATEST(COUNT(DISTINCT field_value) + 1, 2)
-                           OR COUNT(DISTINCT field_value) <= 12
-                       )
-                       AND AVG(LENGTH(field_value)) <= 45
-                       AND MAX(LENGTH(field_value)) <= 100
                 )
                 SELECT
                     u.field_name,
+                    fs.field_sort,
                     fs.total_filled,
                     fs.distinct_vals,
                     fs.won_filled,
@@ -575,11 +546,9 @@ def get_detailed_analytics(
                     COALESCE(SUM(u.price) FILTER (WHERE u.status = 'lost'), 0) AS "lostValue"
                 FROM unpacked u
                 JOIN field_stats fs ON fs.field_name = u.field_name
-                WHERE u.field_value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
-                  AND u.field_value !~ '^[0-9]{2}\.[0-9]{2}\.[0-9]{4}'
-                  AND u.field_value !~ '^[0-9]{9,20}$'
                 GROUP BY
                     u.field_name,
+                    fs.field_sort,
                     fs.total_filled,
                     fs.distinct_vals,
                     fs.won_filled,
@@ -587,7 +556,7 @@ def get_detailed_analytics(
                     fs.open_filled,
                     fs.field_won_value,
                     u.field_value
-                ORDER BY fs.total_filled DESC, u.field_name ASC, "totalLeads" DESC, revenue DESC
+                ORDER BY fs.total_filled DESC, fs.field_sort ASC, u.field_name ASC, "totalLeads" DESC, revenue DESC
             """),
             params,
         ).mappings().all()

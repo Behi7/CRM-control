@@ -190,6 +190,7 @@ export class EventProcessor {
         id: cf.field_id,
         name: cf.field_name,
         code: cf.field_code || null,
+        type: cf.field_type || null,
         values: (cf.values || []).map((v) => v.value),
       }));
 

@@ -38,6 +38,7 @@ model Account {
   processedCrmEvents  ProcessedCrmEvent[]
   leadStageSkips      LeadStageSkip[]
   amoUsers            AmoUser[]
+  customFieldDefinitions CustomFieldDefinition[]
 
   @@unique([subdomain, baseDomain])
   @@map("accounts")
@@ -259,4 +260,23 @@ model Notification {
 
   @@index([accountId, isRead])
   @@map("notifications")
+}
+
+model CustomFieldDefinition {
+  id         Int      @id @default(autoincrement())
+  accountId  Int      @map("account_id")
+  externalId String   @map("external_id") @db.Text
+  name       String   @db.Text
+  code       String?  @db.Text
+  fieldType  String   @map("field_type") @db.Text
+  sortOrder  Int      @default(0) @map("sort_order")
+  enums      Json?    @db.JsonB
+  isArchived Boolean  @default(false) @map("is_archived")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, externalId])
+  @@index([accountId, fieldType])
+  @@map("custom_field_definitions")
 }
