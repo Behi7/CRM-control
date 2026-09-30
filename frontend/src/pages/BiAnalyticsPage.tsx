@@ -489,9 +489,8 @@ export default function BiAnalyticsPage() {
       {/* Filter Bar */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+          <div className="flex items-center text-xs font-semibold text-slate-400 dark:text-slate-500">
             <Filter size={14} />
-            <span>Фильтры:</span>
           </div>
 
           {/* Pipeline selector */}
@@ -660,12 +659,12 @@ export default function BiAnalyticsPage() {
       {/* Navigation Tabs inside Module 02 */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         {[
-          { id: 'overview', label: '1. Обзор и Финансы', icon: DollarSign },
-          { id: 'managers', label: '2. Менеджеры и Дисциплина', icon: Award },
-          { id: 'marketing', label: '3. Маркетинг и Теги', icon: TagIcon },
-          { id: 'losses_ltv', label: '4. Причины отказа', icon: XCircle },
-          { id: 'custom_fields', label: '5. Кастомные поля', icon: Filter },
-          { id: 'risk_audit', label: '6. Сделки в зоне риска', icon: ShieldAlert },
+          { id: 'overview', label: 'Обзор и Финансы', icon: DollarSign },
+          { id: 'managers', label: 'Менеджеры и Дисциплина', icon: Award },
+          { id: 'marketing', label: 'Маркетинг и Теги', icon: TagIcon },
+          { id: 'losses_ltv', label: 'Причины отказа', icon: XCircle },
+          { id: 'custom_fields', label: 'Кастомные поля', icon: Filter },
+          { id: 'risk_audit', label: 'Сделки в зоне риска', icon: ShieldAlert },
         ].map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;

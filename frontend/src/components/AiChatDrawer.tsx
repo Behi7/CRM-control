@@ -34,12 +34,12 @@ interface AiChatDrawerProps {
 }
 
 const BI_AVAILABLE_BLOCKS = [
-  { id: 'overview', label: '1. Обзор' },
-  { id: 'managers', label: '2. Менеджеры' },
-  { id: 'marketing', label: '3. Источники' },
-  { id: 'losses', label: '4. Отказы' },
-  { id: 'custom_fields', label: '5. Списки' },
-  { id: 'risk_deals', label: '6. Зона риска' },
+  { id: 'overview', label: 'Обзор' },
+  { id: 'managers', label: 'Менеджеры' },
+  { id: 'marketing', label: 'Источники' },
+  { id: 'losses', label: 'Отказы' },
+  { id: 'custom_fields', label: 'Списки' },
+  { id: 'risk_deals', label: 'Зона риска' },
 ];
 
 function tabToBlockId(tab?: string): string {

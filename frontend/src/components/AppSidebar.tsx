@@ -129,12 +129,12 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
   const currentAccObj = accounts.find((a: any) => a.id === activeAccountId);
 
   const labels = {
-    app01: lang === 'uz' ? '01. Vaqt tahlili' : '01. Аналитика времени',
+    app01: lang === 'uz' ? 'Vaqt tahlili' : 'Аналитика времени',
     app01Sub: lang === 'uz' ? 'Bosqichlar tezligi' : 'Тайминги и этапы',
-    app02: lang === 'uz' ? '02. Detalli BI Tahlil' : '02. Детальная аналитика',
+    app02: lang === 'uz' ? 'Detalli BI Tahlil' : 'Детальная аналитика',
     app02Sub: lang === 'uz' ? 'Moliya, Voronka, UTM, LTV' : 'Финансы, Воронка, UTM, LTV',
     search: lang === 'uz' ? 'Bitimlarni qidirish' : 'Поиск сделок',
-    app03: lang === 'uz' ? '03. AI Prognoz (Tez kunda)' : '03. AI-Прогнозы (Модуль 03)',
+    app03: lang === 'uz' ? 'AI Prognoz (Tez kunda)' : 'AI-Прогнозы',
     clients: lang === 'uz' ? 'AmoCRM Mijozlar' : 'Клиенты AmoCRM',
     notifs: lang === 'uz' ? 'Bildirishnomalar' : 'Уведомления',
     activeAccount: lang === 'uz' ? 'Faol AmoCRM hisobi' : 'Активный аккаунт AmoCRM',

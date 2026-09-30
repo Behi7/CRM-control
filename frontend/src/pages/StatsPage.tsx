@@ -481,9 +481,8 @@ export default function StatsPage() {
         {/* Unified Filter Bar (matching Module 02 UI) */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs mb-4 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <div className="flex items-center text-xs font-semibold text-slate-400 dark:text-slate-500">
               <Filter size={14} />
-              <span>Фильтры:</span>
             </div>
 
             {/* Pipeline selector */}
