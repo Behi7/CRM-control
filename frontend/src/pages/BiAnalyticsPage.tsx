@@ -293,6 +293,8 @@ export default function BiAnalyticsPage() {
 
   const [selectedCustomFieldName, setSelectedCustomFieldName] = useState<string>('ALL');
   const [mountainMode, setMountainMode] = useState<'count' | 'money'>('count');
+  const [mountainZoom, setMountainZoom] = useState<string>('last12');
+  const [hoveredPointIdx, setHoveredPointIdx] = useState<number | null>(null);
 
   const isDirty =
     pipelineId !== appliedFilters.pipelineId ||
@@ -780,7 +782,7 @@ export default function BiAnalyticsPage() {
 
               </div>
 
-              {/* Analytical Charts Row: Portfolio Donut % + Japanese Candlesticks of Deal Check + Monthly Stacked Bars */}
+              {/* Analytical Charts: Full-Width Smooth Mountain Area Chart + Portfolio Structure Donut */}
               {(() => {
                 const totalPortfolio = (kpis.totalRevenue || 0) + (kpis.openPipelineValue || 0) + (kpis.lostRevenue || 0);
                 const wonMoneyPct = totalPortfolio > 0 ? Math.round((kpis.totalRevenue / totalPortfolio) * 1000) / 10 : 0;
@@ -792,377 +794,516 @@ export default function BiAnalyticsPage() {
                 const openCountPct = Math.round(((kpis.openLeads || 0) / totalDealsCount) * 1000) / 10;
                 const lostCountPct = Math.max(0, Math.round((100 - wonCountPct - openCountPct) * 10) / 10);
 
-                // Donut SVG math (r=54, C=339.29)
-                const C = 2 * Math.PI * 54;
+                const C = 2 * Math.PI * 50;
                 const wonDash = (wonMoneyPct / 100) * C;
                 const openDash = (openMoneyPct / 100) * C;
                 const lostDash = (lostMoneyPct / 100) * C;
 
-                const maxMonthLeads = Math.max(...timeseries.map((t: any) => t.totalLeads || 0), 1);
-                const maxMonthCheck = Math.max(...timeseries.map((t: any) => t.maxCheck || t.avgCheck || 0), 1);
+                const rawPts: any[] = timeseries || [];
+                const availableYears: string[] = Array.from(
+                  new Set(rawPts.map((p: any) => String(p.period || '').slice(0, 4)).filter(Boolean)),
+                ).sort();
+
+                // Apply local chart zoom (without touching global filters!)
+                let pts: any[] = [];
+                if (mountainZoom === 'by_year') {
+                  const byYearMap = new Map<string, any>();
+                  for (const p of rawPts) {
+                    const y = String(p.period || '').slice(0, 4);
+                    if (!y) continue;
+                    const prev = byYearMap.get(y) || {
+                      period: `${y} г.`,
+                      totalLeads: 0,
+                      wonLeads: 0,
+                      lostLeads: 0,
+                      openLeads: 0,
+                      revenue: 0,
+                      lostValue: 0,
+                      openValue: 0,
+                    };
+                    prev.totalLeads += Number(p.totalLeads || 0);
+                    prev.wonLeads += Number(p.wonLeads || 0);
+                    prev.lostLeads += Number(p.lostLeads || 0);
+                    prev.openLeads += Number(p.openLeads || 0);
+                    prev.revenue += Number(p.revenue || 0);
+                    prev.lostValue += Number(p.lostValue || 0);
+                    prev.openValue += Number(p.openValue || 0);
+                    byYearMap.set(y, prev);
+                  }
+                  pts = Array.from(byYearMap.values());
+                } else if (mountainZoom === 'last6') {
+                  pts = rawPts.slice(-6);
+                } else if (mountainZoom === 'last12') {
+                  pts = rawPts.slice(-12);
+                } else if (mountainZoom === 'all') {
+                  pts = rawPts;
+                } else if (availableYears.includes(mountainZoom)) {
+                  pts = rawPts.filter((p: any) => String(p.period || '').startsWith(mountainZoom));
+                } else {
+                  pts = rawPts.slice(-12);
+                }
+
+                const n = pts.length;
+                const W = 1080;
+                const H = 300;
+                const padL = 62;
+                const padR = 32;
+                const padT = 30;
+                const padB = 44;
+                const chartW = W - padL - padR;
+                const chartH = H - padT - padB;
+                const baseY = padT + chartH;
+
+                const getWon = (p: any) => (mountainMode === 'count' ? Number(p.wonLeads || 0) : Number(p.revenue || 0));
+                const getLost = (p: any) => (mountainMode === 'count' ? Number(p.lostLeads || 0) : Number(p.lostValue || 0));
+                const getOpen = (p: any) => (mountainMode === 'count' ? Number(p.openLeads || 0) : Number(p.openValue || 0));
+
+                const rawMax = Math.max(
+                  ...pts.map((p: any) => Math.max(getWon(p), getLost(p), getOpen(p))),
+                  1,
+                );
+                const maxVal = Math.ceil(rawMax * 1.12);
+
+                const xAt = (i: number) => (n <= 1 ? padL + chartW / 2 : padL + (i / (n - 1)) * chartW);
+                const yAt = (val: number) => padT + chartH - (Math.min(val, maxVal) / maxVal) * chartH;
+
+                // Smooth monotone cubic Bezier path builder so mountains look smooth and never overshoot baseY
+                const buildSmoothPath = (getter: (p: any) => number) => {
+                  if (n === 0) return { strokePath: '', areaPath: '' };
+                  const points = pts.map((p: any, i: number) => ({ x: xAt(i), y: yAt(getter(p)) }));
+                  if (points.length === 1) {
+                    const pt = points[0];
+                    const strokePath = `M ${padL} ${pt.y} L ${W - padR} ${pt.y}`;
+                    const areaPath = `${strokePath} L ${W - padR} ${baseY} L ${padL} ${baseY} Z`;
+                    return { strokePath, areaPath };
+                  }
+                  let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+                  for (let i = 0; i < points.length - 1; i++) {
+                    const p0 = points[i];
+                    const p1 = points[i + 1];
+                    const cpx1 = p0.x + (p1.x - p0.x) * 0.42;
+                    const cpx2 = p1.x - (p1.x - p0.x) * 0.42;
+                    d += ` C ${cpx1.toFixed(1)} ${p0.y.toFixed(1)}, ${cpx2.toFixed(1)} ${p1.y.toFixed(1)}, ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
+                  }
+                  const areaPath = `${d} L ${points[points.length - 1].x.toFixed(1)} ${baseY} L ${points[0].x.toFixed(1)} ${baseY} Z`;
+                  return { strokePath: d, areaPath };
+                };
+
+                const lostSmooth = buildSmoothPath(getLost);
+                const openSmooth = buildSmoothPath(getOpen);
+                const wonSmooth = buildSmoothPath(getWon);
+
+                const activeIdx =
+                  hoveredPointIdx != null && hoveredPointIdx >= 0 && hoveredPointIdx < n
+                    ? hoveredPointIdx
+                    : n > 0
+                    ? n - 1
+                    : null;
+                const activePt = activeIdx != null ? pts[activeIdx] : null;
+                const labelStep = Math.max(1, Math.ceil(n / 12));
+                const showValueBadges = n <= 12;
+
+                const fmtCompact = (v: number) => {
+                  if (mountainMode === 'money') {
+                    if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)} млрд`;
+                    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)} млн`;
+                    if (v >= 1_000) return `${Math.round(v / 1_000)} тыс`;
+                  }
+                  return fmtCount(v);
+                };
 
                 return (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* 1. Donut Chart: Portfolio Structure % */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                          Структура денежного портфеля и сделок (%)
-                        </h3>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          Процентное распределение бюджета: Выручка vs В работе vs Отказ
-                        </p>
+                  <div className="space-y-6">
+                    {/* FULL-WIDTH SMOOTH MOUNTAIN CHART */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
+                      {/* Header & Instant Zoom Controls */}
+                      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                        <div>
+                          <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                            График-горы: Успешно реализованные (Won) vs Нереализованные (Отказ)
+                          </h3>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Наведите курсор на любой месяц для точных цифр • Переключайте масштаб и годы прямо на графике без изменения общего фильтра
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Zoom & Year selector pills */}
+                          <div className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                            {[
+                              { id: 'last6', label: '6 мес.' },
+                              { id: 'last12', label: '12 мес.' },
+                              { id: 'all', label: `Все (${rawPts.length})` },
+                              ...(availableYears.length > 1 ? [{ id: 'by_year', label: 'По годам' }] : []),
+                              ...availableYears.map((y) => ({ id: y, label: `${y} г.` })),
+                            ].map((z) => (
+                              <button
+                                key={z.id}
+                                type="button"
+                                onClick={() => {
+                                  setMountainZoom(z.id);
+                                  setHoveredPointIdx(null);
+                                }}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                  mountainZoom === z.id
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                                }`}
+                              >
+                                {z.label}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Metric mode toggle */}
+                          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                            <button
+                              type="button"
+                              onClick={() => setMountainMode('count')}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                mountainMode === 'count'
+                                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                                  : 'text-slate-600 dark:text-slate-400'
+                              }`}
+                            >
+                              Сделки (шт.)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setMountainMode('money')}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                mountainMode === 'money'
+                                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                                  : 'text-slate-600 dark:text-slate-400'
+                              }`}
+                            >
+                              Бюджет (сум)
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="flex items-center justify-center gap-6 my-4">
-                        <div className="relative w-36 h-36 flex items-center justify-center">
-                          <svg viewBox="0 0 140 140" className="w-36 h-36 -rotate-90">
-                            <circle cx="70" cy="70" r="54" fill="none" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeWidth="16" />
-                            <circle
-                              cx="70"
-                              cy="70"
-                              r="54"
-                              fill="none"
-                              stroke="#10b981"
-                              strokeWidth="16"
-                              strokeDasharray={`${wonDash} ${C}`}
-                              strokeDashoffset={0}
-                            />
-                            <circle
-                              cx="70"
-                              cy="70"
-                              r="54"
-                              fill="none"
-                              stroke="#3b82f6"
-                              strokeWidth="16"
-                              strokeDasharray={`${openDash} ${C}`}
-                              strokeDashoffset={-wonDash}
-                            />
-                            <circle
-                              cx="70"
-                              cy="70"
-                              r="54"
-                              fill="none"
-                              stroke="#f43f5e"
-                              strokeWidth="16"
-                              strokeDasharray={`${lostDash} ${C}`}
-                              strokeDashoffset={-(wonDash + openDash)}
-                            />
-                          </svg>
-                          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                            <span className="text-[10px] uppercase text-slate-400 font-semibold">Win Rate</span>
-                            <span className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400">
-                              {kpis.winRateClosed}%
+                      {/* Interactive Live Readout Bar for Hovered / Selected Period */}
+                      {activePt && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/70 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-bold">
+                              Период: {activePt.period}
+                            </span>
+                            <span className="text-slate-500">
+                              Всего сделок: <strong className="text-slate-900 dark:text-white">{fmtCount(activePt.totalLeads)}</strong>
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                              <span className="text-slate-500">Успешно (Won):</span>
+                              <strong className="text-emerald-600 dark:text-emerald-400 text-sm">
+                                {fmtCount(activePt.wonLeads)} шт.
+                              </strong>
+                              <span className="text-slate-400">({fmtMoney(activePt.revenue)} сум)</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                              <span className="text-slate-500">Нереализовано (Отказ):</span>
+                              <strong className="text-rose-600 dark:text-rose-400 text-sm">
+                                {fmtCount(activePt.lostLeads)} шт.
+                              </strong>
+                              <span className="text-slate-400">({fmtMoney(activePt.lostValue)} сум)</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                              <span className="text-slate-500">В работе:</span>
+                              <strong className="text-blue-600 dark:text-blue-400">
+                                {fmtCount(activePt.openLeads)} шт.
+                              </strong>
+                            </div>
+
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
+                              Win Rate: {activePt.totalLeads > 0 ? Math.round((activePt.wonLeads / activePt.totalLeads) * 100) : 0}%
                             </span>
                           </div>
                         </div>
+                      )}
 
-                        <div className="space-y-2.5 text-xs flex-1">
-                          <div>
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
-                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                                Выиграно
-                              </span>
-                              <span className="font-bold">{wonMoneyPct}%</span>
-                            </div>
-                            <div className="text-[11px] text-slate-500">{fmtMoney(kpis.totalRevenue)} ({wonCountPct}% лидов)</div>
-                          </div>
+                      {/* SVG Smooth Mountain Canvas */}
+                      {n > 0 ? (
+                        <div className="w-full overflow-x-auto">
+                          <svg
+                            viewBox={`0 0 ${W} ${H}`}
+                            className="w-full h-[300px] min-w-[680px] select-none"
+                            onMouseLeave={() => setHoveredPointIdx(null)}
+                          >
+                            <defs>
+                              <linearGradient id="smoothWonGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#10b981" stopOpacity="0.52" />
+                                <stop offset="85%" stopColor="#10b981" stopOpacity="0.08" />
+                                <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                              </linearGradient>
+                              <linearGradient id="smoothLostGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.42" />
+                                <stop offset="85%" stopColor="#f43f5e" stopOpacity="0.06" />
+                                <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.0" />
+                              </linearGradient>
+                              <linearGradient id="smoothOpenGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.22" />
+                                <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
+                              </linearGradient>
+                            </defs>
 
-                          <div>
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1.5 font-semibold text-blue-600 dark:text-blue-400">
-                                <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                                В работе
-                              </span>
-                              <span className="font-bold">{openMoneyPct}%</span>
-                            </div>
-                            <div className="text-[11px] text-slate-500">{fmtMoney(kpis.openPipelineValue)} ({openCountPct}% лидов)</div>
-                          </div>
-
-                          <div>
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1.5 font-semibold text-rose-600 dark:text-rose-400">
-                                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                                В отказе
-                              </span>
-                              <span className="font-bold">{lostMoneyPct}%</span>
-                            </div>
-                            <div className="text-[11px] text-slate-500">{fmtMoney(kpis.lostRevenue)} ({lostCountPct}% лидов)</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 100% Stacked Bar of Leads */}
-                      <div className="space-y-1.5 pt-3 border-t border-slate-100 dark:border-slate-800">
-                        <div className="flex justify-between text-[11px] text-slate-500">
-                          <span>Структура всех лидов ({fmtCount(kpis.totalLeads)} шт.):</span>
-                          <span>Won {wonCountPct}% • Open {openCountPct}% • Lost {lostCountPct}%</span>
-                        </div>
-                        <div className="w-full h-3 rounded-full overflow-hidden flex bg-slate-100 dark:bg-slate-800">
-                          <div style={{ width: `${wonCountPct}%` }} className="bg-emerald-500 h-full" title={`Успешно: ${wonCountPct}%`} />
-                          <div style={{ width: `${openCountPct}%` }} className="bg-blue-500 h-full" title={`В работе: ${openCountPct}%`} />
-                          <div style={{ width: `${lostCountPct}%` }} className="bg-rose-500 h-full" title={`Отказ: ${lostCountPct}%`} />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 2. Area Mountain Chart across all months of all years (Won vs Lost vs Open) */}
-                    <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-                      {(() => {
-                        const pts = timeseries || [];
-                        const n = pts.length;
-                        const W = Math.max(680, n * 58);
-                        const H = 220;
-                        const padL = 48;
-                        const padR = 24;
-                        const padT = 24;
-                        const padB = 38;
-                        const chartW = W - padL - padR;
-                        const chartH = H - padT - padB;
-
-                        const getWon = (p: any) => (mountainMode === 'count' ? Number(p.wonLeads || 0) : Number(p.revenue || 0));
-                        const getLost = (p: any) => (mountainMode === 'count' ? Number(p.lostLeads || 0) : Number(p.lostValue || 0));
-                        const getOpen = (p: any) => (mountainMode === 'count' ? Number(p.openLeads || 0) : Number(p.openValue || 0));
-
-                        const maxVal = Math.max(
-                          ...pts.map((p: any) => Math.max(getWon(p), getLost(p), getOpen(p))),
-                          1,
-                        );
-
-                        const xAt = (i: number) => (n <= 1 ? padL + chartW / 2 : padL + (i / (n - 1)) * chartW);
-                        const yAt = (val: number) => padT + chartH - (Math.min(val, maxVal) / maxVal) * chartH;
-                        const baseY = padT + chartH;
-
-                        const buildMountain = (getter: (p: any) => number) => {
-                          if (n === 0) return { line: '', area: '' };
-                          const coords = pts.map((p: any, i: number) => `${xAt(i).toFixed(1)},${yAt(getter(p)).toFixed(1)}`);
-                          const line = coords.join(' ');
-                          const area = `${xAt(0).toFixed(1)},${baseY} ${line} ${xAt(n - 1).toFixed(1)},${baseY}`;
-                          return { line, area };
-                        };
-
-                        const lostMtn = buildMountain(getLost);
-                        const openMtn = buildMountain(getOpen);
-                        const wonMtn = buildMountain(getWon);
-
-                        const totalWonSum = pts.reduce((a: number, p: any) => a + getWon(p), 0);
-                        const totalLostSum = pts.reduce((a: number, p: any) => a + getLost(p), 0);
-                        const totalOpenSum = pts.reduce((a: number, p: any) => a + getOpen(p), 0);
-
-                        return (
-                          <>
-                            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                              <div>
-                                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                                  Динамика по всем месяцам и годам: Успешные vs Нереализованные (Отказ)
-                                </h3>
-                                <p className="text-[11px] text-slate-500 mt-0.5">
-                                  Зелёные горы — успешно реализованные сделки (Won) • Красные горы — нереализованные (Отказ) • Синяя линия — в работе
-                                </p>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                                <button
-                                  type="button"
-                                  onClick={() => setMountainMode('count')}
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                                    mountainMode === 'count'
-                                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                                  }`}
-                                >
-                                  По сделкам (шт.)
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setMountainMode('money')}
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                                    mountainMode === 'money'
-                                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                                  }`}
-                                >
-                                  По бюджету (сум)
-                                </button>
-                              </div>
-                            </div>
-
-                            {n > 0 ? (
-                              <div className="overflow-x-auto pb-1">
-                                <svg
-                                  viewBox={`0 0 ${W} ${H}`}
-                                  className="w-full h-56 min-w-[640px] select-none"
-                                >
-                                  <defs>
-                                    <linearGradient id="mtnWonGrad" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.55" />
-                                      <stop offset="100%" stopColor="#10b981" stopOpacity="0.04" />
-                                    </linearGradient>
-                                    <linearGradient id="mtnLostGrad" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.45" />
-                                      <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.04" />
-                                    </linearGradient>
-                                    <linearGradient id="mtnOpenGrad" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.30" />
-                                      <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
-                                    </linearGradient>
-                                  </defs>
-
-                                  {/* Horizontal Grid Lines */}
-                                  {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-                                    const y = padT + chartH * (1 - ratio);
-                                    const labelVal = Math.round(maxVal * ratio);
-                                    return (
-                                      <g key={ratio}>
-                                        <line
-                                          x1={padL}
-                                          y1={y}
-                                          x2={W - padR}
-                                          y2={y}
-                                          stroke="currentColor"
-                                          className="text-slate-100 dark:text-slate-800"
-                                          strokeDasharray="3 3"
-                                        />
-                                        <text
-                                          x={padL - 6}
-                                          y={y + 3}
-                                          textAnchor="end"
-                                          className="fill-slate-400 text-[9px]"
-                                        >
-                                          {mountainMode === 'money' && labelVal >= 1000000
-                                            ? `${Math.round(labelVal / 1000000)}M`
-                                            : fmtCount(labelVal)}
-                                        </text>
-                                      </g>
-                                    );
-                                  })}
-
-                                  {/* Lost Mountain (Red) */}
-                                  <polygon points={lostMtn.area} fill="url(#mtnLostGrad)" />
-                                  <polyline
-                                    fill="none"
-                                    stroke="#f43f5e"
-                                    strokeWidth="2.2"
-                                    strokeLinejoin="round"
-                                    points={lostMtn.line}
+                            {/* Horizontal grid lines */}
+                            {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+                              const y = padT + chartH * (1 - ratio);
+                              const val = Math.round(maxVal * ratio);
+                              return (
+                                <g key={ratio}>
+                                  <line
+                                    x1={padL}
+                                    y1={y}
+                                    x2={W - padR}
+                                    y2={y}
+                                    stroke="currentColor"
+                                    className="text-slate-100 dark:text-slate-800"
+                                    strokeDasharray="4 4"
                                   />
+                                  <text
+                                    x={padL - 10}
+                                    y={y + 4}
+                                    textAnchor="end"
+                                    className="fill-slate-400 text-[11px] font-medium"
+                                  >
+                                    {fmtCompact(val)}
+                                  </text>
+                                </g>
+                              );
+                            })}
 
-                                  {/* Open Mountain (Blue) */}
-                                  <polygon points={openMtn.area} fill="url(#mtnOpenGrad)" />
-                                  <polyline
-                                    fill="none"
-                                    stroke="#3b82f6"
-                                    strokeWidth="1.8"
-                                    strokeDasharray="4 3"
-                                    strokeLinejoin="round"
-                                    points={openMtn.line}
-                                  />
+                            {/* Smooth Mountains: Lost (Red), Open (Blue), Won (Green) */}
+                            <path d={lostSmooth.areaPath} fill="url(#smoothLostGrad)" />
+                            <path
+                              d={lostSmooth.strokePath}
+                              fill="none"
+                              stroke="#f43f5e"
+                              strokeWidth="2.6"
+                              strokeLinecap="round"
+                            />
 
-                                  {/* Won Mountain (Green - Foreground) */}
-                                  <polygon points={wonMtn.area} fill="url(#mtnWonGrad)" />
-                                  <polyline
-                                    fill="none"
-                                    stroke="#10b981"
-                                    strokeWidth="2.6"
-                                    strokeLinejoin="round"
-                                    points={wonMtn.line}
-                                  />
+                            <path d={openSmooth.areaPath} fill="url(#smoothOpenGrad)" />
+                            <path
+                              d={openSmooth.strokePath}
+                              fill="none"
+                              stroke="#3b82f6"
+                              strokeWidth="2"
+                              strokeDasharray="5 4"
+                              strokeLinecap="round"
+                            />
 
-                                  {/* Data points & Month-Year labels */}
-                                  {pts.map((p: any, i: number) => {
-                                    const x = xAt(i);
-                                    const yWon = yAt(getWon(p));
-                                    const yLost = yAt(getLost(p));
-                                    const wVal = getWon(p);
-                                    const lVal = getLost(p);
-                                    return (
-                                      <g key={p.period}>
-                                        {/* Vertical subtle guide */}
-                                        <line
-                                          x1={x}
-                                          y1={padT}
-                                          x2={x}
-                                          y2={baseY}
-                                          stroke="currentColor"
-                                          className="text-slate-100/60 dark:text-slate-800/60"
-                                        />
-                                        {/* Lost point */}
-                                        <circle cx={x} cy={yLost} r="3.5" fill="#f43f5e" stroke="#fff" strokeWidth="1.2">
-                                          <title>{`${p.period} — Нереализовано (Lost): ${fmtMoney(lVal)}`}</title>
-                                        </circle>
-                                        {lVal > 0 && (
-                                          <text
-                                            x={x}
-                                            y={Math.max(12, yLost - 6)}
-                                            textAnchor="middle"
-                                            className="fill-rose-500 text-[9px] font-bold"
-                                          >
-                                            {mountainMode === 'money' && lVal >= 1000000
-                                              ? `${(lVal / 1000000).toFixed(1)}M`
-                                              : fmtCount(lVal)}
-                                          </text>
-                                        )}
+                            <path d={wonSmooth.areaPath} fill="url(#smoothWonGrad)" />
+                            <path
+                              d={wonSmooth.strokePath}
+                              fill="none"
+                              stroke="#10b981"
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                            />
 
-                                        {/* Won point */}
-                                        <circle cx={x} cy={yWon} r="4" fill="#10b981" stroke="#fff" strokeWidth="1.5">
-                                          <title>{`${p.period} — Успешно (Won): ${fmtMoney(wVal)}`}</title>
-                                        </circle>
-                                        {wVal > 0 && (
-                                          <text
-                                            x={x}
-                                            y={Math.max(12, yWon - 7)}
-                                            textAnchor="middle"
-                                            className="fill-emerald-600 dark:fill-emerald-400 text-[9px] font-extrabold"
-                                          >
-                                            {mountainMode === 'money' && wVal >= 1000000
-                                              ? `${(wVal / 1000000).toFixed(1)}M`
-                                              : fmtCount(wVal)}
-                                          </text>
-                                        )}
-
-                                        {/* X-axis Period (YYYY-MM) */}
-                                        <text
-                                          x={x}
-                                          y={baseY + 18}
-                                          textAnchor="middle"
-                                          className="fill-slate-600 dark:fill-slate-400 text-[10px] font-semibold"
-                                        >
-                                          {p.period}
-                                        </text>
-                                      </g>
-                                    );
-                                  })}
-                                </svg>
-                              </div>
-                            ) : (
-                              <div className="h-48 flex items-center justify-center text-xs text-slate-400">
-                                Нет помесячных данных за выбранный период
-                              </div>
+                            {/* Active hover crosshair vertical line */}
+                            {activeIdx != null && (
+                              <line
+                                x1={xAt(activeIdx)}
+                                y1={padT}
+                                x2={xAt(activeIdx)}
+                                y2={baseY}
+                                stroke="#6366f1"
+                                strokeWidth="1.5"
+                                strokeDasharray="3 3"
+                              />
                             )}
 
-                            <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-3 border-t border-slate-100 dark:border-slate-800">
-                              <div className="flex flex-wrap items-center gap-4">
-                                <span className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
-                                  <span className="w-3 h-2 rounded-xs bg-emerald-500" />
-                                  Горы Успешных (Won): <strong>{fmtMoney(totalWonSum)}</strong>
-                                </span>
-                                <span className="flex items-center gap-1.5 font-semibold text-rose-600 dark:text-rose-400">
-                                  <span className="w-3 h-2 rounded-xs bg-rose-500" />
-                                  Горы Нереализованных (Отказ): <strong>{fmtMoney(totalLostSum)}</strong>
-                                </span>
-                                <span className="flex items-center gap-1.5 font-semibold text-blue-600 dark:text-blue-400">
-                                  <span className="w-3 h-2 rounded-xs bg-blue-500" />
-                                  В работе (Open): <strong>{fmtMoney(totalOpenSum)}</strong>
-                                </span>
-                              </div>
-                              <span className="text-[11px] text-slate-400">
-                                Всего месяцев на графике: {n}
+                            {/* Points, non-overlapping labels & invisible hover columns */}
+                            {pts.map((p: any, i: number) => {
+                              const x = xAt(i);
+                              const wVal = getWon(p);
+                              const lVal = getLost(p);
+                              const oVal = getOpen(p);
+                              const yWon = yAt(wVal);
+                              const yLost = yAt(lVal);
+                              const yOpen = yAt(oVal);
+                              const isHovered = activeIdx === i;
+                              const showXLabel = i % labelStep === 0 || i === n - 1 || isHovered;
+
+                              // Anti-collision label positioning: only render text on chart if zoomed-in (<=12 pts) OR hovered
+                              const shouldShowPointText = isHovered || showValueBadges;
+                              const tooClose = Math.abs(yWon - yLost) < 20;
+                              const wonLabelY = tooClose
+                                ? yWon <= yLost
+                                  ? Math.max(16, yWon - 10)
+                                  : Math.min(baseY - 6, yWon + 15)
+                                : Math.max(16, yWon - 9);
+                              const lostLabelY = tooClose
+                                ? yLost < yWon
+                                  ? Math.max(16, yLost - 10)
+                                  : Math.min(baseY - 6, yLost + 15)
+                                : Math.max(16, yLost - 9);
+
+                              const colWidth = n > 1 ? chartW / (n - 1) : chartW;
+
+                              return (
+                                <g key={p.period}>
+                                  {/* Dots */}
+                                  <circle
+                                    cx={x}
+                                    cy={yLost}
+                                    r={isHovered ? 6 : 3.5}
+                                    fill="#f43f5e"
+                                    stroke="#ffffff"
+                                    strokeWidth={isHovered ? 2 : 1.2}
+                                  />
+                                  <circle
+                                    cx={x}
+                                    cy={yOpen}
+                                    r={isHovered ? 5 : 2.5}
+                                    fill="#3b82f6"
+                                    stroke="#ffffff"
+                                    strokeWidth="1.2"
+                                  />
+                                  <circle
+                                    cx={x}
+                                    cy={yWon}
+                                    r={isHovered ? 6.5 : 4}
+                                    fill="#10b981"
+                                    stroke="#ffffff"
+                                    strokeWidth={isHovered ? 2.2 : 1.5}
+                                  />
+
+                                  {/* Non-overlapping pill badges when zoomed in or hovered */}
+                                  {shouldShowPointText && lVal > 0 && (
+                                    <text
+                                      x={x}
+                                      y={lostLabelY}
+                                      textAnchor="middle"
+                                      className={`fill-rose-600 dark:fill-rose-400 font-bold ${
+                                        isHovered ? 'text-[11px]' : 'text-[10px]'
+                                      }`}
+                                    >
+                                      {fmtCompact(lVal)}
+                                    </text>
+                                  )}
+
+                                  {shouldShowPointText && wVal > 0 && (
+                                    <text
+                                      x={x}
+                                      y={wonLabelY}
+                                      textAnchor="middle"
+                                      className={`fill-emerald-600 dark:fill-emerald-400 font-extrabold ${
+                                        isHovered ? 'text-[11px]' : 'text-[10px]'
+                                      }`}
+                                    >
+                                      {fmtCompact(wVal)}
+                                    </text>
+                                  )}
+
+                                  {/* X-axis Period Label */}
+                                  {showXLabel && (
+                                    <text
+                                      x={x}
+                                      y={baseY + 22}
+                                      textAnchor="middle"
+                                      className={`${
+                                        isHovered
+                                          ? 'fill-indigo-600 dark:fill-indigo-400 font-extrabold text-[11px]'
+                                          : 'fill-slate-500 dark:fill-slate-400 font-semibold text-[10px]'
+                                      }`}
+                                    >
+                                      {p.period}
+                                    </text>
+                                  )}
+
+                                  {/* Full-height invisible hover target */}
+                                  <rect
+                                    x={x - colWidth / 2}
+                                    y={padT}
+                                    width={colWidth}
+                                    height={chartH + padB}
+                                    fill="transparent"
+                                    className="cursor-pointer"
+                                    onMouseEnter={() => setHoveredPointIdx(i)}
+                                    onClick={() => setHoveredPointIdx(i)}
+                                  />
+                                </g>
+                              );
+                            })}
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="h-56 flex items-center justify-center text-xs text-slate-400">
+                          Нет данных за выбранный период
+                        </div>
+                      )}
+                    </div>
+
+                    {/* PORTFOLIO STRUCTURE DONUT & STACKED BAR BANNER */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+                        <div className="flex items-center gap-5">
+                          <div className="relative w-28 h-28 shrink-0 flex items-center justify-center">
+                            <svg viewBox="0 0 120 120" className="w-28 h-28 -rotate-90">
+                              <circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeWidth="14" />
+                              <circle cx="60" cy="60" r="50" fill="none" stroke="#10b981" strokeWidth="14" strokeDasharray={`${wonDash} ${C}`} strokeDashoffset={0} />
+                              <circle cx="60" cy="60" r="50" fill="none" stroke="#3b82f6" strokeWidth="14" strokeDasharray={`${openDash} ${C}`} strokeDashoffset={-wonDash} />
+                              <circle cx="60" cy="60" r="50" fill="none" stroke="#f43f5e" strokeWidth="14" strokeDasharray={`${lostDash} ${C}`} strokeDashoffset={-(wonDash + openDash)} />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                              <span className="text-[9px] uppercase text-slate-400 font-semibold">Win Rate</span>
+                              <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">
+                                {kpis.winRateClosed}%
                               </span>
                             </div>
-                          </>
-                        );
-                      })()}
+                          </div>
+
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                              Структура портфеля и сделок (%)
+                            </h3>
+                            <p className="text-xs text-slate-500 mt-1">
+                              Соотношение выигранного бюджета, активного пайплайна и отказов
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3 text-xs">
+                          <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                            <div className="text-emerald-600 dark:text-emerald-400 font-bold">Успешно ({wonMoneyPct}%)</div>
+                            <div className="text-sm font-extrabold text-slate-900 dark:text-white mt-0.5">{fmtMoney(kpis.totalRevenue)}</div>
+                            <div className="text-[11px] text-slate-500">{fmtCount(kpis.wonLeads)} сделок ({wonCountPct}%)</div>
+                          </div>
+                          <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                            <div className="text-blue-600 dark:text-blue-400 font-bold">В работе ({openMoneyPct}%)</div>
+                            <div className="text-sm font-extrabold text-slate-900 dark:text-white mt-0.5">{fmtMoney(kpis.openPipelineValue)}</div>
+                            <div className="text-[11px] text-slate-500">{fmtCount(kpis.openLeads)} сделок ({openCountPct}%)</div>
+                          </div>
+                          <div className="p-3 rounded-xl bg-rose-500/5 border border-rose-500/20">
+                            <div className="text-rose-600 dark:text-rose-400 font-bold">В отказе ({lostMoneyPct}%)</div>
+                            <div className="text-sm font-extrabold text-slate-900 dark:text-white mt-0.5">{fmtMoney(kpis.lostRevenue)}</div>
+                            <div className="text-[11px] text-slate-500">{fmtCount(kpis.lostLeads)} сделок ({lostCountPct}%)</div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-xs font-medium text-slate-600 dark:text-slate-300">
+                            <span>Распределение всех сделок ({fmtCount(kpis.totalLeads)} шт.):</span>
+                            <span>{wonCountPct}% / {openCountPct}% / {lostCountPct}%</span>
+                          </div>
+                          <div className="w-full h-3.5 rounded-full overflow-hidden flex bg-slate-100 dark:bg-slate-800">
+                            <div style={{ width: `${wonCountPct}%` }} className="bg-emerald-500 h-full" />
+                            <div style={{ width: `${openCountPct}%` }} className="bg-blue-500 h-full" />
+                            <div style={{ width: `${lostCountPct}%` }} className="bg-rose-500 h-full" />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
