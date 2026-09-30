@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { userApi, FilterParams } from '../api/client';
 import { useLanguage } from '../i18n/LanguageContext';
-import LanguageSwitcher from './LanguageSwitcher';
 import {
   Sparkles,
   X,
@@ -12,7 +11,6 @@ import {
   TrendingDown,
   AlertTriangle,
   Lightbulb,
-  CheckCircle,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -348,20 +346,11 @@ export default function AiChatDrawer({
             </span>
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-bold text-base text-white">{t('ai_title')}</h3>
-              <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-purple-200 uppercase tracking-wider font-semibold">
-                {modelName || 'Gemini'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-300 truncate max-w-xs">
-              {pipelineName ? t('ai_subtitle_funnel', { name: pipelineName }) : t('ai_subtitle_default')}
-            </p>
+            <h3 className="font-bold text-base text-white">{t('ai_title')}</h3>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <LanguageSwitcher />
           <button
             onClick={handleClearHistory}
             title={t('ai_clear_dialog')}
@@ -378,21 +367,6 @@ export default function AiChatDrawer({
           </button>
         </div>
       </div>
-
-      {/* Subheader info pill */}
-          <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2 text-xs text-slate-600 dark:text-slate-400 flex items-center justify-between">
-            <div className="flex items-center gap-1.5 truncate">
-              <CheckCircle size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span className="truncate">
-                {biData ? 'BI-Аналитика подключена (Контекст экрана)' : t('ai_connected_pill')}
-              </span>
-            </div>
-            {biData && (
-              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                Выбрано блоков: {selectedBiBlocks.length} из {BI_AVAILABLE_BLOCKS.length}
-              </span>
-            )}
-          </div>
 
           {/* Interactive BI Blocks Context Selector (when in BI Module 02) */}
           {biData && (
