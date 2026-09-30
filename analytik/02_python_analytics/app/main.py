@@ -401,53 +401,194 @@ def get_detailed_analytics(
             for r in tag_rows
         ]
 
-        # Кастомные поля (JSONB распаковка топ-полей бизнеса)
+        # Кастомные поля: фильтруем ТОЛЬКО списочные/категориальные поля (поля с выборками)
         cf_rows = conn.execute(
             text(f"""
+                WITH unpacked AS (
+                    SELECT
+                        l.id AS lead_id,
+                        l.status,
+                        COALESCE(l.price, 0) AS price,
+                        TRIM(cf->>'name') AS field_name,
+                        TRIM(val_elem.val) AS field_value
+                    FROM leads l
+                    CROSS JOIN LATERAL jsonb_array_elements(
+                        CASE WHEN jsonb_typeof(l.custom_fields) = 'array' THEN l.custom_fields ELSE '[]'::jsonb END
+                    ) AS cf
+                    CROSS JOIN LATERAL jsonb_array_elements_text(
+                        CASE WHEN jsonb_typeof(cf->'values') = 'array' THEN cf->'values' ELSE '[]'::jsonb END
+                    ) AS val_elem(val)
+                    WHERE {where_sql}
+                      AND cf->>'name' IS NOT NULL
+                      AND TRIM(val_elem.val) <> ''
+                ),
+                field_stats AS (
+                    SELECT
+                        field_name,
+                        COUNT(DISTINCT lead_id) AS total_filled,
+                        COUNT(DISTINCT field_value) AS distinct_vals,
+                        AVG(LENGTH(field_value)) AS avg_val_len,
+                        MAX(LENGTH(field_value)) AS max_val_len,
+                        COUNT(DISTINCT lead_id) FILTER (WHERE status = 'won') AS won_filled,
+                        COUNT(DISTINCT lead_id) FILTER (WHERE status = 'lost') AS lost_filled,
+                        COUNT(DISTINCT lead_id) FILTER (WHERE status = 'open') AS open_filled,
+                        COALESCE(SUM(price) FILTER (WHERE status = 'won'), 0) AS field_won_value
+                    FROM unpacked
+                    WHERE UPPER(field_name) NOT LIKE 'UTM_%'
+                      AND UPPER(field_name) NOT IN (
+                          'FBCLID', 'GCLID', 'YCLID', '_YM_UID', '_YM_COUNTER', 'ROISTAT',
+                          'REFERRER', 'OPENSTAT', 'FROM', 'FORMNAME', 'TRANID', 'COOKIES',
+                          'TILDACOOKIE', 'FORMID', 'BUTTON', 'GA UTM'
+                      )
+                      AND UPPER(field_name) NOT LIKE '%ССЫЛКА%'
+                      AND UPPER(field_name) NOT LIKE '%LINK%'
+                      AND UPPER(field_name) NOT LIKE '%URL%'
+                      AND UPPER(field_name) NOT LIKE '%КОММЕНТ%'
+                      AND UPPER(field_name) NOT LIKE '%COMMENT%'
+                      AND UPPER(field_name) NOT LIKE '%IZOH%'
+                      AND UPPER(field_name) NOT LIKE '%ПРИМЕЧАН%'
+                      AND UPPER(field_name) NOT LIKE '%ТЕЛЕФОН%'
+                      AND UPPER(field_name) NOT LIKE '%PHONE%'
+                      AND UPPER(field_name) NOT LIKE '%EMAIL%'
+                      AND UPPER(field_name) NOT LIKE '%ПОЧТА%'
+                      AND UPPER(field_name) NOT LIKE '%ДАТА%'
+                      AND UPPER(field_name) NOT LIKE '%DATE%'
+                      AND UPPER(field_name) NOT LIKE '%SANASI%'
+                      AND UPPER(field_name) NOT LIKE '%SANA%'
+                      AND UPPER(field_name) NOT LIKE '%VAQT%'
+                      AND UPPER(field_name) NOT LIKE '%ПАСПОРТ%'
+                      AND UPPER(field_name) NOT LIKE '%PASPORT%'
+                      AND UPPER(field_name) NOT LIKE '%ИНН%'
+                      AND UPPER(field_name) NOT LIKE '%АДРЕС%'
+                      AND UPPER(field_name) NOT LIKE '%MANZIL%'
+                      AND UPPER(field_name) NOT LIKE '%ФИО%'
+                      AND UPPER(field_name) NOT LIKE '%ФАМИЛИЯ%'
+                      AND UPPER(field_name) NOT LIKE '%ИМЯ%'
+                    GROUP BY field_name
+                    HAVING COUNT(DISTINCT field_value) BETWEEN 1 AND 45
+                       AND (
+                           COUNT(DISTINCT lead_id) >= GREATEST(COUNT(DISTINCT field_value) + 1, 2)
+                           OR COUNT(DISTINCT field_value) <= 12
+                       )
+                       AND AVG(LENGTH(field_value)) <= 45
+                       AND MAX(LENGTH(field_value)) <= 100
+                )
                 SELECT
-                    cf->>'name' AS field_name,
-                    COALESCE(cf->'values'->>0, '') AS field_value,
-                    COUNT(DISTINCT l.id) AS "totalLeads",
-                    COUNT(DISTINCT l.id) FILTER (WHERE l.status = 'won') AS "wonLeads",
-                    COALESCE(SUM(l.price) FILTER (WHERE l.status = 'won'), 0) AS revenue
-                FROM leads l,
-                LATERAL jsonb_array_elements(
-                    CASE WHEN jsonb_typeof(l.custom_fields) = 'array' THEN l.custom_fields ELSE '[]'::jsonb END
-                ) AS cf
-                WHERE {where_sql}
-                  AND cf->>'name' IS NOT NULL
-                  AND COALESCE(cf->'values'->>0, '') <> ''
-                GROUP BY 1, 2
-                ORDER BY "totalLeads" DESC
-                LIMIT 40
+                    u.field_name,
+                    fs.total_filled,
+                    fs.distinct_vals,
+                    fs.won_filled,
+                    fs.lost_filled,
+                    fs.open_filled,
+                    fs.field_won_value,
+                    u.field_value,
+                    COUNT(DISTINCT u.lead_id) AS "totalLeads",
+                    COUNT(DISTINCT u.lead_id) FILTER (WHERE u.status = 'won') AS "wonLeads",
+                    COUNT(DISTINCT u.lead_id) FILTER (WHERE u.status = 'lost') AS "lostLeads",
+                    COUNT(DISTINCT u.lead_id) FILTER (WHERE u.status = 'open') AS "openLeads",
+                    COALESCE(SUM(u.price) FILTER (WHERE u.status = 'won'), 0) AS revenue,
+                    COALESCE(AVG(u.price) FILTER (WHERE u.status = 'won' AND u.price > 0), 0) AS "avgCheck",
+                    COALESCE(SUM(u.price) FILTER (WHERE u.status = 'open'), 0) AS "openValue",
+                    COALESCE(SUM(u.price) FILTER (WHERE u.status = 'lost'), 0) AS "lostValue"
+                FROM unpacked u
+                JOIN field_stats fs ON fs.field_name = u.field_name
+                WHERE u.field_value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                  AND u.field_value !~ '^[0-9]{2}\.[0-9]{2}\.[0-9]{4}'
+                  AND u.field_value !~ '^[0-9]{9,20}$'
+                GROUP BY
+                    u.field_name,
+                    fs.total_filled,
+                    fs.distinct_vals,
+                    fs.won_filled,
+                    fs.lost_filled,
+                    fs.open_filled,
+                    fs.field_won_value,
+                    u.field_value
+                ORDER BY fs.total_filled DESC, u.field_name ASC, "totalLeads" DESC, revenue DESC
             """),
             params,
         ).mappings().all()
 
-        custom_fields_breakdown = [
-            {
-                "fieldName": r["field_name"],
-                "fieldValue": r["field_value"],
-                "totalLeads": int(r["totalLeads"]),
-                "wonLeads": int(r["wonLeads"]),
-                "winRate": round(int(r["wonLeads"]) / int(r["totalLeads"]) * 100, 1) if int(r["totalLeads"]) > 0 else 0.0,
-                "revenue": float(r["revenue"] or 0),
-            }
-            for r in cf_rows
-        ]
+        custom_fields_breakdown = []
+        fields_grouped_map = {}
 
-        # 6. Причины отказа, Повторные продажи (LTV) и проблемные сделки
+        for r in cf_rows:
+            fname = r["field_name"]
+            tot_leads = int(r["totalLeads"] or 0)
+            won_l = int(r["wonLeads"] or 0)
+            lost_l = int(r["lostLeads"] or 0)
+            open_l = int(r["openLeads"] or 0)
+            tot_filled = int(r["total_filled"] or 1)
+            rev = float(r["revenue"] or 0)
+            avg_chk = round(float(r["avgCheck"] or 0), 2)
+            open_val = float(r["openValue"] or 0)
+            lost_val = float(r["lostValue"] or 0)
+            win_r = round(won_l / tot_leads * 100, 1) if tot_leads > 0 else 0.0
+            share_pct = round(tot_leads / tot_filled * 100, 1) if tot_filled > 0 else 0.0
+
+            item = {
+                "fieldName": fname,
+                "fieldValue": r["field_value"],
+                "totalLeads": tot_leads,
+                "shareOfField": share_pct,
+                "wonLeads": won_l,
+                "lostLeads": lost_l,
+                "openLeads": open_l,
+                "winRate": win_r,
+                "revenue": rev,
+                "wonValue": rev,
+                "avgCheck": avg_chk,
+                "openValue": open_val,
+                "lostValue": lost_val,
+            }
+            custom_fields_breakdown.append(item)
+
+            if fname not in fields_grouped_map:
+                f_won = int(r["won_filled"] or 0)
+                f_tot = int(r["total_filled"] or 0)
+                fields_grouped_map[fname] = {
+                    "fieldName": fname,
+                    "totalFilled": f_tot,
+                    "wonFilled": f_won,
+                    "lostFilled": int(r["lost_filled"] or 0),
+                    "openFilled": int(r["open_filled"] or 0),
+                    "wonValue": float(r["field_won_value"] or 0),
+                    "winRate": round(f_won / f_tot * 100, 1) if f_tot > 0 else 0.0,
+                    "optionsCount": 0,
+                    "options": [],
+                }
+            fields_grouped_map[fname]["options"].append(item)
+            fields_grouped_map[fname]["optionsCount"] = len(fields_grouped_map[fname]["options"])
+
+        custom_fields_lists = list(fields_grouped_map.values())
+
+        # 6. Причины отказа (системное поле loss_reason_name + кастомное списочное поле Rad etish sababi / Причина отказа)
         loss_rows = conn.execute(
             text(f"""
                 SELECT
-                    COALESCE(NULLIF(TRIM(l.loss_reason_name), ''), 'Причина не указана в CRM') AS reason,
+                    COALESCE(
+                        NULLIF(TRIM(l.loss_reason_name), ''),
+                        NULLIF(TRIM((
+                            SELECT cf_loss->'values'->>0
+                            FROM jsonb_array_elements(
+                                CASE WHEN jsonb_typeof(l.custom_fields) = 'array' THEN l.custom_fields ELSE '[]'::jsonb END
+                            ) AS cf_loss
+                            WHERE LOWER(TRIM(cf_loss->>'name')) IN (
+                                'rad etish sababi', 'причина отказа', 'причина закрытия', 'sabab', 'rad sababi'
+                            )
+                              AND COALESCE(TRIM(cf_loss->'values'->>0), '') <> ''
+                            LIMIT 1
+                        )), ''),
+                        'Причина не указана в CRM'
+                    ) AS reason,
                     COUNT(*) AS "lostLeads",
-                    COALESCE(SUM(l.price), 0) AS "lostValue"
+                    COALESCE(SUM(l.price), 0) AS "lostValue",
+                    COALESCE(AVG(l.price) FILTER (WHERE l.price > 0), 0) AS "avgLostCheck"
                 FROM leads l
                 WHERE {where_sql} AND l.status = 'lost'
                 GROUP BY 1
                 ORDER BY "lostLeads" DESC, "lostValue" DESC
-                LIMIT 20
+                LIMIT 30
             """),
             params,
         ).mappings().all()
@@ -457,57 +598,11 @@ def get_detailed_analytics(
                 "reason": r["reason"],
                 "lostLeads": int(r["lostLeads"]),
                 "lostValue": float(r["lostValue"] or 0),
+                "avgLostCheck": round(float(r["avgLostCheck"] or 0), 2),
                 "sharePercent": round(int(r["lostLeads"]) / lost_leads * 100, 1) if lost_leads > 0 else 0.0,
             }
             for r in loss_rows
         ]
-
-        # LTV и повторные продажи по main_contact_id
-        ltv_stats = conn.execute(
-            text(f"""
-                WITH contact_agg AS (
-                    SELECT
-                        l.main_contact_id AS contact_id,
-                        COUNT(*) AS deals_count,
-                        COUNT(*) FILTER (WHERE l.status = 'won') AS won_count,
-                        COALESCE(SUM(l.price) FILTER (WHERE l.status = 'won'), 0) AS total_spent,
-                        MIN(l.crm_created_at) AS first_deal_at,
-                        MAX(l.crm_created_at) AS last_deal_at
-                    FROM leads l
-                    WHERE {where_sql} AND l.main_contact_id IS NOT NULL
-                    GROUP BY l.main_contact_id
-                )
-                SELECT
-                    COUNT(*) AS unique_contacts,
-                    COUNT(*) FILTER (WHERE deals_count >= 2) AS repeat_contacts,
-                    COUNT(*) FILTER (WHERE won_count >= 2) AS repeat_buyers,
-                    COALESCE(AVG(total_spent) FILTER (WHERE won_count >= 1), 0) AS avg_ltv,
-                    COALESCE(SUM(total_spent) FILTER (WHERE deals_count >= 2), 0) AS repeat_revenue
-                FROM contact_agg
-            """),
-            params,
-        ).mappings().first()
-
-        unique_c = int(ltv_stats["unique_contacts"] or 0) if ltv_stats else 0
-        repeat_c = int(ltv_stats["repeat_contacts"] or 0) if ltv_stats else 0
-
-        top_clients_rows = conn.execute(
-            text(f"""
-                SELECT
-                    l.main_contact_id AS "contactId",
-                    MAX(l.name) AS "sampleLeadName",
-                    COUNT(*) AS "totalDeals",
-                    COUNT(*) FILTER (WHERE l.status = 'won') AS "wonDeals",
-                    COALESCE(SUM(l.price) FILTER (WHERE l.status = 'won'), 0) AS revenue
-                FROM leads l
-                WHERE {where_sql} AND l.main_contact_id IS NOT NULL
-                GROUP BY l.main_contact_id
-                HAVING COUNT(*) >= 2 OR SUM(l.price) FILTER (WHERE l.status = 'won') > 0
-                ORDER BY revenue DESC, "totalDeals" DESC
-                LIMIT 15
-            """),
-            params,
-        ).mappings().all()
 
         # ТОП открытых сделок в зоне риска (просроченные задачи / без задач / зависшие > 14 дней)
         risk_rows = conn.execute(
@@ -560,27 +655,10 @@ def get_detailed_analytics(
                 "utmSources": utm_sources,
                 "tagsBreakdown": tags_breakdown,
                 "customFieldsBreakdown": custom_fields_breakdown,
+                "customFieldsLists": custom_fields_lists,
             },
             "lossesAndLtv": {
                 "lossReasons": loss_reasons,
-                "ltv": {
-                    "uniqueContacts": unique_c,
-                    "repeatContacts": repeat_c,
-                    "repeatBuyers": int(ltv_stats["repeat_buyers"] or 0) if ltv_stats else 0,
-                    "repeatRatePercent": round(repeat_c / unique_c * 100, 1) if unique_c > 0 else 0.0,
-                    "avgLtv": round(float(ltv_stats["avg_ltv"] or 0), 2) if ltv_stats else 0.0,
-                    "repeatRevenue": float(ltv_stats["repeat_revenue"] or 0) if ltv_stats else 0.0,
-                    "topClients": [
-                        {
-                            "contactId": r["contactId"],
-                            "sampleLeadName": r["sampleLeadName"],
-                            "totalDeals": int(r["totalDeals"]),
-                            "wonDeals": int(r["wonDeals"]),
-                            "revenue": float(r["revenue"] or 0),
-                        }
-                        for r in top_clients_rows
-                    ],
-                },
                 "riskDeals": [
                     {
                         "id": r["id"],
