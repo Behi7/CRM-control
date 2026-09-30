@@ -763,6 +763,19 @@ export default function BiAnalyticsPage() {
                   </div>
                 </div>
 
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
+                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
+                    <span>Клиентская база и LTV</span>
+                    <Repeat size={18} className="text-teal-500" />
+                  </div>
+                  <div className="text-2xl font-extrabold text-teal-600 dark:text-teal-400">
+                    {fmtCount(lossesAndLtv.ltv?.repeatContacts || 0)} повторных
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1.5">
+                    Всего контактов: <strong>{fmtCount(lossesAndLtv.ltv?.uniqueContacts || 0)}</strong> ({lossesAndLtv.ltv?.repeatRatePercent || 0}% Repeat)
+                  </div>
+                </div>
+
 
               </div>
 

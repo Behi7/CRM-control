@@ -658,6 +658,28 @@ def get_detailed_analytics(
             for r in loss_rows
         ]
 
+        # Сводка по повторным обращениям контактов (для 8-й KPI карточки в Обзоре)
+        ltv_stats = conn.execute(
+            text(f"""
+                WITH contact_agg AS (
+                    SELECT
+                        l.main_contact_id AS contact_id,
+                        COUNT(*) AS deals_count
+                    FROM leads l
+                    WHERE {where_sql} AND l.main_contact_id IS NOT NULL
+                    GROUP BY l.main_contact_id
+                )
+                SELECT
+                    COUNT(*) AS unique_contacts,
+                    COUNT(*) FILTER (WHERE deals_count >= 2) AS repeat_contacts
+                FROM contact_agg
+            """),
+            params,
+        ).mappings().first()
+
+        unique_c = int(ltv_stats["unique_contacts"] or 0) if ltv_stats else 0
+        repeat_c = int(ltv_stats["repeat_contacts"] or 0) if ltv_stats else 0
+
         # ТОП открытых сделок в зоне риска (просроченные задачи / без задач / зависшие > 14 дней)
         risk_rows = conn.execute(
             text(f"""
@@ -714,6 +736,11 @@ def get_detailed_analytics(
             },
             "lossesAndLtv": {
                 "lossReasons": loss_reasons,
+                "ltv": {
+                    "uniqueContacts": unique_c,
+                    "repeatContacts": repeat_c,
+                    "repeatRatePercent": round(repeat_c / unique_c * 100, 1) if unique_c > 0 else 0.0,
+                },
                 "riskDeals": [
                     {
                         "id": r["id"],
