@@ -474,23 +474,7 @@ export default function StatsPage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-6">
       <div className="max-w-5xl mx-auto">
-        {aiStatus.data?.enabled && (
-          <div className="flex justify-end mb-4">
-            <button
-              type="button"
-              onClick={() => setChatOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm shadow-sm hover:shadow transition-all cursor-pointer group"
-              title={t('nav_ai_analyst_title')}
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-200 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-              </span>
-              <Sparkles size={15} className="text-yellow-300 fill-yellow-300 group-hover:scale-110 transition-transform" />
-              <span>{t('nav_ai_analyst')}</span>
-            </button>
-          </div>
-        )}
+
 
 
 
