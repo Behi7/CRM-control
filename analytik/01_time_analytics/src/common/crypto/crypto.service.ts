@@ -7,9 +7,19 @@ import { AppException } from '../exceptions/app.exception';
 export class CryptoService {
   private key: Buffer;
   constructor(private config: ConfigService) {
-    const k = this.config.get<string>('TOKEN_ENCRYPTION_KEY')!;
-    if (Buffer.byteLength(k) !== 32) throw new Error('TOKEN_ENCRYPTION_KEY must be 32 bytes');
-    this.key = Buffer.from(k);
+    const raw = (this.config.get<string>('TOKEN_ENCRYPTION_KEY') || '').trim();
+    let buf: Buffer;
+    if (/^[0-9a-f]{64}$/i.test(raw)) {
+      buf = Buffer.from(raw, 'hex');
+    } else if (Buffer.byteLength(raw, 'utf8') === 32) {
+      buf = Buffer.from(raw, 'utf8');
+    } else {
+      buf = Buffer.from(raw, 'base64');
+    }
+    if (buf.length !== 32) {
+      throw new Error('TOKEN_ENCRYPTION_KEY must decode to 32 bytes (provide 64 hex chars, 44 base64 chars, or 32 UTF-8 bytes)');
+    }
+    this.key = buf;
   }
   encrypt(plain: string): string {
     const nonce = randomBytes(12);

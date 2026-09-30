@@ -7,6 +7,10 @@ import { AppException } from './app.exception';
 export class AllExceptionsFilter implements ExceptionFilter {
   private logger = new Logger('ExceptionFilter');
   catch(exception: any, host: ArgumentsHost) {
+    if (host.getType() !== 'http') {
+      this.logger.error(exception);
+      throw exception;
+    }
     const ctx = host.switchToHttp();
     const res = ctx.getResponse<Response>();
     let http = 500, code = 'INTERNAL_ERROR', message = 'Internal server error';

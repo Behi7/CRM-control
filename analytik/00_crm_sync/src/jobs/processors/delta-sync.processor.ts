@@ -52,16 +52,33 @@ export class DeltaSyncProcessor {
       return;
     }
     const syncCtx = await this.events.buildSyncContext(accountId);
-    const token = this.crypto.decrypt(acc.encryptedToken);
+    let token = this.crypto.decrypt(acc.encryptedToken);
     let page = 1;
     this.logger.log(`Starting BI enrichment pass for account ${accountId} (${acc.subdomain})...`);
     while (true) {
+      const currentAcc = await this.prisma.account.findUnique({ where: { id: accountId }, select: { syncStatus: true, status: true } });
+      if (!currentAcc || currentAcc.status !== 'connected' || currentAcc.syncStatus === 'stopped') {
+        this.logger.warn(`BI enrichment for account ${accountId} was stopped.`);
+        return;
+      }
       const resp = await this.crm.request<any>(accountId, acc.subdomain, acc.baseDomain, token, {
         method: 'GET',
         path: '/api/v4/leads',
         params: { page, limit: 250, with: 'tags,contacts,loss_reason,source_id,source' },
       });
-      if (resp.status !== 200 && resp.status !== 204) break;
+      if (resp.status === 401) {
+        const refreshed = await this.tryRefreshToken(accountId, acc.encryptedToken);
+        if (refreshed) {
+          acc.encryptedToken = refreshed.encryptedToken;
+          token = refreshed.token;
+          continue;
+        }
+        await this.markTokenExpired(accountId, acc.encryptedToken);
+        throw new AppException('AMO_CRM_TOKEN_EXPIRED', 401, 'Token expired');
+      }
+      if (resp.status !== 200 && resp.status !== 204) {
+        throw new AppException('AMO_CRM_ERROR', 502, `enrich leads: ${resp.status}`);
+      }
       const items = resp.status === 204 ? [] : (resp.data?._embedded?.leads || []);
       for (const amo of items) {
         try {
@@ -80,7 +97,7 @@ export class DeltaSyncProcessor {
     const acc = await this.prisma.account.findUnique({ where: { id: accountId } });
     if (!acc || !acc.encryptedToken || acc.status !== 'connected' || acc.backfillStatus !== 'done' || acc.syncStatus === 'stopped') return;
     const syncCtx = await this.events.buildSyncContext(accountId);
-    const token = this.crypto.decrypt(acc.encryptedToken);
+    let token = this.crypto.decrypt(acc.encryptedToken);
     const jobStartedAt = new Date();
     const windowFrom = acc.lastSyncedAt;
     if (!windowFrom) return;
@@ -96,7 +113,16 @@ export class DeltaSyncProcessor {
         method: 'GET', path: '/api/v4/leads',
         params: { 'filter[updated_at][from]': Math.floor(windowFrom.getTime()/1000), page, limit: 250, with: 'tags,contacts,loss_reason,source_id,source' },
       });
-      if (resp.status === 401) { await this.markTokenExpired(accountId); throw new AppException('AMO_CRM_TOKEN_EXPIRED', 401, 'Token expired'); }
+      if (resp.status === 401) {
+        const refreshed = await this.tryRefreshToken(accountId, acc.encryptedToken);
+        if (refreshed) {
+          acc.encryptedToken = refreshed.encryptedToken;
+          token = refreshed.token;
+          continue;
+        }
+        await this.markTokenExpired(accountId, acc.encryptedToken);
+        throw new AppException('AMO_CRM_TOKEN_EXPIRED', 401, 'Token expired');
+      }
       if (resp.status !== 200 && resp.status !== 204) throw new AppException('AMO_CRM_ERROR', 502, `leads: ${resp.status}`);
       const items = resp.status === 204 ? [] : (resp.data?._embedded?.leads || []);
       for (const amo of items) {
@@ -113,6 +139,11 @@ export class DeltaSyncProcessor {
     const eventGroups = new Map<number, any[]>();
     page = 1;
     while (true) {
+      const currentAcc = await this.prisma.account.findUnique({ where: { id: accountId }, select: { syncStatus: true, status: true } });
+      if (!currentAcc || currentAcc.status !== 'connected' || currentAcc.syncStatus === 'stopped') {
+        this.logger.warn(`Delta sync for account ${accountId} was stopped.`);
+        return;
+      }
       const resp = await this.crm.request<any>(accountId, acc.subdomain, acc.baseDomain, token, {
         method: 'GET', path: '/api/v4/events',
         params: {
@@ -121,7 +152,16 @@ export class DeltaSyncProcessor {
           page, limit: 250,
         },
       });
-      if (resp.status === 401) { await this.markTokenExpired(accountId); throw new AppException('AMO_CRM_TOKEN_EXPIRED', 401, 'Token expired'); }
+      if (resp.status === 401) {
+        const refreshed = await this.tryRefreshToken(accountId, acc.encryptedToken);
+        if (refreshed) {
+          acc.encryptedToken = refreshed.encryptedToken;
+          token = refreshed.token;
+          continue;
+        }
+        await this.markTokenExpired(accountId, acc.encryptedToken);
+        throw new AppException('AMO_CRM_TOKEN_EXPIRED', 401, 'Token expired');
+      }
       if (resp.status !== 200 && resp.status !== 204) throw new AppException('AMO_CRM_ERROR', 502, `events: ${resp.status}`);
       const items = resp.status === 204 ? [] : (resp.data?._embedded?.events || []);
       for (const ev of items) {
@@ -183,7 +223,33 @@ export class DeltaSyncProcessor {
     const overlap = parseInt(process.env.SYNC_OVERLAP_MINUTES || '2', 10) * 60 * 1000;
     await this.prisma.account.update({ where: { id: accountId }, data: { lastSyncedAt: new Date(jobStartedAt.getTime() - overlap) } });
   }
-  private async markTokenExpired(accountId: number) {
+
+  private async tryRefreshToken(accountId: number, currentEncryptedToken: string): Promise<{ encryptedToken: string; token: string } | null> {
+    const freshAcc = await this.prisma.account.findUnique({
+      where: { id: accountId },
+      select: { encryptedToken: true, status: true, syncStatus: true },
+    });
+    if (
+      freshAcc?.encryptedToken &&
+      freshAcc.encryptedToken !== currentEncryptedToken &&
+      freshAcc.status === 'connected' &&
+      freshAcc.syncStatus !== 'stopped'
+    ) {
+      return {
+        encryptedToken: freshAcc.encryptedToken,
+        token: this.crypto.decrypt(freshAcc.encryptedToken),
+      };
+    }
+    return null;
+  }
+
+  private async markTokenExpired(accountId: number, usedEncryptedToken?: string) {
+    if (usedEncryptedToken) {
+      const freshAcc = await this.prisma.account.findUnique({ where: { id: accountId }, select: { encryptedToken: true } });
+      if (freshAcc?.encryptedToken && freshAcc.encryptedToken !== usedEncryptedToken) {
+        return;
+      }
+    }
     await this.prisma.account.update({ where: { id: accountId }, data: { tokenStatus: 'expired' } });
     await this.prisma.notification.create({ data: { accountId, type: 'token_expired', message: 'amoCRM token has expired. Please update it.' } });
   }
