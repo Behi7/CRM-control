@@ -265,6 +265,7 @@ export default function BiAnalyticsPage() {
       .map(Number)
       .filter((n) => Number.isInteger(n) && n > 0),
   );
+  const [selectedSourceIds, setSelectedSourceIds] = useState<number[]>([]);
   const [datePreset, setDatePreset] = useState<DatePreset>(
     (searchParams.get('preset') as DatePreset) || 'all',
   );
@@ -284,6 +285,7 @@ export default function BiAnalyticsPage() {
       .filter(Boolean)
       .map(Number)
       .filter((n) => Number.isInteger(n) && n > 0),
+    sourceIds: [] as number[],
     datePreset: ((searchParams.get('preset') as DatePreset) || 'all') as DatePreset,
     dateFrom: searchParams.get('dateFrom') || '',
     dateTo: searchParams.get('dateTo') || '',
@@ -297,7 +299,8 @@ export default function BiAnalyticsPage() {
     dateFrom !== appliedFilters.dateFrom ||
     dateTo !== appliedFilters.dateTo ||
     selectedManagerIds.join(',') !== appliedFilters.managerIds.join(',') ||
-    selectedTagIds.join(',') !== appliedFilters.tagIds.join(',');
+    selectedTagIds.join(',') !== appliedFilters.tagIds.join(',') ||
+    selectedSourceIds.join(',') !== appliedFilters.sourceIds.join(',');
 
   const syncUrlParams = (
     nextPipe: number | null,
@@ -380,7 +383,7 @@ export default function BiAnalyticsPage() {
     ],
     queryFn: () => {
       const activeSourceNames = appliedFilters.sourceIds
-        .map((id) => prevSourcesRef.current.find((s) => s.id === id)?.name)
+        .map((id: number) => prevSourcesRef.current.find((s) => s.id === id)?.name)
         .filter(Boolean) as string[];
       return py2Api.analytics(effectiveAccountId!, {
         pipelineId: appliedFilters.pipelineId,
