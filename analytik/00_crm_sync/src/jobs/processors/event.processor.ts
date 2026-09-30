@@ -150,6 +150,18 @@ export class EventProcessor {
       ? embeddedLoss[0]?.name || null
       : (embeddedLoss as any)?.name || null;
 
+    const embeddedSource = (amo._embedded as any)?.source;
+    const sourceExternalId =
+      (amo as any).source_id != null
+        ? String((amo as any).source_id)
+        : embeddedSource?.id != null
+        ? String(embeddedSource.id)
+        : null;
+    const sourceName =
+      embeddedSource?.name != null && String(embeddedSource.name).trim() !== ''
+        ? String(embeddedSource.name).trim()
+        : null;
+
     const contacts = amo._embedded?.contacts || [];
     const mainContact = contacts.find((c: any) => c.is_main) || contacts[0];
     const mainContactId = mainContact?.id != null ? String(mainContact.id) : null;
@@ -189,6 +201,8 @@ export class EventProcessor {
     const enrichmentData: Record<string, any> = {
       lossReasonId,
       lossReasonName,
+      ...(sourceExternalId ? { sourceExternalId } : {}),
+      ...(sourceName ? { sourceName } : {}),
       mainContactId,
       closestTaskAt,
       ...(customFields !== undefined ? { customFields } : {}),

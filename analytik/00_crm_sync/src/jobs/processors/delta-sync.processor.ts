@@ -47,7 +47,10 @@ export class DeltaSyncProcessor {
 
   async runEnrich(accountId: number) {
     const acc = await this.prisma.account.findUnique({ where: { id: accountId } });
-    if (!acc || !acc.encryptedToken || acc.status !== 'connected') return;
+    if (!acc || !acc.encryptedToken || acc.status !== 'connected' || acc.syncStatus === 'stopped') {
+      this.logger.warn(`Skipping BI enrichment for account ${accountId} because syncStatus is stopped or disconnected.`);
+      return;
+    }
     const syncCtx = await this.events.buildSyncContext(accountId);
     const token = this.crypto.decrypt(acc.encryptedToken);
     let page = 1;
@@ -56,7 +59,7 @@ export class DeltaSyncProcessor {
       const resp = await this.crm.request<any>(accountId, acc.subdomain, acc.baseDomain, token, {
         method: 'GET',
         path: '/api/v4/leads',
-        params: { page, limit: 250, with: 'tags,contacts,loss_reason' },
+        params: { page, limit: 250, with: 'tags,contacts,loss_reason,source_id,source' },
       });
       if (resp.status !== 200 && resp.status !== 204) break;
       const items = resp.status === 204 ? [] : (resp.data?._embedded?.leads || []);
@@ -91,7 +94,7 @@ export class DeltaSyncProcessor {
       }
       const resp = await this.crm.request<any>(accountId, acc.subdomain, acc.baseDomain, token, {
         method: 'GET', path: '/api/v4/leads',
-        params: { 'filter[updated_at][from]': Math.floor(windowFrom.getTime()/1000), page, limit: 250, with: 'tags,contacts,loss_reason' },
+        params: { 'filter[updated_at][from]': Math.floor(windowFrom.getTime()/1000), page, limit: 250, with: 'tags,contacts,loss_reason,source_id,source' },
       });
       if (resp.status === 401) { await this.markTokenExpired(accountId); throw new AppException('AMO_CRM_TOKEN_EXPIRED', 401, 'Token expired'); }
       if (resp.status !== 200 && resp.status !== 204) throw new AppException('AMO_CRM_ERROR', 502, `leads: ${resp.status}`);

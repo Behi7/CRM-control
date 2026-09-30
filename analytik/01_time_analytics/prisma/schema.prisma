@@ -137,6 +137,8 @@ model Lead {
   utmCampaign       String?   @map("utm_campaign") @db.Text
   utmContent        String?   @map("utm_content") @db.Text
   utmTerm           String?   @map("utm_term") @db.Text
+  sourceExternalId  String?   @map("source_external_id") @db.Text
+  sourceName        String?   @map("source_name") @db.Text
   crmCreatedAt      DateTime  @map("crm_created_at") @db.Timestamptz()
   crmClosedAt       DateTime? @map("crm_closed_at") @db.Timestamptz()
   updatedAt         DateTime  @map("updated_at") @db.Timestamptz()
@@ -156,6 +158,7 @@ model Lead {
   @@index([accountId, responsibleUserId])
   @@index([accountId, crmCreatedAt])
   @@index([accountId, utmSource])
+  @@index([accountId, sourceName])
   @@index([accountId, mainContactId])
   @@index([accountId, lossReasonName])
   @@map("leads")

@@ -152,6 +152,7 @@ export const py2Api = {
       dateTo?: string;
       managerIds?: number[];
       tagIds?: number[];
+      sources?: string[];
     } = {},
   ) => {
     const p = new URLSearchParams();
@@ -160,6 +161,7 @@ export const py2Api = {
     if (params.dateTo) p.set('date_to', params.dateTo);
     if (params.managerIds?.length) p.set('manager_ids', params.managerIds.join(','));
     if (params.tagIds?.length) p.set('tag_ids', params.tagIds.join(','));
+    if (params.sources?.length) p.set('sources', params.sources.join('||'));
     const qs = p.toString();
     return api<any>(`/py2/analytics/${accountId}${qs ? `?${qs}` : ''}`);
   },

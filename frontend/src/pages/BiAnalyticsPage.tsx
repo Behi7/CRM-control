@@ -337,6 +337,7 @@ export default function BiAnalyticsPage() {
       pipelineId,
       managerIds: [...selectedManagerIds],
       tagIds: [...selectedTagIds],
+      sourceIds: [...selectedSourceIds],
       datePreset,
       dateFrom,
       dateTo,
@@ -348,6 +349,7 @@ export default function BiAnalyticsPage() {
     setPipelineId(null);
     setSelectedManagerIds([]);
     setSelectedTagIds([]);
+    setSelectedSourceIds([]);
     setDatePreset('all');
     setDateFrom('');
     setDateTo('');
@@ -355,12 +357,15 @@ export default function BiAnalyticsPage() {
       pipelineId: null,
       managerIds: [],
       tagIds: [],
+      sourceIds: [],
       datePreset: 'all',
       dateFrom: '',
       dateTo: '',
     });
     syncUrlParams(null, [], [], 'all', '', '');
   };
+
+  const prevSourcesRef = useRef<MultiSelectOption[]>([]);
 
   const biQuery = useQuery({
     queryKey: [
@@ -371,17 +376,26 @@ export default function BiAnalyticsPage() {
       appliedFilters.dateTo,
       appliedFilters.managerIds,
       appliedFilters.tagIds,
+      appliedFilters.sourceIds,
     ],
-    queryFn: () =>
-      py2Api.analytics(effectiveAccountId!, {
+    queryFn: () => {
+      const activeSourceNames = appliedFilters.sourceIds
+        .map((id) => prevSourcesRef.current.find((s) => s.id === id)?.name)
+        .filter(Boolean) as string[];
+      return py2Api.analytics(effectiveAccountId!, {
         pipelineId: appliedFilters.pipelineId,
         dateFrom: appliedFilters.dateFrom || undefined,
         dateTo: appliedFilters.dateTo || undefined,
         managerIds: appliedFilters.managerIds.length > 0 ? appliedFilters.managerIds : undefined,
         tagIds: appliedFilters.tagIds.length > 0 ? appliedFilters.tagIds : undefined,
-      }),
+        sources: activeSourceNames.length > 0 ? activeSourceNames : undefined,
+      });
+    },
     enabled: !!effectiveAccountId,
   });
+  if (biQuery.data?.filtersMeta?.sources?.length) {
+    prevSourcesRef.current = biQuery.data.filtersMeta.sources;
+  }
 
   const enrichMut = useMutation({
     mutationFn: () => py2Api.triggerEnrich(effectiveAccountId!),
@@ -397,6 +411,7 @@ export default function BiAnalyticsPage() {
   const pipelines = data?.filtersMeta?.pipelines || [];
   const managersList: MultiSelectOption[] = data?.filtersMeta?.managers || [];
   const tagsList: MultiSelectOption[] = data?.filtersMeta?.tags || [];
+  const sourcesList: MultiSelectOption[] = data?.filtersMeta?.sources || [];
   const managers = data?.managers || [];
   const timeseries = data?.timeseries || [];
   const marketing = data?.marketing || { utmSources: [], tagsBreakdown: [], customFieldsBreakdown: [] };
@@ -483,6 +498,16 @@ export default function BiAnalyticsPage() {
             prefix="#"
             icon={<TagIcon size={13} />}
             onChange={(nextIds) => setSelectedTagIds(nextIds)}
+          />
+
+          {/* Multi-select Lead Sources */}
+          <MultiSelectDropdown
+            label="Источники"
+            placeholder="Все источники"
+            options={sourcesList}
+            selectedIds={selectedSourceIds}
+            icon={<Target size={13} />}
+            onChange={(nextIds) => setSelectedSourceIds(nextIds)}
           />
 
           {/* Date presets */}
@@ -850,22 +875,34 @@ export default function BiAnalyticsPage() {
             </div>
           )}
 
-          {/* ================= TAB 3: MARKETING, UTM & TAGS ================= */}
+          {/* ================= TAB 3: MARKETING, LEAD SOURCES & TAGS ================= */}
           {activeTab === 'marketing' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* UTM Sources */}
+                {/* AmoCRM Lead Sources */}
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
-                  <h3 className="text-base font-bold mb-3 text-slate-900 dark:text-white">
-                    Эффективность по источникам трафика (UTM Source)
-                  </h3>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                        Эффективность по источникам сделок (AmoCRM Источники)
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Системный фильтр «Источник сделок» из AmoCRM (_embedded.source), UTM и телефония
+                      </p>
+                    </div>
+                    <span className="text-xs px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold">
+                      Источников: {(marketing.utmSources || []).length}
+                    </span>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
                         <tr>
-                          <th className="p-2.5 text-left">Источник (utm_source)</th>
+                          <th className="p-2.5 text-left">Источник сделки (AmoCRM)</th>
                           <th className="p-2.5 text-right">Лиды</th>
+                          <th className="p-2.5 text-right">Доля %</th>
                           <th className="p-2.5 text-right">Продажи</th>
+                          <th className="p-2.5 text-right">Отказ</th>
                           <th className="p-2.5 text-right">CR%</th>
                           <th className="p-2.5 text-right">Выручка</th>
                         </tr>
@@ -873,11 +910,13 @@ export default function BiAnalyticsPage() {
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                         {(marketing.utmSources || []).map((u: any) => (
                           <tr key={u.source} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                            <td className="p-2.5 font-semibold">{u.source}</td>
-                            <td className="p-2.5 text-right">{u.totalLeads}</td>
-                            <td className="p-2.5 text-right text-emerald-600 font-semibold">{u.wonLeads}</td>
-                            <td className="p-2.5 text-right">{u.winRate}%</td>
-                            <td className="p-2.5 text-right font-bold">{fmtMoney(u.revenue)}</td>
+                            <td className="p-2.5 font-semibold text-slate-900 dark:text-white">{u.source}</td>
+                            <td className="p-2.5 text-right font-bold">{fmtCount(u.totalLeads)}</td>
+                            <td className="p-2.5 text-right text-slate-500">{u.sharePercent ?? 0}%</td>
+                            <td className="p-2.5 text-right text-emerald-600 font-semibold">{fmtCount(u.wonLeads)}</td>
+                            <td className="p-2.5 text-right text-rose-500">{fmtCount(u.lostLeads)}</td>
+                            <td className="p-2.5 text-right font-semibold">{u.winRate}%</td>
+                            <td className="p-2.5 text-right font-bold text-emerald-600 dark:text-emerald-400">{fmtMoney(u.revenue)}</td>
                           </tr>
                         ))}
                       </tbody>

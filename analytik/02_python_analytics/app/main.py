@@ -104,6 +104,7 @@ def get_detailed_analytics(
     date_to: Optional[str] = Query(default=None),
     manager_ids: Optional[str] = Query(default=None),
     tag_ids: Optional[str] = Query(default=None),
+    sources: Optional[str] = Query(default=None),
     user: dict = Depends(get_current_user),
 ):
     """Глубокая BI-аналитика AmoCRM по аккаунту."""
@@ -144,6 +145,30 @@ def get_detailed_analytics(
                 {"acc_id": account_id},
             ).mappings().all()
         ]
+        source_rows = conn.execute(
+            text("""
+                SELECT DISTINCT
+                    COALESCE(
+                        NULLIF(TRIM(l.source_name), ''),
+                        NULLIF(TRIM(l.utm_source), ''),
+                        CASE
+                            WHEN l.name ILIKE '%входящий звонок%' OR l.name ILIKE '%автосделка: пропущенный%' THEN 'Телефония (Входящий звонок)'
+                            WHEN l.name ILIKE 'Lead %' OR l.name ILIKE '%facebook%' THEN 'Facebook / Instagram Lead Ads'
+                            WHEN l.name ILIKE '%telegram%' THEN 'Telegram'
+                            ELSE NULL
+                        END
+                    ) AS name
+                FROM leads l
+                WHERE l.account_id = :acc_id
+                ORDER BY 1 ASC
+            """),
+            {"acc_id": account_id},
+        ).mappings().all()
+        sources_list = [
+            {"id": idx + 1, "name": r["name"]}
+            for idx, r in enumerate(source_rows)
+            if r["name"]
+        ]
 
         # Формируем условия фильтрации
         conditions = ["l.account_id = :acc_id"]
@@ -174,6 +199,25 @@ def get_detailed_analytics(
                     "EXISTS (SELECT 1 FROM lead_tags lt WHERE lt.lead_id = l.id AND lt.tag_id = ANY(:t_ids))"
                 )
                 params["t_ids"] = t_ids
+
+        if sources:
+            src_names = [x.strip() for x in sources.split("||") if x.strip()]
+            if not src_names:
+                src_names = [x.strip() for x in sources.split(",") if x.strip()]
+            if src_names:
+                conditions.append("""
+                    COALESCE(
+                        NULLIF(TRIM(l.source_name), ''),
+                        NULLIF(TRIM(l.utm_source), ''),
+                        CASE
+                            WHEN l.name ILIKE '%входящий звонок%' OR l.name ILIKE '%автосделка: пропущенный%' THEN 'Телефония (Входящий звонок)'
+                            WHEN l.name ILIKE 'Lead %' OR l.name ILIKE '%facebook%' THEN 'Facebook / Instagram Lead Ads'
+                            WHEN l.name ILIKE '%telegram%' THEN 'Telegram'
+                            ELSE 'Не указан в AmoCRM'
+                        END
+                    ) = ANY(:src_names)
+                """)
+                params["src_names"] = src_names
 
         where_sql = " AND ".join(conditions)
 
@@ -332,11 +376,20 @@ def get_detailed_analytics(
                 "stageSkipsCount": int(r["stageSkipsCount"] or 0),
             })
 
-        # 5. Маркетинг, UTM-источники, Теги и Кастомные поля
+        # 5. Маркетинг, Источники сделок AmoCRM, Теги и Кастомные поля
         utm_rows = conn.execute(
             text(f"""
                 SELECT
-                    COALESCE(NULLIF(TRIM(l.utm_source), ''), 'Прямой / Не указан') AS source,
+                    COALESCE(
+                        NULLIF(TRIM(l.source_name), ''),
+                        NULLIF(TRIM(l.utm_source), ''),
+                        CASE
+                            WHEN l.name ILIKE '%входящий звонок%' OR l.name ILIKE '%автосделка: пропущенный%' THEN 'Телефония (Входящий звонок)'
+                            WHEN l.name ILIKE 'Lead %' OR l.name ILIKE '%facebook%' THEN 'Facebook / Instagram Lead Ads'
+                            WHEN l.name ILIKE '%telegram%' THEN 'Telegram'
+                            ELSE 'Не указан в AmoCRM'
+                        END
+                    ) AS source,
                     COUNT(*) AS "totalLeads",
                     COUNT(*) FILTER (WHERE l.status = 'won') AS "wonLeads",
                     COUNT(*) FILTER (WHERE l.status = 'lost') AS "lostLeads",
@@ -347,7 +400,7 @@ def get_detailed_analytics(
                 WHERE {where_sql}
                 GROUP BY 1
                 ORDER BY "totalLeads" DESC, revenue DESC
-                LIMIT 20
+                LIMIT 30
             """),
             params,
         ).mappings().all()
@@ -356,6 +409,7 @@ def get_detailed_analytics(
             {
                 "source": r["source"],
                 "totalLeads": int(r["totalLeads"]),
+                "sharePercent": round(int(r["totalLeads"]) / total_leads * 100, 1) if total_leads > 0 else 0.0,
                 "wonLeads": int(r["wonLeads"]),
                 "lostLeads": int(r["lostLeads"]),
                 "openLeads": int(r["openLeads"]),
@@ -647,6 +701,7 @@ def get_detailed_analytics(
                 "pipelines": pipelines,
                 "managers": managers_list,
                 "tags": tags_list,
+                "sources": sources_list,
             },
             "kpis": kpis,
             "timeseries": timeseries,
