@@ -203,17 +203,28 @@ export default function AiChatDrawer({
     });
   }, [lang, t]);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (smooth = true) => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto',
+      });
+    }
   };
 
   useEffect(() => {
     if (isOpen) {
-      scrollToBottom();
+      scrollToBottom(false);
     }
-  }, [messages, isOpen]);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && messages.length > 1) {
+      scrollToBottom(true);
+    }
+  }, [messages]);
 
   const sendMut = useMutation({
     mutationFn: (userText: string) => {
@@ -420,7 +431,10 @@ export default function AiChatDrawer({
           )}
 
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-950/60">
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-950/60"
+          >
             {messages.map((m) => {
               const isUser = m.role === 'user';
               return (
@@ -454,7 +468,6 @@ export default function AiChatDrawer({
                 </div>
               </div>
             )}
-            <div ref={messagesEndRef} />
           </div>
 
           {/* Quick prompt suggestions */}

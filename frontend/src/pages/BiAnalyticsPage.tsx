@@ -472,7 +472,7 @@ export default function BiAnalyticsPage() {
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
             onClick={() => enrichMut.mutate()}
             disabled={enrichMut.isPending}
@@ -2166,7 +2166,7 @@ export default function BiAnalyticsPage() {
         {/* Docked AI Assistant Panel on Desktop (>= 1280px) */}
         {effectiveAccountId && isWideScreen && (
           <aside
-            className={`w-[420px] 2xl:w-[460px] shrink-0 sticky top-4 h-[calc(100vh-2rem)] z-30 ${
+            className={`w-[420px] 2xl:w-[460px] shrink-0 sticky top-6 h-[calc(100vh-3rem)] z-30 ${
               chatOpen ? 'block' : 'hidden'
             }`}
           >
