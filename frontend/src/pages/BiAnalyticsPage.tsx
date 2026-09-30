@@ -946,11 +946,8 @@ export default function BiAnalyticsPage() {
                       <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
                         <div>
                           <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                            График-горы: Успешно реализованные (Won) vs Нереализованные (Отказ)
+                            Торговые графики
                           </h3>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            Наведите курсор на любой месяц для точных цифр • Переключайте масштаб и годы прямо на графике без изменения общего фильтра
-                          </p>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
