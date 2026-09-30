@@ -139,6 +139,8 @@ export const userApi = {
     pipelineId?: number;
     filters?: FilterParams;
     lang?: 'ru' | 'uz';
+    biData?: any;
+    biSelectedBlocks?: string[];
   }) => api<{ reply: string }>(`/accounts/${accountId}/ai/chat`, { method: 'POST', body: JSON.stringify(data) }),
 };
 

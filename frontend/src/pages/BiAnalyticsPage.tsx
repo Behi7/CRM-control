@@ -21,10 +21,13 @@ import {
   Check,
   Search,
   X,
+  Sparkles,
 } from 'lucide-react';
-import { py2Api } from '../api/client';
+import { py2Api, userApi } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { useLanguage } from '../i18n/LanguageContext';
 import { decodeJwt } from '../lib/jwt';
+import AiChatDrawer from '../components/AiChatDrawer';
 
 type DatePreset = 'all' | 'today' | 'yesterday' | '7days' | '30days' | 'thismonth' | 'custom';
 type BiTab = 'overview' | 'managers' | 'marketing' | 'losses_ltv' | 'custom_fields' | 'risk_audit';
@@ -231,9 +234,11 @@ function fmtCount(val: number | undefined | null): string {
 export default function BiAnalyticsPage() {
   const { accountId: paramAccountId } = useParams<{ accountId?: string }>();
   const { role } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [chatOpen, setChatOpen] = useState(false);
 
   const decodedAccountId = (() => {
     const token = localStorage.getItem('access_token');
@@ -244,6 +249,13 @@ export default function BiAnalyticsPage() {
   const effectiveAccountId =
     (paramAccountId ? parseInt(paramAccountId, 10) : null) ??
     (role === 'viewer' ? decodedAccountId : storedAccId ?? 1);
+
+  // AI Status query
+  const aiStatus = useQuery({
+    queryKey: ['ai-status', effectiveAccountId],
+    queryFn: () => userApi.getAiStatus(effectiveAccountId!),
+    enabled: !!effectiveAccountId,
+  });
 
   const [activeTab, setActiveTab] = useState<BiTab>('overview');
 
@@ -2133,6 +2145,43 @@ export default function BiAnalyticsPage() {
             );
           })()}
         </>
+      )}
+
+      {/* Floating AI Action Button */}
+      {aiStatus.data?.enabled && !chatOpen && (
+        <button
+          type="button"
+          onClick={() => setChatOpen(true)}
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all cursor-pointer group"
+          title={t('nav_ai_analyst_title')}
+        >
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+          </span>
+          <Sparkles size={18} className="text-yellow-300 fill-yellow-300 group-hover:scale-110 transition-transform" />
+          <span className="text-sm">{t('nav_ai_analyst')}</span>
+        </button>
+      )}
+
+      {/* AI Chat Drawer */}
+      {effectiveAccountId && (
+        <AiChatDrawer
+          accountId={effectiveAccountId}
+          isOpen={chatOpen}
+          onClose={() => setChatOpen(false)}
+          pipelineId={appliedFilters.pipelineId}
+          pipelineName={pipelines.find((p: any) => p.id === appliedFilters.pipelineId)?.name}
+          filters={{
+            managerIds: appliedFilters.managerIds,
+            tagIds: appliedFilters.tagIds,
+            dateFrom: appliedFilters.dateFrom || undefined,
+            dateTo: appliedFilters.dateTo || undefined,
+          }}
+          modelName={aiStatus.data?.model}
+          biData={data}
+          activeBiTab={activeTab}
+        />
       )}
     </div>
   );

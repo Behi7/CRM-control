@@ -30,6 +30,26 @@ interface AiChatDrawerProps {
   pipelineName?: string;
   filters?: FilterParams;
   modelName?: string;
+  biData?: any;
+  activeBiTab?: string;
+}
+
+const BI_AVAILABLE_BLOCKS = [
+  { id: 'overview', label: '1. Обзор' },
+  { id: 'managers', label: '2. Менеджеры' },
+  { id: 'marketing', label: '3. Источники' },
+  { id: 'losses', label: '4. Отказы' },
+  { id: 'custom_fields', label: '5. Списки' },
+  { id: 'risk_deals', label: '6. Зона риска' },
+];
+
+function tabToBlockId(tab?: string): string {
+  if (tab === 'managers') return 'managers';
+  if (tab === 'marketing') return 'marketing';
+  if (tab === 'losses_ltv') return 'losses';
+  if (tab === 'custom_fields') return 'custom_fields';
+  if (tab === 'risk_audit') return 'risk_deals';
+  return 'overview';
 }
 
 // Simple and safe markdown formatter for AI responses
@@ -118,10 +138,21 @@ export default function AiChatDrawer({
   pipelineName,
   filters,
   modelName,
+  biData,
+  activeBiTab,
 }: AiChatDrawerProps) {
   const { lang, t } = useLanguage();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [selectedBiBlocks, setSelectedBiBlocks] = useState<string[]>(() => [tabToBlockId(activeBiTab)]);
+
+  // Keep default block synced with active tab when opened
+  useEffect(() => {
+    if (activeBiTab && biData) {
+      const bId = tabToBlockId(activeBiTab);
+      setSelectedBiBlocks((prev) => (prev.includes(bId) ? prev : [bId, ...prev]));
+    }
+  }, [activeBiTab, biData]);
 
   // Update welcome message when lang changes or initially
   useEffect(() => {
@@ -159,6 +190,8 @@ export default function AiChatDrawer({
         pipelineId: pipelineId || undefined,
         filters: filters,
         lang,
+        biData: biData || undefined,
+        biSelectedBlocks: biData ? selectedBiBlocks : undefined,
       });
     },
     onSuccess: (data) => {
@@ -204,23 +237,41 @@ export default function AiChatDrawer({
     }
   };
 
-  const quickPrompts = [
-    {
-      icon: TrendingDown,
-      label: t('ai_prompt_bottleneck_label'),
-      query: t('ai_prompt_bottleneck_query'),
-    },
-    {
-      icon: AlertTriangle,
-      label: t('ai_prompt_skips_label'),
-      query: t('ai_prompt_skips_query'),
-    },
-    {
-      icon: Lightbulb,
-      label: t('ai_prompt_advice_label'),
-      query: t('ai_prompt_advice_query'),
-    },
-  ];
+  const quickPrompts = biData
+    ? [
+        {
+          icon: Lightbulb,
+          label: 'Аудит показателей',
+          query: 'Проведи аудит текущих показателей и воронки продаж',
+        },
+        {
+          icon: AlertTriangle,
+          label: 'Утечки бюджета',
+          query: 'Где мы теряем больше всего денег и почему?',
+        },
+        {
+          icon: TrendingDown,
+          label: 'Менеджеры и дисциплина',
+          query: 'Оцени работу менеджеров и соблюдение CRM-дисциплины',
+        },
+      ]
+    : [
+        {
+          icon: TrendingDown,
+          label: t('ai_prompt_bottleneck_label'),
+          query: t('ai_prompt_bottleneck_query'),
+        },
+        {
+          icon: AlertTriangle,
+          label: t('ai_prompt_skips_label'),
+          query: t('ai_prompt_skips_query'),
+        },
+        {
+          icon: Lightbulb,
+          label: t('ai_prompt_advice_label'),
+          query: t('ai_prompt_advice_query'),
+        },
+      ];
 
   if (!isOpen) return null;
 
@@ -292,10 +343,66 @@ export default function AiChatDrawer({
             <div className="flex items-center gap-1.5 truncate">
               <CheckCircle size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span className="truncate">
-                {t('ai_connected_pill')}
+                {biData ? 'BI-Аналитика подключена (Контекст экрана)' : t('ai_connected_pill')}
               </span>
             </div>
+            {biData && (
+              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                Выбрано блоков: {selectedBiBlocks.length} из {BI_AVAILABLE_BLOCKS.length}
+              </span>
+            )}
           </div>
+
+          {/* Interactive BI Blocks Context Selector (when in BI Module 02) */}
+          {biData && (
+            <div className="bg-white dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700 dark:text-slate-200">
+                  Контекст экрана для ИИ:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedBiBlocks.length === BI_AVAILABLE_BLOCKS.length) {
+                      setSelectedBiBlocks([tabToBlockId(activeBiTab)]);
+                    } else {
+                      setSelectedBiBlocks(BI_AVAILABLE_BLOCKS.map((b) => b.id));
+                    }
+                  }}
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
+                >
+                  {selectedBiBlocks.length === BI_AVAILABLE_BLOCKS.length ? 'Сбросить к текущей' : '⚡ Выбрать всё'}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {BI_AVAILABLE_BLOCKS.map((block) => {
+                  const active = selectedBiBlocks.includes(block.id);
+                  return (
+                    <button
+                      key={block.id}
+                      type="button"
+                      onClick={() => {
+                        if (active) {
+                          if (selectedBiBlocks.length > 1) {
+                            setSelectedBiBlocks(selectedBiBlocks.filter((id) => id !== block.id));
+                          }
+                        } else {
+                          setSelectedBiBlocks([...selectedBiBlocks, block.id]);
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                        active
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {active ? '✓ ' : '+ '} {block.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Chat Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-950/60">

@@ -54,5 +54,12 @@ export class AiChatDto {
   @IsOptional()
   @IsString()
   lang?: 'ru' | 'uz';
+
+  @IsOptional()
+  biData?: any;
+
+  @IsOptional()
+  @IsArray()
+  biSelectedBlocks?: string[];
 }
 

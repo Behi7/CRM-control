@@ -98,6 +98,117 @@ export class AiService {
 
     const cleanModel = (acc.aiModel || 'gemini-2.5-flash').trim().replace(/^models\//, '');
 
+    // BI ANALYTICS (MODULE 02) CONTEXT HANDLER
+    if (dto.biData) {
+      const bi = dto.biData;
+      const selected = Array.isArray(dto.biSelectedBlocks) && dto.biSelectedBlocks.length > 0
+        ? dto.biSelectedBlocks
+        : ['overview'];
+      const isUz = dto.lang === 'uz';
+
+      let biContext = isUz ? "=== AMO-CRM BI ANALITIKA MA'LUMOTLARI ===\n" : "=== ДАННЫЕ BI-АНАЛИТИКИ AMOCRM С ЭКРАНА ПОЛЬЗОВАТЕЛЯ ===\n";
+
+      // 1. Overview block
+      if (selected.includes('overview') && bi.kpis) {
+        const k = bi.kpis;
+        biContext += isUz
+          ? `\n[1. UMUMIY KPI VA MOLIYA]:\n- Jami bitimlar: ${k.totalLeads}\n- Muvaffaqiyatli (Won): ${k.wonLeads} ta, Tushum: ${k.totalRevenue}\n- Ish jarayonida (Open Pipeline): ${k.openLeads} ta, Potensial: ${k.openPipelineValue}\n- Rad etilgan (Lost): ${k.lostLeads} ta, Yo'qotilgan summa: ${k.lostRevenue}\n- O'rtacha chek: ${k.avgCheck}, Mediana chek: ${k.medianCheck}\n- Konversiya (Win Rate): ${k.winRateClosed}% (barcha yaratilganlardan: ${k.winRateTotal}%)\n- Vazifasiz bitimlar: ${k.noTaskLeads}, Kechiktirilgan vazifali: ${k.overdueTasksLeads}\n`
+          : `\n[1. СВОДНЫЕ KPI И ФИНАНСЫ]:\n- Всего сделок: ${k.totalLeads}\n- Успешно (Won): ${k.wonLeads} шт., Выручка: ${k.totalRevenue}\n- В работе (Open Pipeline): ${k.openLeads} шт., Потенциал: ${k.openPipelineValue}\n- Закрыто в отказ (Lost): ${k.lostLeads} шт., Упущенная выручка: ${k.lostRevenue}\n- Средний чек: ${k.avgCheck}, Медианный чек: ${k.medianCheck}\n- Конверсия (Win Rate): ${k.winRateClosed}% (от всех лидов: ${k.winRateTotal}%)\n- Сделок без задач: ${k.noTaskLeads}, С просроченными задачами: ${k.overdueTasksLeads}\n`;
+
+        if (Array.isArray(bi.timeseries) && bi.timeseries.length > 0) {
+          biContext += isUz ? "\nOYLAR BO'YICHA DINAMIKA:\n" : "\nДИНАМИКА ПО МЕСЯЦАМ:\n";
+          for (const m of bi.timeseries.slice(-12)) {
+            biContext += `  * ${m.period}: Jami/Всего=${m.totalLeads}, Won=${m.wonLeads}, Lost=${m.lostLeads}, Open=${m.openLeads}, Tushum/Выручка=${m.revenue}\n`;
+          }
+        }
+      }
+
+      // 2. Managers block
+      if (selected.includes('managers') && Array.isArray(bi.managers)) {
+        biContext += isUz ? "\n[2. MENEJERLAR REYTINQI VA INTIZOMI]:\n" : "\n[2. РЕЙТИНГ И ДИСЦИПЛИНА МЕНЕДЖЕРОВ]:\n";
+        for (const m of bi.managers) {
+          biContext += `  * ${m.managerName}: Bitimlar=${m.totalLeads}, Won=${m.wonLeads}, Lost=${m.lostLeads}, Open=${m.openLeads}, WinRate=${m.winRate}%, Tushum=${m.revenue}, O'rtachaChek=${m.avgCheck}, Vazifasiz=${m.noTaskLeads}, Kechiktirilgan=${m.overdueTasksLeads}\n`;
+        }
+      }
+
+      // 3. Marketing & Sources block
+      if (selected.includes('marketing') && bi.marketing) {
+        biContext += isUz ? "\n[3. BITIMLAR MANBALARI (AMOCRM MANBALAR)]:\n" : "\n[3. ИСТОЧНИКИ СДЕЛОК AMOCRM И ТРАФИК]:\n";
+        if (Array.isArray(bi.marketing.utmSources)) {
+          for (const s of bi.marketing.utmSources.slice(0, 15)) {
+            biContext += `  * Manba: "${s.source}" -> Lidlar=${s.totalLeads} (${s.sharePercent || 0}%), Won=${s.wonLeads}, CR=${s.winRate}%, Tushum=${s.revenue}\n`;
+          }
+        }
+        if (Array.isArray(bi.marketing.tagsBreakdown) && bi.marketing.tagsBreakdown.length > 0) {
+          biContext += isUz ? "\nTEGLAR BO'YICHA TAHLIL:\n" : "\nАНАЛИЗ ПО ТЕГАМ:\n";
+          for (const t of bi.marketing.tagsBreakdown.slice(0, 10)) {
+            biContext += `  * #${t.tagName}: Lidlar=${t.totalLeads}, Won=${t.wonLeads}, CR=${t.winRate}%, Tushum=${t.revenue}\n`;
+          }
+        }
+      }
+
+      // 4. Loss Reasons block
+      if (selected.includes('losses') && bi.lossesAndLtv && Array.isArray(bi.lossesAndLtv.lossReasons)) {
+        biContext += isUz ? "\n[4. RAD ETISH SABABLARI]:\n" : "\n[4. ПРИЧИНЫ ОТКАЗА]:\n";
+        for (const lr of bi.lossesAndLtv.lossReasons.slice(0, 15)) {
+          biContext += `  * Sabab: "${lr.reason}" -> Yo'qotilgan bitimlar=${lr.lostLeads} (${lr.sharePercent}%), Yo'qotilgan summa=${lr.lostValue}, O'rtacha chek=${lr.avgLostCheck || 0}\n`;
+        }
+      }
+
+      // 5. Custom Fields Lists block
+      if (selected.includes('custom_fields') && bi.marketing && Array.isArray(bi.marketing.customFieldsLists)) {
+        biContext += isUz ? "\n[5. RO'YXATLI MAYDONLAR TAHLILI (CUSTOM FIELDS BI)]:\n" : "\n[5. АНАЛИТИКА ПО СПИСОЧНЫМ КАСТОМНЫМ ПОЛЯМ]:\n";
+        for (const g of bi.marketing.customFieldsLists.slice(0, 6)) {
+          biContext += `  * Maydon: "${g.fieldName}" (Jami to'ldirilgan=${g.totalFilled}, WinRate=${g.winRate}%, Tushum=${g.wonValue}):\n`;
+          for (const opt of (g.options || []).slice(0, 6)) {
+            biContext += `      - "${opt.fieldValue}": Bitimlar=${opt.totalLeads} (${opt.shareOfField}%), Won=${opt.wonLeads}, WinRate=${opt.winRate}%, Tushum=${opt.wonValue}\n`;
+          }
+        }
+      }
+
+      // 6. Risk Deals block
+      if (selected.includes('risk_deals') && bi.lossesAndLtv && Array.isArray(bi.lossesAndLtv.riskDeals)) {
+        biContext += isUz ? "\n[6. XAVF OSTIDAGI BITIMLAR AUDITI (TOP-25)]:\n" : "\n[6. АУДИТ СДЕЛОК В ЗОНЕ РИСКА (ТОП-25)]:\n";
+        for (const d of bi.lossesAndLtv.riskDeals.slice(0, 10)) {
+          biContext += `  * "${d.name}": Byudjet=${d.price}, Bosqich=${d.stageName}, Menejer=${d.managerName}, Harakatsiz=${d.idleDays} kun, Xavf turi=${d.riskType}\n`;
+        }
+      }
+
+      let biSysInstruction = '';
+      if (isUz) {
+        biSysInstruction = `Sen — amoCRM bo'yicha yetakchi Biznes-Tahlilchi (Lead BI Analyst) va Sotuvlar bo'yicha Bosh Direktor (Chief Revenue Officer)san.\n`;
+        biSysInstruction += `Sening maqsading — sotuv bo'limi rahbari (ROP) va kompaniya asoschisiga tushumni oshirish, qayerda pul yo'qotilayotganini aniqlash, konversiyani oshirish va menejerlar intizomini yaxshilashda yordam berish.\n\n`;
+        if (acc.aiCompanyContext) {
+          biSysInstruction += `=== KOMPANIYA HAQIDA MA'LUMOT ===\n${acc.aiCompanyContext}\n\n`;
+        }
+        biSysInstruction += biContext + `\n\n=== JAVOB QOIDALARI ===
+1. ALBATTA O'ZBEK TILIDA (lotin yozuvida), aniq biznes uslubida javob ber.
+2. FOYDALANUVCHIDAN HECH QACHON QO'SHIMCHA MA'LUMOT SO'RAMA — barcha kerakli raqamlar yuqoridagi kontekstda keltirilgan!
+3. Raqamlarni chuqur tahlil qil:
+   - Pul va konversiya oqishlari (leakage): qaysi manbalar yoki rad sabablari eng ko'p zarar keltirmoqda.
+   - Menejerlar samaradorligi: kim tushumni ta'minlayapti, kimda qoldirilgan yoki muddati o'tgan vazifalar ko'p.
+   - ROP uchun 3-4 ta qat'iy va amalga oshirish mumkin bo'lgan tavsiyalar ber.
+4. Muhim raqamlar va xulosalarni **qalin shrift (bold)** bilan ajratib ko'rsat.`;
+      } else {
+        biSysInstruction = `Ты — ведущий Бизнес-Аналитик (Lead BI Analyst) и Директор по продажам (Chief Revenue Officer) по системе amoCRM.\n`;
+        biSysInstruction += `Твоя цель — помогать руководителю отдела продаж (РОПу) и основателю компании увеличивать выручку, находить утечки денег, поднимать конверсию и наводить порядок в CRM-дисциплине.\n\n`;
+        if (acc.aiCompanyContext) {
+          biSysInstruction += `=== ИНФОРМАЦИЯ О КОМПАНИИ ===\n${acc.aiCompanyContext}\n\n`;
+        }
+        biSysInstruction += biContext + `\n\n=== ПРАВИЛА ОТВЕТА ===
+1. Отвечай на русском языке в профессиональном структурированном стиле.
+2. СТРОЖАЙШЕ ЗАПРЕЩЕНО просить пользователя предоставить данные — ВСЕ ЦИФРЫ С ЭКРАНА УЖЕ ПЕРЕД ТОБОЙ!
+3. Опирайся строго на предоставленные выше цифры выбранных блоков:
+   - Вскрывай финансовые утечки (какие источники мусорные, какие причины отказа сжирают бюджет).
+   - Оценивай работу менеджеров (кто делает выручку, а у кого завал просроченных задач и слив лидов).
+   - Давай РОПу 3-4 конкретных управленческих шага для внедрения прямо сегодня.
+4. Выделяй ключевые суммы, конверсии и имена **жирным шрифтом**.`;
+      }
+
+      // Execute AI call for BI
+      return this.executeAiCall(cleanModel, apiKey, biSysInstruction, dto.history, dto.message, isUz);
+    }
+
     // 1. Determine pipeline to analyze (use provided or fallback to first active)
     let targetPipelineId = dto.pipelineId;
     let funnelPipelineName = '';
@@ -251,11 +362,21 @@ export class AiService {
 6. Отвечай структурированно, профессионально и без общих фраз.`;
     }
 
-    // 3. Format contents with history
+    return this.executeAiCall(cleanModel, apiKey, systemInstruction, dto.history, dto.message, isUz);
+  }
+
+  private async executeAiCall(
+    cleanModel: string,
+    apiKey: string,
+    systemInstruction: string,
+    history: any[] | undefined,
+    userMessage: string,
+    isUz: boolean,
+  ) {
     const contents: any[] = [];
 
-    if (dto.history && Array.isArray(dto.history)) {
-      for (const h of dto.history) {
+    if (history && Array.isArray(history)) {
+      for (const h of history) {
         if (h.text && (h.role === 'user' || h.role === 'model')) {
           contents.push({
             role: h.role,
@@ -265,10 +386,9 @@ export class AiService {
       }
     }
 
-    // Append current user message
     contents.push({
       role: 'user',
-      parts: [{ text: dto.message }],
+      parts: [{ text: userMessage }],
     });
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
