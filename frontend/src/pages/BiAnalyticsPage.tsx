@@ -455,10 +455,10 @@ export default function BiAnalyticsPage() {
   );
 
   return (
-    <div className={`p-4 lg:p-6 mx-auto transition-all ${chatOpen && isWideScreen ? 'max-w-[1920px]' : 'max-w-[1600px]'}`}>
+    <div className="p-4 lg:p-6 mx-auto max-w-[1920px]">
       <div className="flex gap-6 items-start">
         {/* Main Analytics Content */}
-        <div className={`space-y-6 transition-all duration-300 ${chatOpen && isWideScreen ? 'flex-1 min-w-0' : 'w-full'}`}>
+        <div className={`space-y-6 ${chatOpen && isWideScreen ? 'flex-1 min-w-0' : 'w-full'}`}>
           {/* Page Header */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
@@ -2166,7 +2166,7 @@ export default function BiAnalyticsPage() {
         {/* Docked AI Assistant Panel on Desktop (>= 1280px) */}
         {effectiveAccountId && isWideScreen && (
           <aside
-            className={`w-[420px] 2xl:w-[460px] shrink-0 sticky top-4 h-[calc(100vh-2rem)] z-30 transition-all ${
+            className={`w-[420px] 2xl:w-[460px] shrink-0 sticky top-4 h-[calc(100vh-2rem)] z-30 ${
               chatOpen ? 'block' : 'hidden'
             }`}
           >
