@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CrmConnectorService } from '../../crm-connector/crm-connector.service';
 
-export interface CrmEvent { id: number; type: string; entity_id: number; created_at: number; value_after?: any; value_before?: any; }
+export interface CrmEvent { id: string | number; type: string; entity_id: number; created_at: number; value_after?: any; value_before?: any; }
 export interface AmoLead {
   id: number;
   name: string;
@@ -120,10 +120,17 @@ export class EventProcessor {
       }
     }
 
+    const existingLead = await tx.lead.findUnique({
+      where: { accountId_externalId: { accountId, externalId: String(amo.id) } },
+      select: { status: true },
+    });
     let status: string = 'open';
     let closed: Date | null = null;
     if (amo.status_id === 142) { status = 'won'; closed = amo.closed_at ? new Date(amo.closed_at * 1000) : null; stageId = null; }
     else if (amo.status_id === 143) { status = 'lost'; closed = amo.closed_at ? new Date(amo.closed_at * 1000) : null; stageId = null; }
+    if (existingLead?.status === 'gone') {
+      status = 'gone';
+    }
     const priceNum = amo.price != null ? Number(amo.price) : null;
 
     // Upsert responsible user
@@ -469,27 +476,43 @@ export class EventProcessor {
       if (!lead) return;
 
       const ts = new Date(event.created_at * 1000);
-      await tx.lead.update({ where: { id: lead.id }, data: { updatedAt: ts } });
+      const restoredStatus =
+        lead.status === 'gone'
+          ? lead.crmClosedAt
+            ? lead.lossReasonId
+              ? 'lost'
+              : 'won'
+            : 'open'
+          : lead.status;
+      await tx.lead.update({ where: { id: lead.id }, data: { status: restoredStatus, updatedAt: ts } });
       if (lead.currentStageId && !lead.crmClosedAt) {
-        await tx.leadStageHistory.create({
-          data: { leadId: lead.id, stageId: lead.currentStageId, enteredAt: ts, exitedAt: null, sourceEventId: String(event.id) },
+        const existingOpen = await tx.leadStageHistory.findFirst({
+          where: { leadId: lead.id, exitedAt: null },
         });
+        if (!existingOpen) {
+          await tx.leadStageHistory.create({
+            data: { leadId: lead.id, stageId: lead.currentStageId, enteredAt: ts, exitedAt: null, sourceEventId: String(event.id) },
+          });
+        }
       }
       await tx.processedCrmEvent.create({ data: { accountId, externalEventId: String(event.id), leadExternalId: leadExtId, result: 'restored' } });
     }, { maxWait: 10000, timeout: 20000 });
   }
 
   async createFallbackInterval(leadId: number) {
-    const lead = await this.prisma.lead.findUnique({ where: { id: leadId } });
-    if (!lead || !lead.currentStageId) return;
-    const existing = await this.prisma.leadStageHistory.findFirst({ where: { leadId }, orderBy: { enteredAt: 'desc' } });
-    if (existing) return;
-    const closed = lead.crmClosedAt;
-    await this.prisma.leadStageHistory.create({
-      data: {
-        leadId, stageId: lead.currentStageId, enteredAt: lead.crmCreatedAt, exitedAt: closed,
-        durationSeconds: closed ? Math.floor((closed.getTime() - lead.crmCreatedAt.getTime()) / 1000) : null,
-      },
-    });
+    await this.prisma.$transaction(async (tx) => {
+      const lead = await tx.lead.findUnique({ where: { id: leadId } });
+      if (!lead || !lead.currentStageId) return;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lead.accountId}::int, hashtext(${String(lead.externalId)}))`;
+      const existing = await tx.leadStageHistory.findFirst({ where: { leadId }, orderBy: { enteredAt: 'desc' } });
+      if (existing) return;
+      const closed = lead.crmClosedAt;
+      await tx.leadStageHistory.create({
+        data: {
+          leadId, stageId: lead.currentStageId, enteredAt: lead.crmCreatedAt, exitedAt: closed,
+          durationSeconds: closed ? Math.floor((closed.getTime() - lead.crmCreatedAt.getTime()) / 1000) : null,
+        },
+      });
+    }, { maxWait: 10000, timeout: 20000 });
   }
 }

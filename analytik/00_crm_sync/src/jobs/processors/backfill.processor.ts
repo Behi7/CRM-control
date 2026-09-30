@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CrmConnectorService } from '../../crm-connector/crm-connector.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
-import { EventProcessor } from './event.processor';
+import { EventProcessor, CrmEvent } from './event.processor';
 import { PipelineSyncProcessor } from './pipeline-sync.processor';
 import { Job } from 'bullmq';
 import { AppException } from '../../common/exceptions/app.exception';
@@ -104,7 +104,7 @@ export class BackfillProcessor {
                 'filter[created_at][from]': windowFrom,
                 'filter[created_at][to]': windowTo,
                 page,
-                limit: 250,
+                limit: 100,
               },
             });
             if (resp.status === 401) {
@@ -130,13 +130,13 @@ export class BackfillProcessor {
               });
               windowGroups.set(ev.entity_id, list);
             }
-            if (!items.length || items.length < 250) break;
+            if (!items.length || items.length < 100 || !resp.data?._links?.next?.href) break;
             page++;
           }
 
           let processedCount = 0;
           for (const list of windowGroups.values()) {
-            list.sort((a, b) => (a.created_at - b.created_at) || (a.id - b.id));
+            list.sort((a, b) => (a.created_at - b.created_at) || String(a.id).localeCompare(String(b.id)));
             for (const ev of list) {
               try {
                 await this.events.processStatusChanged(accountId, acc.subdomain, acc.baseDomain, token, ev);
@@ -164,6 +164,7 @@ export class BackfillProcessor {
 
       if (cursor.phase === 'deleted_events') {
         let page = cursor.page || 1;
+        const deletedEvents: CrmEvent[] = [];
         while (true) {
           if (job) await job.updateProgress({ phase: 'deleted_events', page });
           const currentAcc = await this.prisma.account.findUnique({ where: { id: accountId }, select: { syncStatus: true, status: true } });
@@ -173,7 +174,7 @@ export class BackfillProcessor {
           }
           const resp = await this.crm.request<any>(accountId, acc.subdomain, acc.baseDomain, token, {
             method: 'GET', path: '/api/v4/events',
-            params: { 'filter[type]': 'lead_deleted,lead_restored', page, limit: 250 },
+            params: { 'filter[type]': 'lead_deleted,lead_restored', page, limit: 100 },
           });
           if (resp.status === 401) {
             const refreshed = await this.tryRefreshToken(accountId, acc.encryptedToken);
@@ -187,14 +188,26 @@ export class BackfillProcessor {
           if (resp.status !== 200 && resp.status !== 204) throw new AppException('AMO_CRM_ERROR', resp.status, `Deleted: ${resp.status}`);
           const items = resp.status === 204 ? [] : (resp.data?._embedded?.events || []);
           for (const ev of items) {
-            try {
-              if (ev.type === 'lead_deleted') await this.events.processLeadDeleted(accountId, ev);
-              else if (ev.type === 'lead_restored') await this.events.processLeadRestored(accountId, acc.subdomain, acc.baseDomain, token, ev);
-            } catch (e) { this.logger.error(e); }
+            deletedEvents.push({
+              id: ev.id,
+              type: ev.type,
+              entity_id: ev.entity_id,
+              created_at: ev.created_at,
+              value_after: ev.value_after,
+              value_before: ev.value_before,
+            });
           }
-          if (!items.length || items.length < 250) break;
+          if (!items.length || items.length < 100 || !resp.data?._links?.next?.href) break;
           page++;
           await this.saveCursor(accountId, { ...cursor, page });
+        }
+
+        deletedEvents.sort((a, b) => (a.created_at - b.created_at) || String(a.id).localeCompare(String(b.id)));
+        for (const ev of deletedEvents) {
+          try {
+            if (ev.type === 'lead_deleted') await this.events.processLeadDeleted(accountId, ev);
+            else if (ev.type === 'lead_restored') await this.events.processLeadRestored(accountId, acc.subdomain, acc.baseDomain, token, ev);
+          } catch (e) { this.logger.error(e); }
         }
       }
 

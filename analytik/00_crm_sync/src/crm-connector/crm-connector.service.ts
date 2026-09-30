@@ -63,11 +63,6 @@ export class CrmConnectorService {
           if (r.status === 429) {
             const retryAfter = r.headers.get('retry-after');
             const wait = (retryAfter ? parseInt(retryAfter, 10) : Math.pow(2, attempt)) * 1000;
-            if (accountId > 0) this.limiter.setCooldown(accountId, wait);
-            this.logger.warn(
-              `amoCRM rate limited (429) on ${req.method} ${url}. Global cooldown for account ${accountId} set for ${wait}ms.`,
-            );
-            await new Promise((res) => setTimeout(res, wait));
             return { status: 429, data: null, retryAfter: wait / 1000 };
           }
           const retryAfter = r.headers.get('retry-after');

@@ -149,7 +149,7 @@ export class DeltaSyncProcessor {
         params: {
           'filter[type]': 'lead_status_changed,lead_deleted,lead_restored',
           'filter[created_at][from]': Math.floor(windowFrom.getTime()/1000),
-          page, limit: 250,
+          page, limit: 100,
         },
       });
       if (resp.status === 401) {
@@ -176,7 +176,7 @@ export class DeltaSyncProcessor {
         });
         eventGroups.set(ev.entity_id, list);
       }
-      if (!items.length || items.length < 250) break;
+      if (!items.length || items.length < 100 || !resp.data?._links?.next?.href) break;
       page++;
     }
 
@@ -190,7 +190,7 @@ export class DeltaSyncProcessor {
     const leadMap = new Map(existingLeads.map(l => [l.externalId, l]));
 
     for (const [leadId, list] of eventGroups.entries()) {
-      list.sort((a, b) => (a.created_at - b.created_at) || (a.id - b.id));
+      list.sort((a, b) => (a.created_at - b.created_at) || String(a.id).localeCompare(String(b.id)));
       for (const ev of list) {
         try {
           if (ev.type === 'lead_status_changed') await this.events.processStatusChanged(accountId, acc.subdomain, acc.baseDomain, token, ev);
