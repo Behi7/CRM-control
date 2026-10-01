@@ -499,6 +499,7 @@ def get_lead_history(lead_id: int, user: dict = Depends(get_current_user)):
     with engine.connect() as conn:
         lead_row = conn.execute(text("""
             SELECT l.id, l.external_id AS "externalId", l.name, l.price::text, l.status,
+                   l.crm_created_at AS "crmCreatedAt",
                    l.account_id, l.responsible_user_id,
                    au.id as resp_id, au.name as resp_name
             FROM leads l
@@ -547,6 +548,7 @@ def get_lead_history(lead_id: int, user: dict = Depends(get_current_user)):
             "name": lead_row["name"],
             "price": lead_row["price"],
             "status": lead_row["status"],
+            "crmCreatedAt": lead_row["crmCreatedAt"].isoformat() if lead_row["crmCreatedAt"] else None,
             "responsibleUser": {"id": lead_row["resp_id"], "name": lead_row["resp_name"]} if lead_row["resp_id"] else None,
             "leadTags": [{"tag": {"id": tr["id"], "name": tr["name"]}} for tr in tags_rows],
         }
