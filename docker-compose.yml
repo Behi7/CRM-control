@@ -28,10 +28,42 @@ services:
       timeout: 5s
       retries: 5
 
-  # === Модуль 00: Core платформа (00_crm_sync / Core Gateway: Auth, Admin, Sync, DB) ===
+  # === Модуль 00: Выделенный микросервис синхронизации и обогащения БД (00_crm_sync) ===
   crm_sync:
     build:
       context: ./analytik/00_crm_sync
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/amocrm_analytics
+      REDIS_URL: redis://redis:6379
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123456}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      CSRF_SECRET: ${CSRF_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://192.168.1.200}
+      SYNC_WORKER_ENABLED: "true"
+      SYNC_INTERVAL_MINUTES: "10"
+      SYNC_OVERLAP_MINUTES: "2"
+      GLOBAL_SYNC_CONCURRENCY: "3"
+      STALE_THRESHOLD_MINUTES: "30"
+      AMO_CRM_RATE_LIMIT_RPS: "5"
+    command: >
+      sh -c "
+        npx prisma migrate deploy &&
+        node dist/src/main.js
+      "
+
+  # === Модуль 01 (Ядро Auth/Admin + Аналитика времени, только API) ===
+  backend:
+    build:
+      context: ./analytik/01_time_analytics
       dockerfile: Dockerfile
     restart: always
     depends_on:
@@ -53,7 +85,7 @@ services:
       COOKIE_SAME_DOMAIN: ${COOKIE_SAME_DOMAIN:-true}
       PORT: "3000"
       APP_ENV: ${APP_ENV:-production}
-      SYNC_WORKER_ENABLED: "true"
+      SYNC_WORKER_ENABLED: "false"
       SYNC_INTERVAL_MINUTES: "10"
       SYNC_OVERLAP_MINUTES: "2"
       GLOBAL_SYNC_CONCURRENCY: "3"
@@ -66,30 +98,6 @@ services:
       sh -c "
         npx prisma migrate deploy &&
         npm run seed &&
-        node dist/src/main.js
-      "
-
-  # === Модуль 01: Аналитика времени (01_time_analytics) ===
-  backend:
-    build:
-      context: ./analytik/01_time_analytics
-      dockerfile: Dockerfile
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/amocrm_analytics
-      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
-      FRONTEND_URL: ${FRONTEND_URL:-http://192.168.1.200}
-      PORT: "3001"
-      APP_ENV: ${APP_ENV:-production}
-      STALE_THRESHOLD_MINUTES: "30"
-    ports:
-      - "3001:3001"
-    command: >
-      sh -c "
         node dist/src/main.js
       "
 
@@ -135,7 +143,6 @@ services:
     restart: always
     depends_on:
       - backend
-      - crm_sync
     ports:
       - "80:80"
 

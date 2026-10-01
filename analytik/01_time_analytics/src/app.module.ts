@@ -2,12 +2,16 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { BullModule } from '@nestjs/bullmq';
 import { LoggerModule } from 'nestjs-pino';
 import { validateConfig } from './common/config/config.validate';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { AuthModule } from './auth/auth.module';
+import { AdminModule } from './admin/admin.module';
 import { UserModule } from './user/user.module';
+import { CrmConnectorModule } from './crm-connector/crm-connector.module';
+import { JobsModule } from './jobs/jobs.module';
 import { AiModule } from './ai/ai.module';
 
 @Module({
@@ -19,13 +23,13 @@ import { AiModule } from './ai/ai.module';
     }}),
     ConfigModule.forRoot({ isGlobal: true, validate: validateConfig }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 300 }]),
-    PrismaModule,
-    CryptoModule,
-    AuthModule,
-    UserModule,
-    AiModule,
+    BullModule.forRoot({ connection: (() => {
+      const u = new URL(process.env.REDIS_URL || 'redis://localhost:6379');
+      return { host: u.hostname, port: parseInt(u.port || '6379', 10), password: u.password || undefined, username: u.username || undefined, tls: u.protocol === 'rediss:' ? {} : undefined };
+    })() }),
+    PrismaModule, CryptoModule,
+    AuthModule, AdminModule, UserModule, CrmConnectorModule, JobsModule, AiModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
-
