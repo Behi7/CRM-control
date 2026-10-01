@@ -238,7 +238,7 @@ export default function BiAnalyticsPage() {
   const sourcesList: MultiSelectOption[] = data?.filtersMeta?.sources || [];
   const managers = data?.managers || [];
   const timeseries = data?.timeseries || [];
-  const marketing = data?.marketing || { utmSources: [], tagsBreakdown: [], customFieldsBreakdown: [] };
+  const marketing = data?.marketing || { utmSources: [], tagsBreakdown: [], customFieldsBreakdown: [], customFieldsLists: [] };
   const lossesAndLtv = data?.lossesAndLtv || { lossReasons: [], ltv: {}, riskDeals: [] };
 
   return (
@@ -488,7 +488,7 @@ export default function BiAnalyticsPage() {
               {activeTab === 'marketing' && <MarketingTab marketing={marketing} />}
               {activeTab === 'losses_ltv' && <LossesTab lossReasons={lossesAndLtv.lossReasons || []} />}
               {activeTab === 'custom_fields' && (
-                <CustomFieldsTab customFieldsLists={marketing.customFieldsBreakdown || []} />
+                <CustomFieldsTab customFieldsLists={marketing.customFieldsLists || []} />
               )}
               {activeTab === 'risk_audit' && (
                 <RiskAuditTab kpis={kpis} riskDeals={lossesAndLtv.riskDeals || []} />
