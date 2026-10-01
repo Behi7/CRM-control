@@ -103,6 +103,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
       const p1 = points[i + 1];
       const cpx1 = p0.x + (p1.x - p0.x) * 0.42;
       const cpx2 = p1.x - (p1.x - p0.x) * 0.42;
+      d += ` C ${cpx1.toFixed(1)} ${p0.y.toFixed(1)}, ${cpx2.toFixed(1)} ${p1.y.toFixed(1)}, ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
     }
     const strokePath = d;
     const areaPath = `${d} L ${points[points.length - 1].x.toFixed(1)} ${baseY} L ${points[0].x.toFixed(1)} ${baseY} Z`;
