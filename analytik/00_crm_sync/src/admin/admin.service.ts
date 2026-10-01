@@ -244,4 +244,30 @@ export class AdminService {
     if (!tz) return 'UTC';
     try { Intl.DateTimeFormat(undefined, { timeZone: tz }); return tz; } catch { return 'UTC'; }
   }
+
+  async testAiConnection(model: string, apiKey: string): Promise<{ ok: boolean; message: string }> {
+    const cleanModel = (model || 'gemini-2.5-flash').trim().replace(/^models\//, '');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey.trim()}`;
+
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'Ответь одним словом "OK" для проверки связи.' }] }],
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!resp.ok) {
+        const errJson = await (resp as any).json().catch(() => null);
+        const errDetail = errJson?.error?.message || `HTTP ${resp.status} ${resp.statusText}`;
+        return { ok: false, message: `Ошибка Gemini API: ${errDetail}` };
+      }
+
+      return { ok: true, message: 'Соединение с моделью успешно проверено!' };
+    } catch (e: any) {
+      return { ok: false, message: `Ошибка запроса к Gemini: ${e?.message || 'Неизвестная ошибка'}` };
+    }
+  }
 }

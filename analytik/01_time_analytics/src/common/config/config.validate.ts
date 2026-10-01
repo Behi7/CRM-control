@@ -3,10 +3,10 @@ import { IsString, IsOptional, MinLength, validateSync, IsIn } from 'class-valid
 
 class EnvConfig {
   @IsString() DATABASE_URL!: string;
-  @IsString() REDIS_URL!: string;
+  @IsOptional() @IsString() REDIS_URL?: string;
   @IsString() TOKEN_ENCRYPTION_KEY!: string;
-  @IsString() ADMIN_EMAIL!: string;
-  @IsString() @MinLength(12) ADMIN_PASSWORD!: string;
+  @IsOptional() @IsString() ADMIN_EMAIL?: string;
+  @IsOptional() @IsString() ADMIN_PASSWORD?: string;
   @IsString() JWT_ACCESS_SECRET!: string;
   @IsOptional() @IsString() CSRF_SECRET?: string;
   @IsOptional() @IsString() PORT?: string;
