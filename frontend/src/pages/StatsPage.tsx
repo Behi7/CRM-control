@@ -217,9 +217,17 @@ export default function StatsPage() {
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [accountId] = useState<number | null>(
-    paramAccountId ? parseInt(paramAccountId, 10) : null,
-  );
+  const decodedAccountId = (() => {
+    const token = localStorage.getItem('access_token');
+    return decodeJwt(token)?.accountId ?? null;
+  })();
+  const storedAccId = Number(localStorage.getItem('active_account_id')) || null;
+  const effectiveAccountId =
+    (paramAccountId ? parseInt(paramAccountId, 10) : null) ??
+    (role === 'viewer' ? decodedAccountId : storedAccId ?? 1);
+
+  const prevAccountRef = useRef<number | null>(effectiveAccountId);
+
   const storedPipelineId = Number(searchParams.get('pipeline'));
   const storedTagIds = (searchParams.get('tags') || '').split(',').filter(Boolean).map(Number).filter(Number.isInteger);
   const storedStatus = searchParams.get('status') || 'all';
@@ -255,6 +263,21 @@ export default function StatsPage() {
     dateTo: initialTo,
   }));
 
+  useEffect(() => {
+    if (prevAccountRef.current !== effectiveAccountId) {
+      prevAccountRef.current = effectiveAccountId;
+      setPipelineId(null);
+      setSelectedTags([]);
+      setSelectedManagers([]);
+      setApplied((prev) => ({
+        ...prev,
+        pipelineId: null,
+        tagIds: [],
+        managerIds: [],
+      }));
+    }
+  }, [effectiveAccountId]);
+
   const isStDirty =
     pipelineId !== applied.pipelineId ||
     selectedStatus !== applied.status ||
@@ -263,12 +286,6 @@ export default function StatsPage() {
     dateTo !== applied.dateTo ||
     selectedTags.join(',') !== applied.tagIds.join(',') ||
     selectedManagers.join(',') !== applied.managerIds.join(',');
-
-  const decodedAccountId = (() => {
-    const token = localStorage.getItem('access_token');
-    return decodeJwt(token)?.accountId ?? null;
-  })();
-  const effectiveAccountId = accountId ?? (role === 'viewer' ? decodedAccountId : null);
   const [chatOpen, setChatOpen] = useState(false);
 
   const aiStatus = useQuery({
@@ -372,8 +389,11 @@ export default function StatsPage() {
   });
 
   useEffect(() => {
-    if (!pipelineId && pipelines.data?.items?.length) {
-      const firstId = pipelines.data.items[0].id;
+    if (!pipelines.data?.items?.length) return;
+    const items = pipelines.data.items;
+    const exists = items.some((p: any) => p.id === pipelineId);
+    if (!exists) {
+      const firstId = items[0].id;
       setPipelineId(firstId);
       setApplied((prev) => ({ ...prev, pipelineId: firstId }));
       updateFilters(firstId, selectedTags, selectedStatus, selectedManagers, datePreset, dateFrom, dateTo);
