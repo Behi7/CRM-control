@@ -1,32 +1,12 @@
-FROM node:20-bookworm-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Установить системные зависимости (Python для bcrypt, g++ для компиляции)
-RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
-    openssl \
-    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Копировать package.json и prisma schema (для кэширования слоёв)
-COPY package*.json ./
-COPY prisma ./prisma/
-
-# Установить зависимости
-RUN npm ci
-
-# Сгенерировать Prisma Client
-RUN npx prisma generate
-
-# Копировать исходники
 COPY . .
 
-# Собрать TypeScript → JavaScript
-RUN npm run build
+EXPOSE 3001
 
-EXPOSE 3000
-
-# Запуск: миграции → сид → приложение
-CMD ["sh", "-c", "npx prisma migrate deploy && npm run seed && node dist/src/main.js"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3001"]
