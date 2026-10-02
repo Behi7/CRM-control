@@ -31,3 +31,13 @@ backend/prisma/*.db
 # Временные файлы
 *.tmp
 *.cache
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/

@@ -91,6 +91,8 @@ services:
       STALE_THRESHOLD_MINUTES: "30"
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - ./backend:/app
     ports:
       - "3001:8000"
 
