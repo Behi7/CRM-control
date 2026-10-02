@@ -23,5 +23,6 @@ export class AdminController {
   @Patch('accounts/:accountId/ai-settings') updateAiSettings(@Param('accountId', ParseIntPipe) id: number, @Body() dto: UpdateAiSettingsDto) { return this.svc.updateAiSettings(id, dto); }
   @Get('notifications') listNotif(@Query('unreadOnly') unread: string) { return this.svc.listNotifications(unread === 'true'); }
   @Post('notifications/:id/read') readNotif(@Param('id', ParseIntPipe) id: number) { return this.svc.markNotificationRead(id); }
+  @Post('ai/test') testAi(@Body() body: { model: string; token: string }) { return this.svc.testAiConnection(body.model, body.token); }
 }
 
