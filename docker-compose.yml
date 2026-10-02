@@ -69,22 +69,30 @@ services:
         node dist/src/main.js
       "
 
-  # === Модуль 01: Аналитика времени (Python / FastAPI) ===
+  # === Единый Python Backend (FastAPI: Auth, Admin, 01 Time, 02 BI, 03 AI) ===
   backend:
     build:
-      context: ./analytik/01_time_analytics
+      context: ./backend
       dockerfile: Dockerfile
     restart: always
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/amocrm_analytics
+      REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123456}
+      REFRESH_TOKEN_TTL_DAYS: "30"
       STALE_THRESHOLD_MINUTES: "30"
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     ports:
-      - "3001:3001"
+      - "3001:8000"
 
   # === Модуль 02 (Python / FastAPI) ===
   analytics_2:
@@ -128,7 +136,6 @@ services:
     restart: always
     depends_on:
       - backend
-      - crm_sync
     ports:
       - "80:80"
 
