@@ -214,3 +214,84 @@ def get_account_summary(account_id: int, user: dict = Depends(get_current_user))
         "accountId": account_id,
         "activeManagersInDb": managers_count or 0,
     }
+
+
+@router.get("/forecasts/{account_id}")
+def get_forecasts(
+    account_id: int,
+    pipeline_id: Optional[int] = Query(default=None),
+    period: Optional[str] = Query(default="month"),
+    user: dict = Depends(get_current_user),
+):
+    check_account_access(user, account_id)
+    with sync_engine.connect() as conn:
+        pipe_where = "AND pipeline_id = :p_id" if pipeline_id else ""
+        params: dict[str, Any] = {"acc_id": account_id}
+        if pipeline_id:
+            params["p_id"] = pipeline_id
+
+        # Stats on closed leads
+        closed_stats = conn.execute(
+            text(f"""
+                SELECT 
+                    COUNT(*) FILTER (WHERE status = 'won')::int AS won_cnt,
+                    COUNT(*) FILTER (WHERE status = 'lost')::int AS lost_cnt,
+                    COALESCE(SUM(price) FILTER (WHERE status = 'won'), 0)::float AS won_sum,
+                    COALESCE(AVG(price) FILTER (WHERE status = 'won'), 0)::float AS avg_check,
+                    COALESCE(SUM(price) FILTER (WHERE status = 'open'), 0)::float AS open_sum,
+                    COUNT(*) FILTER (WHERE status = 'open')::int AS open_cnt
+                FROM leads
+                WHERE account_id = :acc_id AND status <> 'gone' {pipe_where}
+            """),
+            params
+        ).mappings().first()
+
+        won_cnt = closed_stats["won_cnt"] if closed_stats else 0
+        lost_cnt = closed_stats["lost_cnt"] if closed_stats else 0
+        total_closed = won_cnt + lost_cnt
+        win_rate = (won_cnt / total_closed) if total_closed > 0 else 0.3
+        open_sum = closed_stats["open_sum"] if closed_stats else 0.0
+        avg_check = closed_stats["avg_check"] if closed_stats else 0.0
+        predicted_won_leads = int(round((closed_stats["open_cnt"] if closed_stats else 0) * win_rate))
+        predicted_revenue = round(open_sum * win_rate, 2)
+
+        return {
+            "accountId": account_id,
+            "period": period,
+            "pipelineId": pipeline_id,
+            "historicalWinRate": round(win_rate * 100, 1),
+            "openPipelineValue": open_sum,
+            "predictedRevenue": predicted_revenue,
+            "predictedWonLeads": predicted_won_leads,
+            "avgCheck": round(avg_check, 2),
+            "confidenceScore": 85 if total_closed > 50 else 60,
+        }
+
+
+@router.get("/churn-risk/{account_id}")
+def get_churn_risk(account_id: int, user: dict = Depends(get_current_user)):
+    check_account_access(user, account_id)
+    with sync_engine.connect() as conn:
+        risky_leads = conn.execute(
+            text("""
+                SELECT 
+                    l.id, l.external_id AS "externalId", l.name, l.price::float,
+                    l.crm_created_at AS "createdAt",
+                    au.name AS "managerName"
+                FROM leads l
+                LEFT JOIN amo_users au ON au.id = l.responsible_user_id
+                WHERE l.account_id = :acc_id 
+                  AND l.status = 'open'
+                  AND l.crm_created_at < (NOW() - INTERVAL '14 days')
+                ORDER BY l.price DESC NULLS LAST
+                LIMIT 20
+            """),
+            {"acc_id": account_id}
+        ).mappings().all()
+
+        return {
+            "accountId": account_id,
+            "riskCount": len(risky_leads),
+            "highRiskLeads": [dict(r) for r in risky_leads],
+        }
+
