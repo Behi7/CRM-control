@@ -10,9 +10,14 @@ import LeadDetailPage from './pages/LeadDetailPage';
 import SearchPage from './pages/SearchPage';
 import BiAnalyticsPage from './pages/BiAnalyticsPage';
 import AppSidebarLayout from './components/AppSidebar';
+import { FilterProvider } from './shared/context/FilterContext';
 
 function WithSidebar({ children }: { children: React.ReactNode }) {
-  return <AppSidebarLayout>{children}</AppSidebarLayout>;
+  return (
+    <FilterProvider>
+      <AppSidebarLayout>{children}</AppSidebarLayout>
+    </FilterProvider>
+  );
 }
 
 export default function App() {

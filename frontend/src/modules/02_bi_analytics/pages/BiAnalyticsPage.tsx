@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DollarSign,
@@ -8,22 +7,19 @@ import {
   XCircle,
   Filter,
   ShieldAlert,
-  Users,
   Target,
   RefreshCw,
-  Check,
-  X,
   Sparkles,
 } from 'lucide-react';
 import { py2Api } from '../api/bi-analytics.api';
 import { userApi } from '@/api/client';
-import { useAuth } from '@/auth/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { decodeJwt } from '@/lib/jwt';
 import AiChatDrawer from '@/modules/ai_chat/components/AiChatDrawer';
+import { useFilterContext } from '@/shared/context/FilterContext';
+import FilterBar from '@/shared/components/FilterBar';
+import MultiSelectDropdown from '@/shared/components/MultiSelectDropdown';
 
-import { DatePreset, BiTab, MultiSelectOption, getPresetDates } from '../types';
-import MultiSelectDropdown from '../components/filters/MultiSelectDropdown';
+import { BiTab, MultiSelectOption } from '../types';
 import OverviewTab from '../components/tabs/OverviewTab';
 import ManagersTab from '../components/tabs/ManagersTab';
 import MarketingTab from '../components/tabs/MarketingTab';
@@ -32,11 +28,8 @@ import CustomFieldsTab from '../components/tabs/CustomFieldsTab';
 import RiskAuditTab from '../components/tabs/RiskAuditTab';
 
 export default function BiAnalyticsPage() {
-  const { accountId: paramAccountId } = useParams<{ accountId?: string }>();
-  const { role } = useAuth();
   const { t } = useLanguage();
   const qc = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
   const [chatOpen, setChatOpen] = useState(false);
   const [isWideScreen, setIsWideScreen] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1280 : true,
@@ -50,15 +43,15 @@ export default function BiAnalyticsPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const decodedAccountId = (() => {
-    const token = localStorage.getItem('access_token');
-    return decodeJwt(token)?.accountId ?? null;
-  })();
+  const {
+    effectiveAccountId,
+    applied,
+    pipelineId,
+    pipelines,
+  } = useFilterContext();
 
-  const storedAccId = Number(localStorage.getItem('active_account_id')) || null;
-  const effectiveAccountId =
-    (paramAccountId ? parseInt(paramAccountId, 10) : null) ??
-    (role === 'viewer' ? decodedAccountId : storedAccId ?? 1);
+  const [activeTab, setActiveTab] = useState<BiTab>('overview');
+  const [selectedSourceIds, setSelectedSourceIds] = useState<number[]>([]);
 
   // AI Status query
   const aiStatus = useQuery({
@@ -67,150 +60,29 @@ export default function BiAnalyticsPage() {
     enabled: !!effectiveAccountId,
   });
 
-  const [activeTab, setActiveTab] = useState<BiTab>('overview');
-
-  // Draft filter states (only applied when user clicks "Применить")
-  const [pipelineId, setPipelineId] = useState<number | null>(
-    Number(searchParams.get('pipeline')) || null,
-  );
-  const [selectedManagerIds, setSelectedManagerIds] = useState<number[]>(() =>
-    (searchParams.get('managers') || '')
-      .split(',')
-      .filter(Boolean)
-      .map(Number)
-      .filter((n) => Number.isInteger(n) && n > 0),
-  );
-  const [selectedTagIds, setSelectedTagIds] = useState<number[]>(() =>
-    (searchParams.get('tags') || '')
-      .split(',')
-      .filter(Boolean)
-      .map(Number)
-      .filter((n) => Number.isInteger(n) && n > 0),
-  );
-  const [selectedSourceIds, setSelectedSourceIds] = useState<number[]>([]);
-  const [datePreset, setDatePreset] = useState<DatePreset>(
-    (searchParams.get('preset') as DatePreset) || 'all',
-  );
-  const [dateFrom, setDateFrom] = useState<string>(searchParams.get('dateFrom') || '');
-  const [dateTo, setDateTo] = useState<string>(searchParams.get('dateTo') || '');
-
-  // Applied filter states (drives the API query)
-  const [appliedFilters, setAppliedFilters] = useState(() => ({
-    pipelineId: Number(searchParams.get('pipeline')) || null,
-    managerIds: (searchParams.get('managers') || '')
-      .split(',')
-      .filter(Boolean)
-      .map(Number)
-      .filter((n) => Number.isInteger(n) && n > 0),
-    tagIds: (searchParams.get('tags') || '')
-      .split(',')
-      .filter(Boolean)
-      .map(Number)
-      .filter((n) => Number.isInteger(n) && n > 0),
-    sourceIds: [] as number[],
-    datePreset: ((searchParams.get('preset') as DatePreset) || 'all') as DatePreset,
-    dateFrom: searchParams.get('dateFrom') || '',
-    dateTo: searchParams.get('dateTo') || '',
-  }));
-
-  const isDirty =
-    pipelineId !== appliedFilters.pipelineId ||
-    datePreset !== appliedFilters.datePreset ||
-    dateFrom !== appliedFilters.dateFrom ||
-    dateTo !== appliedFilters.dateTo ||
-    selectedManagerIds.join(',') !== appliedFilters.managerIds.join(',') ||
-    selectedTagIds.join(',') !== appliedFilters.tagIds.join(',') ||
-    selectedSourceIds.join(',') !== appliedFilters.sourceIds.join(',');
-
-  const syncUrlParams = (
-    nextPipe: number | null,
-    nextManagers: number[],
-    nextTags: number[],
-    nextPreset: DatePreset,
-    nextFrom: string,
-    nextTo: string,
-  ) => {
-    const next = new URLSearchParams(searchParams);
-    if (nextPipe) next.set('pipeline', String(nextPipe));
-    else next.delete('pipeline');
-    if (nextManagers.length > 0) next.set('managers', nextManagers.join(','));
-    else next.delete('managers');
-    if (nextTags.length > 0) next.set('tags', nextTags.join(','));
-    else next.delete('tags');
-    if (nextPreset !== 'all') next.set('preset', nextPreset);
-    else next.delete('preset');
-    if (nextFrom) next.set('dateFrom', nextFrom);
-    else next.delete('dateFrom');
-    if (nextTo) next.set('dateTo', nextTo);
-    else next.delete('dateTo');
-    setSearchParams(next);
-  };
-
-  const handlePresetChange = (preset: DatePreset) => {
-    setDatePreset(preset);
-    if (preset !== 'custom') {
-      const { from, to } = getPresetDates(preset);
-      setDateFrom(from);
-      setDateTo(to);
-    }
-  };
-
-  const handleApplyFilters = () => {
-    setAppliedFilters({
-      pipelineId,
-      managerIds: [...selectedManagerIds],
-      tagIds: [...selectedTagIds],
-      sourceIds: [...selectedSourceIds],
-      datePreset,
-      dateFrom,
-      dateTo,
-    });
-    syncUrlParams(pipelineId, selectedManagerIds, selectedTagIds, datePreset, dateFrom, dateTo);
-  };
-
-  const handleResetFilters = () => {
-    setPipelineId(null);
-    setSelectedManagerIds([]);
-    setSelectedTagIds([]);
-    setSelectedSourceIds([]);
-    setDatePreset('all');
-    setDateFrom('');
-    setDateTo('');
-    setAppliedFilters({
-      pipelineId: null,
-      managerIds: [],
-      tagIds: [],
-      sourceIds: [],
-      datePreset: 'all',
-      dateFrom: '',
-      dateTo: '',
-    });
-    syncUrlParams(null, [], [], 'all', '', '');
-  };
-
   const prevSourcesRef = useRef<MultiSelectOption[]>([]);
 
   const biQuery = useQuery({
     queryKey: [
       'py2-bi-analytics',
       effectiveAccountId,
-      appliedFilters.pipelineId,
-      appliedFilters.dateFrom,
-      appliedFilters.dateTo,
-      appliedFilters.managerIds,
-      appliedFilters.tagIds,
-      appliedFilters.sourceIds,
+      applied.pipelineId,
+      applied.dateFrom,
+      applied.dateTo,
+      applied.managerIds,
+      applied.tagIds,
+      selectedSourceIds,
     ],
     queryFn: () => {
-      const activeSourceNames = appliedFilters.sourceIds
+      const activeSourceNames = selectedSourceIds
         .map((id: number) => prevSourcesRef.current.find((s) => s.id === id)?.name)
         .filter(Boolean) as string[];
       return py2Api.analytics(effectiveAccountId!, {
-        pipelineId: appliedFilters.pipelineId,
-        dateFrom: appliedFilters.dateFrom || undefined,
-        dateTo: appliedFilters.dateTo || undefined,
-        managerIds: appliedFilters.managerIds.length > 0 ? appliedFilters.managerIds : undefined,
-        tagIds: appliedFilters.tagIds.length > 0 ? appliedFilters.tagIds : undefined,
+        pipelineId: applied.pipelineId,
+        dateFrom: applied.dateFrom || undefined,
+        dateTo: applied.dateTo || undefined,
+        managerIds: applied.managerIds.length > 0 ? applied.managerIds : undefined,
+        tagIds: applied.tagIds.length > 0 ? applied.tagIds : undefined,
         sources: activeSourceNames.length > 0 ? activeSourceNames : undefined,
       });
     },
@@ -232,9 +104,6 @@ export default function BiAnalyticsPage() {
 
   const data = biQuery.data;
   const kpis = data?.kpis;
-  const pipelines = data?.filtersMeta?.pipelines || [];
-  const managersList: MultiSelectOption[] = data?.filtersMeta?.managers || [];
-  const tagsList: MultiSelectOption[] = data?.filtersMeta?.tags || [];
   const sourcesList: MultiSelectOption[] = data?.filtersMeta?.sources || [];
   const managers = data?.managers || [];
   const timeseries = data?.timeseries || [];
@@ -271,52 +140,9 @@ export default function BiAnalyticsPage() {
             </div>
           </div>
 
-          {/* Filter Bar */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center text-xs font-semibold text-slate-400 dark:text-slate-500">
-                <Filter size={14} />
-              </div>
-
-              {/* Pipeline selector */}
-              <select
-                value={pipelineId || ''}
-                onChange={(e) => {
-                  const nextPipe = e.target.value ? Number(e.target.value) : null;
-                  setPipelineId(nextPipe);
-                }}
-                className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
-              >
-                <option value="">Все воронки ({pipelines.length})</option>
-                {pipelines.map((p: any) => (
-                  <option key={p.id} value={p.id}>
-                    Воронка: {p.name}
-                  </option>
-                ))}
-              </select>
-
-              {/* Multi-select Managers */}
-              <MultiSelectDropdown
-                label="Менеджеры"
-                placeholder="Все менеджеры"
-                options={managersList}
-                selectedIds={selectedManagerIds}
-                icon={<Users size={13} />}
-                onChange={(nextIds) => setSelectedManagerIds(nextIds)}
-              />
-
-              {/* Multi-select Tags */}
-              <MultiSelectDropdown
-                label="Теги"
-                placeholder="Все теги"
-                options={tagsList}
-                selectedIds={selectedTagIds}
-                prefix="#"
-                icon={<TagIcon size={13} />}
-                onChange={(nextIds) => setSelectedTagIds(nextIds)}
-              />
-
-              {/* Multi-select Lead Sources */}
+          {/* Unified Filter Bar with extra Sources filter */}
+          <FilterBar showStatus={false}>
+            {sourcesList.length > 0 && (
               <MultiSelectDropdown
                 label="Источники"
                 placeholder="Все источники"
@@ -325,121 +151,8 @@ export default function BiAnalyticsPage() {
                 icon={<Target size={13} />}
                 onChange={(nextIds) => setSelectedSourceIds(nextIds)}
               />
-
-              {/* Date presets */}
-              <div className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                {(
-                  [
-                    ['all', 'За всё время'],
-                    ['today', 'Сегодня'],
-                    ['7days', '7 дней'],
-                    ['30days', '30 дней'],
-                    ['thismonth', 'Этот месяц'],
-                    ['custom', 'Период'],
-                  ] as [DatePreset, string][]
-                ).map(([presetKey, label]) => (
-                  <button
-                    key={presetKey}
-                    onClick={() => handlePresetChange(presetKey)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                      datePreset === presetKey
-                        ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-2xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {datePreset === 'custom' && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs"
-                  />
-                  <span className="text-slate-400">—</span>
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs"
-                  />
-                </div>
-              )}
-
-              {/* Action buttons: Применить & Сбросить */}
-              <div className="flex items-center gap-2 ml-auto">
-                <button
-                  type="button"
-                  onClick={handleApplyFilters}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    isDirty
-                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md ring-2 ring-indigo-400/40'
-                      : 'bg-indigo-600/90 hover:bg-indigo-600 text-white shadow-xs'
-                  }`}
-                >
-                  <Check size={14} />
-                  <span>Применить</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetFilters}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-700 text-xs font-medium transition-colors cursor-pointer"
-                >
-                  <X size={14} />
-                  <span>Сбросить</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Active multi-select badges */}
-            {(selectedManagerIds.length > 0 || selectedTagIds.length > 0) && (
-              <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                {selectedManagerIds.map((id) => {
-                  const m = managersList.find((x) => x.id === id);
-                  if (!m) return null;
-                  return (
-                    <span
-                      key={`m-${id}`}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 text-[11px] font-medium"
-                    >
-                      <Users size={11} />
-                      <span>{m.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedManagerIds(selectedManagerIds.filter((x) => x !== id))}
-                        className="ml-0.5 hover:text-rose-500 cursor-pointer"
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  );
-                })}
-                {selectedTagIds.map((id) => {
-                  const t = tagsList.find((x) => x.id === id);
-                  if (!t) return null;
-                  return (
-                    <span
-                      key={`t-${id}`}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20 text-[11px] font-medium"
-                    >
-                      <span>#{t.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTagIds(selectedTagIds.filter((x) => x !== id))}
-                        className="ml-0.5 hover:text-rose-500 cursor-pointer"
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
             )}
-          </div>
+          </FilterBar>
 
           {/* Navigation Tabs */}
           <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
@@ -504,60 +217,53 @@ export default function BiAnalyticsPage() {
               accountId={effectiveAccountId}
               isOpen={chatOpen}
               onClose={() => setChatOpen(false)}
-              pipelineId={appliedFilters.pipelineId}
-              pipelineName={pipelines.find((p: any) => p.id === appliedFilters.pipelineId)?.name}
+              pipelineId={applied.pipelineId}
+              pipelineName={pipelines.find((p) => p.id === applied.pipelineId)?.name}
               filters={{
-                managerIds: appliedFilters.managerIds,
-                tagIds: appliedFilters.tagIds,
-                dateFrom: appliedFilters.dateFrom || undefined,
-                dateTo: appliedFilters.dateTo || undefined,
+                managerIds: applied.managerIds,
+                tagIds: applied.tagIds,
+                dateFrom: applied.dateFrom || undefined,
+                dateTo: applied.dateTo || undefined,
               }}
               modelName={aiStatus.data?.model}
-              biData={data}
-              activeBiTab={activeTab}
-              variant="docked"
             />
           </aside>
         )}
+
+        {/* Floating AI Button (Mobile / Non-Wide) */}
+        {aiStatus.data?.enabled && (!isWideScreen || !chatOpen) && (
+          <button
+            type="button"
+            onClick={() => setChatOpen(true)}
+            className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all cursor-pointer group"
+          >
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+            </span>
+            <Sparkles size={18} className="text-yellow-300 fill-yellow-300 group-hover:scale-110 transition-transform" />
+            <span className="text-sm">ИИ-Аналитик</span>
+          </button>
+        )}
+
+        {/* Drawer overlay for non-wide screens */}
+        {effectiveAccountId && !isWideScreen && chatOpen && (
+          <AiChatDrawer
+            accountId={effectiveAccountId}
+            isOpen={chatOpen}
+            onClose={() => setChatOpen(false)}
+            pipelineId={applied.pipelineId}
+            pipelineName={pipelines.find((p) => p.id === applied.pipelineId)?.name}
+            filters={{
+              managerIds: applied.managerIds,
+              tagIds: applied.tagIds,
+              dateFrom: applied.dateFrom || undefined,
+              dateTo: applied.dateTo || undefined,
+            }}
+            modelName={aiStatus.data?.model}
+          />
+        )}
       </div>
-
-      {/* Slide-over Drawer for Mobile / Tablets (< 1280px) */}
-      {effectiveAccountId && !isWideScreen && (
-        <AiChatDrawer
-          accountId={effectiveAccountId}
-          isOpen={chatOpen}
-          onClose={() => setChatOpen(false)}
-          pipelineId={appliedFilters.pipelineId}
-          pipelineName={pipelines.find((p: any) => p.id === appliedFilters.pipelineId)?.name}
-          filters={{
-            managerIds: appliedFilters.managerIds,
-            tagIds: appliedFilters.tagIds,
-            dateFrom: appliedFilters.dateFrom || undefined,
-            dateTo: appliedFilters.dateTo || undefined,
-          }}
-          modelName={aiStatus.data?.model}
-          biData={data}
-          activeBiTab={activeTab}
-          variant="overlay"
-        />
-      )}
-
-      {/* Floating AI Action Button */}
-      {aiStatus.data?.enabled && !chatOpen && (
-        <button
-          type="button"
-          onClick={() => setChatOpen(true)}
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all cursor-pointer group"
-          title={t('nav_ai_analyst_title')}
-        >
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
-          </span>
-          <Sparkles size={18} className="text-yellow-300 fill-yellow-300 group-hover:scale-110 transition-transform" />
-          <span className="text-sm">{t('nav_ai_analyst')}</span>
-        </button>
-      )}
     </div>
   );
 }
