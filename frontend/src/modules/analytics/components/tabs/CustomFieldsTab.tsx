@@ -21,11 +21,8 @@ export default function CustomFieldsTab({ customFieldsLists = [] }: CustomFields
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              Аналитика по списочным кастомным полям сделок AmoCRM (Поля с выборками)
+              Аналитика по списочным кастомным полям сделок AmoCRM
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Отфильтрованы только поля со списками. На каждое поле и каждую выборку показаны: сделки, доля внутри поля, продажи (Won), отказы (Lost), в работе, Win Rate %, выручка и средний чек.
-            </p>
           </div>
           <span className="text-xs px-3 py-1 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold border border-indigo-500/20 whitespace-nowrap">
             Списочных полей: {listGroups.length}

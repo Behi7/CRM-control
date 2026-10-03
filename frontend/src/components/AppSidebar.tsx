@@ -150,8 +150,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               A
             </div>
             <div className="truncate">
-              <div className="font-bold text-sm tracking-tight text-white leading-tight">AmoCRM Analytics</div>
-              <div className="text-[11px] text-slate-400">Multi-App BI Platform</div>
+              <div className="font-bold text-sm tracking-tight text-white leading-tight">Аналитика</div>
             </div>
           </div>
         )}
@@ -280,15 +279,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               <BarChart3 size={20} className="shrink-0" />
               {!collapsed && (
                 <div className="overflow-hidden flex-1">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-semibold truncate">{labels.appAnalytics}</span>
-                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      COMBINE
-                    </span>
-                  </div>
-                  <div className={`text-[10px] truncate ${isAnalyticsActive ? 'text-indigo-100' : 'text-slate-400'}`}>
-                    {labels.appAnalyticsSub}
-                  </div>
+                  <span className="text-xs font-semibold truncate">{labels.appAnalytics}</span>
                 </div>
               )}
             </button>
@@ -409,7 +400,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
           >
             <Menu size={22} />
           </button>
-          <span className="font-bold text-sm">AmoCRM Analytics</span>
+          <span className="font-bold text-sm">Аналитика</span>
         </div>
         <div className="flex items-center gap-2">
           <LanguageSwitcher />
