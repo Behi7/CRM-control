@@ -13,9 +13,9 @@ export interface SendAiChatPayload {
 
 export const aiChatApi = {
   getStatus: (accountId: number) =>
-    baseApi<{ enabled: boolean; configured: boolean; model: string }>(`/accounts/${accountId}/ai/status`),
+    baseApi<{ enabled: boolean; configured: boolean; model: string }>(`/accounts/${accountId}/ai-status`),
   sendMessage: (accountId: number, data: SendAiChatPayload) =>
-    baseApi<{ reply: string }>(`/accounts/${accountId}/ai/chat`, {
+    baseApi<{ reply: string }>(`/accounts/${accountId}/ai-chat`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),

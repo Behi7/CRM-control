@@ -11,25 +11,19 @@ _ALLOWED_BASE_DOMAINS = {"amocrm.ru", "amocrm.com", "kommo.com"}
 class CrmClient:
     def __init__(self, rps: int = 5):
         self.rps = rps
-        self._locks: Dict[str, asyncio.Lock] = {}
-        self._last_times: Dict[str, float] = {}
+        self._global_lock = asyncio.Lock()
+        self._last_global_time: float = 0.0
         self._min_interval = 1.0 / max(1, rps)
         self._client: Optional[httpx.AsyncClient] = None
         self._client_lock = asyncio.Lock()
 
-    def _get_lock(self, subdomain: str) -> asyncio.Lock:
-        if subdomain not in self._locks:
-            self._locks[subdomain] = asyncio.Lock()
-        return self._locks[subdomain]
-
-    async def _rate_limit(self, subdomain: str):
-        lock = self._get_lock(subdomain)
-        async with lock:
+    async def _rate_limit(self):
+        async with self._global_lock:
             now = time.monotonic()
-            elapsed = now - self._last_times.get(subdomain, 0.0)
+            elapsed = now - self._last_global_time
             if elapsed < self._min_interval:
                 await asyncio.sleep(self._min_interval - elapsed)
-            self._last_times[subdomain] = time.monotonic()
+            self._last_global_time = time.monotonic()
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -73,7 +67,7 @@ class CrmClient:
         client = await self._get_client()
 
         for attempt in range(max_retries):
-            await self._rate_limit(subdomain)
+            await self._rate_limit()
             try:
                 resp = await client.request(
                     method=method,
@@ -84,8 +78,22 @@ class CrmClient:
                 )
 
                 if resp.status_code == 429:
-                    wait_sec = 2.0 * (attempt + 1)
-                    await asyncio.sleep(wait_sec)
+                    retry_after_hdr = resp.headers.get("Retry-After")
+                    try:
+                        wait_sec = float(retry_after_hdr) if retry_after_hdr else 2.0 * (attempt + 1)
+                    except Exception:
+                        wait_sec = 2.0 * (attempt + 1)
+                    await asyncio.sleep(max(wait_sec, 1.5 * (attempt + 1)))
+                    continue
+
+                if resp.status_code in (502, 503, 504):
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                        continue
+
+                if resp.status_code == 401 and attempt < max_retries - 1:
+                    # Transient gateway throttling spike protection
+                    await asyncio.sleep(2.0 * (attempt + 1))
                     continue
 
                 if resp.status_code == 204:
@@ -108,7 +116,7 @@ class CrmClient:
             except (httpx.TimeoutException, httpx.NetworkError) as e:
                 if attempt == max_retries - 1:
                     return 504, {"error": str(e)}
-                await asyncio.sleep(1.0 * (attempt + 1))
+                await asyncio.sleep(1.5 * (attempt + 1))
             except Exception as e:
                 return 500, {"error": str(e)}
 

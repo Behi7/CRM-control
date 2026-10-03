@@ -415,12 +415,16 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
                 dateTo: applied.dateTo || undefined,
               }}
               modelName={aiStatus.data?.model}
+              isAiEnabled={aiStatus.data?.enabled}
+              biData={biQuery.data}
+              activeBiTab={activeTab}
+              variant="docked"
             />
           </aside>
         )}
 
-        {/* Floating AI Button (Mobile / Non-Wide) */}
-        {aiStatus.data?.enabled && (!isWideScreen || !chatOpen) && (
+        {/* Floating AI Button (Green cloud) */}
+        {!chatOpen && (
           <button
             type="button"
             onClick={() => setChatOpen(true)}
@@ -450,6 +454,10 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
               dateTo: applied.dateTo || undefined,
             }}
             modelName={aiStatus.data?.model}
+            isAiEnabled={aiStatus.data?.enabled}
+            biData={biQuery.data}
+            activeBiTab={activeTab}
+            variant="overlay"
           />
         )}
       </div>

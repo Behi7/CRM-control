@@ -100,7 +100,7 @@ export default function StatsPage() {
         )}
 
         {/* Floating AI Action Button */}
-        {aiStatus.data?.enabled && !chatOpen && (
+        {!chatOpen && (
           <button
             type="button"
             onClick={() => setChatOpen(true)}
@@ -126,6 +126,7 @@ export default function StatsPage() {
             pipelineName={pipelines.find((p) => p.id === pipelineId)?.name}
             filters={filters}
             modelName={aiStatus.data?.model}
+            isAiEnabled={aiStatus.data?.enabled}
           />
         )}
       </div>

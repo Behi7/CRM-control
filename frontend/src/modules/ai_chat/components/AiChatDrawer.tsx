@@ -28,6 +28,7 @@ interface AiChatDrawerProps {
   pipelineName?: string;
   filters?: FilterParams;
   modelName?: string;
+  isAiEnabled?: boolean;
   biData?: any;
   activeBiTab?: string;
   variant?: 'overlay' | 'docked';
@@ -137,6 +138,7 @@ export default function AiChatDrawer({
   pipelineName,
   filters,
   modelName,
+  isAiEnabled,
   biData,
   activeBiTab,
   variant = 'overlay',
@@ -379,7 +381,15 @@ export default function AiChatDrawer({
         </div>
       </div>
 
-          {/* Interactive BI Blocks Context Selector (when in BI Module 02) */}
+      {/* Warning banner if AI is not enabled for this account */}
+      {isAiEnabled === false && (
+        <div className="bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-800/60 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+          <AlertTriangle size={15} className="shrink-0 text-amber-600 dark:text-amber-400" />
+          <span>{lang === 'uz' ? 'AI analitik yoqilmagan (Gemini API kaliti kiritilmagan).' : 'ИИ-Аналитик не активирован (в настройках аккаунта не указан API-ключ Gemini).'}</span>
+        </div>
+      )}
+
+      {/* Interactive BI Blocks Context Selector (when in BI Module 02) */}
           {biData && (
             <div className="bg-white dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 p-3 space-y-2">
               <div className="flex items-center justify-between text-xs">

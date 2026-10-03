@@ -24,6 +24,7 @@ def check_account_access(user: dict, account_id: int):
         raise HTTPException(status_code=403, detail="Access denied to this account")
 
 @router.get("/accounts/{account_id}/ai-status")
+@router.get("/accounts/{account_id}/ai/status")
 def get_ai_status(account_id: int, user: dict = Depends(get_current_user)):
     check_account_access(user, account_id)
     with sync_engine.connect() as conn:
@@ -36,10 +37,12 @@ def get_ai_status(account_id: int, user: dict = Depends(get_current_user)):
 
         return {
             "enabled": bool(acc["ai_enabled"] and acc["ai_encrypted_token"]),
+            "configured": bool(acc["ai_encrypted_token"]),
             "model": acc["ai_model"] or "gemini-2.5-flash",
         }
 
 @router.post("/accounts/{account_id}/ai-chat")
+@router.post("/accounts/{account_id}/ai/chat")
 async def chat_ai(account_id: int, body: AiChatBody, user: dict = Depends(get_current_user)):
     check_account_access(user, account_id)
     with sync_engine.connect() as conn:
