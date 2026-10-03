@@ -126,7 +126,8 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
   const isNotifsActive = isPathActive('/admin/notifications');
 
   const currentAccObj = accounts.find((a: any) => a.id === activeAccountId) || accounts[0];
-  const amoAccountName = currentAccObj?.subdomain
+  const amoAccountName = currentAccObj?.subdomain || 'AmoCRM';
+  const fullDomain = currentAccObj?.subdomain
     ? `${currentAccObj.subdomain}.${currentAccObj.baseDomain || 'amocrm.ru'}`
     : 'AmoCRM';
 
@@ -150,8 +151,8 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
         {!collapsed && (
           <div className="flex items-center gap-2 overflow-hidden pl-1 flex-1 min-w-0 mr-2">
             <div
-              className="font-bold text-sm tracking-tight text-white leading-tight truncate"
-              title={role === 'admin' ? 'Аналитика' : amoAccountName}
+              className="font-bold text-sm tracking-tight text-white leading-tight truncate capitalize"
+              title={role === 'admin' ? 'Аналитика' : fullDomain}
             >
               {role === 'admin' ? 'Аналитика' : amoAccountName}
             </div>
