@@ -28,46 +28,24 @@ services:
       timeout: 5s
       retries: 5
 
-  # === Модуль 00: Core платформа (00_crm_sync / Core Gateway: Auth, Admin, Sync, DB) ===
+  # === Модуль 00: Фоновый синхронизатор AmoCRM (Чистый Python / worker) ===
   crm_sync:
     build:
-      context: ./analytik/00_crm_sync
+      context: ./crm_sync
       dockerfile: Dockerfile
     restart: always
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/amocrm_analytics
-      REDIS_URL: redis://redis:6379
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123456}
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
-      CSRF_SECRET: ${CSRF_SECRET}
-      FRONTEND_URL: ${FRONTEND_URL:-http://192.168.1.200}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
-      COOKIE_SAME_DOMAIN: ${COOKIE_SAME_DOMAIN:-true}
-      PORT: "3000"
-      APP_ENV: ${APP_ENV:-production}
-      SYNC_WORKER_ENABLED: "true"
       SYNC_INTERVAL_MINUTES: "10"
       SYNC_OVERLAP_MINUTES: "2"
-      GLOBAL_SYNC_CONCURRENCY: "3"
-      STALE_THRESHOLD_MINUTES: "30"
-      REFRESH_TOKEN_TTL_DAYS: "30"
       AMO_CRM_RATE_LIMIT_RPS: "5"
-    ports:
-      - "3000:3000"
-    command: >
-      sh -c "
-        npx prisma migrate deploy &&
-        npm run seed &&
-        node dist/src/main.js
-      "
+      STALE_THRESHOLD_MINUTES: "30"
+    volumes:
+      - ./crm_sync:/app
 
   # === Единый Python Backend (FastAPI: Auth, Admin, 01 Time, 02 BI, 03 AI) ===
   backend:
