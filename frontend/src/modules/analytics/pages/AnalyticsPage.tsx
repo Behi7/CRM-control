@@ -400,8 +400,8 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
         </div>
 
         {/* Docked AI Chat for Desktop (>= 1280px) */}
-        {effectiveAccountId && isWideScreen && chatOpen && (
-          <aside className="w-[420px] shrink-0 sticky top-4 max-h-[calc(100vh-2rem)] flex flex-col transition-all">
+        {aiStatus.data?.enabled && effectiveAccountId && isWideScreen && chatOpen && (
+          <aside className="w-[420px] 2xl:w-[460px] shrink-0 sticky top-0 h-screen -my-4 lg:-my-6 -mr-4 lg:-mr-6 flex flex-col border-l border-slate-200 dark:border-slate-800 z-30 transition-all bg-white dark:bg-slate-900 overflow-hidden">
             <AiChatDrawer
               accountId={effectiveAccountId}
               isOpen={chatOpen}
@@ -423,8 +423,8 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
           </aside>
         )}
 
-        {/* Floating AI Button (Green cloud) */}
-        {!chatOpen && (
+        {/* Floating AI Button (Green cloud) - Only if AI key configured */}
+        {aiStatus.data?.enabled && !chatOpen && (
           <button
             type="button"
             onClick={() => setChatOpen(true)}
@@ -440,7 +440,7 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
         )}
 
         {/* Drawer overlay for non-wide screens */}
-        {effectiveAccountId && !isWideScreen && chatOpen && (
+        {aiStatus.data?.enabled && effectiveAccountId && !isWideScreen && chatOpen && (
           <AiChatDrawer
             accountId={effectiveAccountId}
             isOpen={chatOpen}

@@ -100,7 +100,7 @@ export default function StatsPage() {
         )}
 
         {/* Floating AI Action Button */}
-        {!chatOpen && (
+        {aiStatus.data?.enabled && !chatOpen && (
           <button
             type="button"
             onClick={() => setChatOpen(true)}
@@ -117,7 +117,7 @@ export default function StatsPage() {
         )}
 
         {/* AI Chat Drawer */}
-        {effectiveAccountId && (
+        {aiStatus.data?.enabled && effectiveAccountId && (
           <AiChatDrawer
             accountId={effectiveAccountId}
             isOpen={chatOpen}

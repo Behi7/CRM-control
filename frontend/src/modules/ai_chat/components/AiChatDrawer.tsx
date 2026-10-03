@@ -340,10 +340,10 @@ export default function AiChatDrawer({
 
   const chatCard = (
     <div
-      className={`w-full bg-white dark:bg-slate-900 flex flex-col ${
+      className={`w-full h-full bg-white dark:bg-slate-900 flex flex-col ${
         variant === 'docked'
-          ? 'h-full rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden'
-          : 'w-screen max-w-lg shadow-2xl border-l border-slate-200 dark:border-slate-800'
+          ? 'border-0 overflow-hidden'
+          : 'w-screen max-w-lg h-full shadow-2xl border-l border-slate-200 dark:border-slate-800'
       }`}
     >
       {/* Header */}
@@ -443,7 +443,7 @@ export default function AiChatDrawer({
           {/* Chat Messages */}
           <div
             ref={messagesContainerRef}
-            className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-950/60"
+            className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-950/60"
           >
             {messages.map((m) => {
               const isUser = m.role === 'user';
@@ -540,7 +540,7 @@ export default function AiChatDrawer({
       />
 
       {/* Slide-over panel */}
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10 h-full">
         {chatCard}
       </div>
     </div>
