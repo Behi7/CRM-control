@@ -121,8 +121,11 @@ async def sync_amo_users(
 ):
     try:
         all_users = []
+        MAX_USER_PAGES = 100  # Safety cap: 100 * 250 = 25,000 managers
         page = 1
-        while True:
+        last_first_id = None
+
+        while page <= MAX_USER_PAGES:
             status, data = await crm_client.request(
                 subdomain=subdomain,
                 base_domain=base_domain,
@@ -137,10 +140,21 @@ async def sync_amo_users(
             users = data.get("_embedded", {}).get("users", [])
             if not users:
                 break
+
+            # Loop detection
+            current_first_id = users[0].get("id") if users else None
+            if current_first_id and current_first_id == last_first_id:
+                logger.warning(f"sync_amo_users: pagination loop detected on page {page} for account {account_id}. Breaking.")
+                break
+            last_first_id = current_first_id
+
             all_users.extend(users)
             if len(users) < 250:
                 break
             page += 1
+
+        if page > MAX_USER_PAGES:
+            logger.warning(f"sync_amo_users hit max pages limit ({MAX_USER_PAGES}) for account {account_id}")
 
         active_user_ext_ids = []
         for u in all_users:
@@ -175,7 +189,8 @@ async def sync_amo_users(
         logger.info(f"Synced {len(all_users)} amo users for account {account_id}")
 
     except Exception as e:
-        logger.error(f"Error in sync_amo_users for account {account_id}: {e}")
+        logger.error(f"Error in sync_amo_users for account {account_id}: {e}", exc_info=True)
+        raise
 
 
 async def sync_custom_fields(
@@ -187,8 +202,11 @@ async def sync_custom_fields(
 ):
     try:
         all_fields = []
+        MAX_FIELD_PAGES = 100  # Safety cap: 100 * 250 = 25,000 custom fields
         page = 1
-        while True:
+        last_first_id = None
+
+        while page <= MAX_FIELD_PAGES:
             status, data = await crm_client.request(
                 subdomain=subdomain,
                 base_domain=base_domain,
@@ -203,10 +221,21 @@ async def sync_custom_fields(
             fields = data.get("_embedded", {}).get("custom_fields", [])
             if not fields:
                 break
+
+            # Loop detection
+            current_first_id = fields[0].get("id") if fields else None
+            if current_first_id and current_first_id == last_first_id:
+                logger.warning(f"sync_custom_fields: pagination loop detected on page {page} for account {account_id}. Breaking.")
+                break
+            last_first_id = current_first_id
+
             all_fields.extend(fields)
             if len(fields) < 250:
                 break
             page += 1
+
+        if page > MAX_FIELD_PAGES:
+            logger.warning(f"sync_custom_fields hit max pages limit ({MAX_FIELD_PAGES}) for account {account_id}")
 
         active_field_ext_ids = []
         for f in all_fields:
@@ -257,4 +286,5 @@ async def sync_custom_fields(
         logger.info(f"Synced {len(all_fields)} custom fields for account {account_id}")
 
     except Exception as e:
-        logger.error(f"Error in sync_custom_fields for account {account_id}: {e}")
+        logger.error(f"Error in sync_custom_fields for account {account_id}: {e}", exc_info=True)
+        raise
