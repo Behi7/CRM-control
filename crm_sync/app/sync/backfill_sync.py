@@ -44,6 +44,19 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
             method="GET",
             path="/api/v4/account",
         )
+        if acc_status == 401:
+            logger.warning(f"Account {account_id} token expired (401) during account fetch")
+            await session.execute(
+                update(Account).where(Account.id == account_id).values(
+                    token_status="expired",
+                    backfill_status="error",
+                    backfill_error="Token expired (401)",
+                    backfill_error_at=datetime.now(timezone.utc),
+                )
+            )
+            await session.commit()
+            return False
+
         if acc_status == 200 and acc_data:
             tz = acc_data.get("timezone", "UTC")
             ext_id = str(acc_data.get("id", ""))
@@ -53,7 +66,19 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
             await session.commit()
 
         # 2. Sync pipelines, stages, managers, fields
-        await sync_pipelines_and_stages(session, account_id, acc.subdomain, acc.base_domain, token)
+        pipe_sync_ok = await sync_pipelines_and_stages(session, account_id, acc.subdomain, acc.base_domain, token)
+        if not pipe_sync_ok:
+            acc_check = (await session.execute(select(Account.token_status).where(Account.id == account_id))).scalar_one_or_none()
+            if acc_check == "expired":
+                await session.execute(
+                    update(Account).where(Account.id == account_id).values(
+                        backfill_status="error",
+                        backfill_error="Token expired (401)",
+                        backfill_error_at=datetime.now(timezone.utc),
+                    )
+                )
+                await session.commit()
+                return False
 
         # 3. Fetch all historical leads
         ctx = await build_sync_context(session, account_id)
@@ -75,8 +100,32 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
                     "with": "tags,contacts,loss_reason,source_id,source",
                 },
             )
-            if status != 200 or not data:
+            if status == 401:
+                logger.warning(f"Account {account_id} token expired (401) during backfill leads")
+                await session.execute(
+                    update(Account).where(Account.id == account_id).values(
+                        token_status="expired",
+                        backfill_status="error",
+                        backfill_error="Token expired (401)",
+                        backfill_error_at=datetime.now(timezone.utc),
+                    )
+                )
+                await session.commit()
+                return False
+
+            if status == 204 or not data:
                 break
+            if status != 200:
+                logger.error(f"Error fetching backfill leads for account {account_id}: status={status}")
+                await session.execute(
+                    update(Account).where(Account.id == account_id).values(
+                        backfill_status="error",
+                        backfill_error=f"Leads fetch failed: status={status}",
+                        backfill_error_at=datetime.now(timezone.utc),
+                    )
+                )
+                await session.commit()
+                return False
 
             items = data.get("_embedded", {}).get("leads", [])
             if not items:
@@ -138,7 +187,20 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
                         "limit": 100,
                     },
                 )
-                if status != 200 or not data:
+                if status == 401:
+                    logger.warning(f"Account {account_id} token expired (401) during backfill events")
+                    await session.execute(
+                        update(Account).where(Account.id == account_id).values(
+                            token_status="expired",
+                            backfill_status="error",
+                            backfill_error="Token expired (401)",
+                            backfill_error_at=datetime.now(timezone.utc),
+                        )
+                    )
+                    await session.commit()
+                    return False
+
+                if status == 204 or not data or status != 200:
                     break
 
                 items = data.get("_embedded", {}).get("events", [])

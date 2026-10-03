@@ -10,6 +10,7 @@ from app.sync.pipeline_sync import sync_pipelines_and_stages
 from app.sync.delta_sync import run_delta_sync
 from app.sync.backfill_sync import run_backfill
 from app.sync.event_sync import cleanup_old_events
+from app.core.crm_client import crm_client
 from app.core.security import decrypt_token
 from app.config import settings
 
@@ -120,6 +121,10 @@ async def sync_loop():
                 break
             await asyncio.sleep(1)
 
+    try:
+        await crm_client.close()
+    except Exception:
+        pass
     logger.info("Sync worker stopped cleanly.")
 
 

@@ -119,6 +119,14 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
                 },
             )
 
+            if status == 401:
+                logger.warning(f"Account {account_id} token expired (401) during delta events fetch")
+                await session.execute(
+                    update(Account).where(Account.id == account_id).values(token_status="expired")
+                )
+                await session.commit()
+                return False
+
             if status == 204 or not data or status != 200:
                 break
 

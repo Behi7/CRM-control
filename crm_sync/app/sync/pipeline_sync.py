@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
-from app.models import Pipeline, Stage, AmoUser, CustomFieldDefinition
+from app.models import Pipeline, Stage, AmoUser, CustomFieldDefinition, Account
 from app.core.crm_client import crm_client
 
 logger = logging.getLogger("PipelineSync")
@@ -26,6 +26,10 @@ async def sync_pipelines_and_stages(
 
         if status == 401:
             logger.warning(f"Account {account_id} token expired (401)")
+            await session.execute(
+                update(Account).where(Account.id == account_id).values(token_status="expired")
+            )
+            await session.commit()
             return False
         if status != 200 or not data:
             logger.error(f"Failed to fetch pipelines for account {account_id}: status={status}")
@@ -134,6 +138,14 @@ async def sync_amo_users(
                 path="/api/v4/users",
                 params={"page": page, "limit": 250},
             )
+            if status == 401:
+                logger.warning(f"Account {account_id} token expired (401) during sync_amo_users")
+                await session.execute(
+                    update(Account).where(Account.id == account_id).values(token_status="expired")
+                )
+                await session.commit()
+                return
+
             if status != 200 or not data:
                 break
 
@@ -215,6 +227,14 @@ async def sync_custom_fields(
                 path="/api/v4/leads/custom_fields",
                 params={"page": page, "limit": 250},
             )
+            if status == 401:
+                logger.warning(f"Account {account_id} token expired (401) during sync_custom_fields")
+                await session.execute(
+                    update(Account).where(Account.id == account_id).values(token_status="expired")
+                )
+                await session.commit()
+                return
+
             if status != 200 or not data:
                 break
 
