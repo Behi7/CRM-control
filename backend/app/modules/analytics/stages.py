@@ -104,6 +104,19 @@ def get_stages_stats(
             for r in conn.execute(stats_sql, params).mappings().all()
         }
 
+        status_totals_sql = text(f"""
+            SELECT l.status, COUNT(l.id) AS cnt
+            FROM leads l
+            WHERE l.pipeline_id = :pipe_id
+              AND l.status IN ('won', 'lost')
+              {filter_clause}
+            GROUP BY l.status
+        """)
+        status_totals = {
+            r["status"]: r["cnt"]
+            for r in conn.execute(status_totals_sql, params).mappings().all()
+        }
+
         active_sql = text(f"""
             SELECT l.current_stage_id, COUNT(l.id) AS active_leads_count
             FROM leads l
@@ -133,10 +146,19 @@ def get_stages_stats(
         items = []
         for s in stages:
             s_id = s["stageId"]
+            s_ext = str(s["externalId"])
             st = stats_map.get(s_id, {})
             avg_actual = float(st["avg_duration"]) if st.get("avg_duration") is not None else None
-            passed_cnt = int(st.get("passed_leads_count") or 0)
-            active_cnt = int(active_map.get(s_id) or 0)
+            if s_ext == "142":
+                active_cnt = int(status_totals.get("won") or 0)
+                passed_cnt = int(status_totals.get("won") or 0)
+            elif s_ext == "143":
+                active_cnt = int(status_totals.get("lost") or 0)
+                passed_cnt = int(status_totals.get("lost") or 0)
+            else:
+                active_cnt = int(active_map.get(s_id) or 0)
+                passed_cnt = int(st.get("passed_leads_count") or 0)
+
             skips_cnt = int(skips_map.get(s_id) or 0)
 
             total_including_skips = passed_cnt + skips_cnt
@@ -214,6 +236,19 @@ def get_all_pipelines_stages_stats(
             for r in conn.execute(stats_sql, params).mappings().all()
         }
 
+        status_totals_sql = text(f"""
+            SELECT l.pipeline_id, l.status, COUNT(l.id) AS cnt
+            FROM leads l
+            WHERE l.account_id = :acc_id
+              AND l.status IN ('won', 'lost')
+              {filter_clause}
+            GROUP BY l.pipeline_id, l.status
+        """)
+        status_totals = {
+            (r["pipeline_id"], r["status"]): r["cnt"]
+            for r in conn.execute(status_totals_sql, params).mappings().all()
+        }
+
         active_sql = text(f"""
             SELECT l.current_stage_id, COUNT(l.id) AS active_leads_count
             FROM leads l
@@ -253,10 +288,19 @@ def get_all_pipelines_stages_stats(
                 }
 
             s_id = r["stageId"]
+            s_ext = str(r["externalId"])
             st = stats_map.get(s_id, {})
             avg_actual = float(st["avg_duration"]) if st.get("avg_duration") is not None else None
-            passed_cnt = int(st.get("passed_leads_count") or 0)
-            active_cnt = int(active_map.get(s_id) or 0)
+            if s_ext == "142":
+                active_cnt = int(status_totals.get((p_id, "won")) or 0)
+                passed_cnt = int(status_totals.get((p_id, "won")) or 0)
+            elif s_ext == "143":
+                active_cnt = int(status_totals.get((p_id, "lost")) or 0)
+                passed_cnt = int(status_totals.get((p_id, "lost")) or 0)
+            else:
+                active_cnt = int(active_map.get(s_id) or 0)
+                passed_cnt = int(st.get("passed_leads_count") or 0)
+
             skips_cnt = int(skips_map.get(s_id) or 0)
 
             total_including_skips = passed_cnt + skips_cnt
@@ -266,7 +310,8 @@ def get_all_pipelines_stages_stats(
                 avg_skips = avg_actual
 
             pipelines_map[p_id]["totalPassedLeads"] += passed_cnt
-            pipelines_map[p_id]["totalActiveLeads"] += active_cnt
+            if s_ext not in ("142", "143"):
+                pipelines_map[p_id]["totalActiveLeads"] += active_cnt
             pipelines_map[p_id]["items"].append({
                 "stageId": s_id,
                 "externalId": r["externalId"],
