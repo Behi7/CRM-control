@@ -176,12 +176,10 @@ class Tag(Base):
 class LeadTag(Base):
     __tablename__ = 'lead_tags'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    lead_id = Column(Integer, ForeignKey('leads.id', ondelete='CASCADE'), nullable=False)
-    tag_id = Column(Integer, ForeignKey('tags.id', ondelete='CASCADE'), nullable=False)
+    lead_id = Column(Integer, ForeignKey('leads.id', ondelete='CASCADE'), primary_key=True)
+    tag_id = Column(Integer, ForeignKey('tags.id', ondelete='CASCADE'), primary_key=True)
 
     __table_args__ = (
-        UniqueConstraint('lead_id', 'tag_id', name='lead_tags_lead_id_tag_id_key'),
         Index('idx_lead_tags_tag', 'tag_id'),
         Index('idx_lead_tags_lead', 'lead_id'),
     )

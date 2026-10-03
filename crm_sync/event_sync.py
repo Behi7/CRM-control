@@ -109,6 +109,20 @@ async def upsert_lead(
     ctx: Optional[SyncContext] = None,
 ) -> Optional[Lead]:
     try:
+        async with session.begin_nested():
+            return await _upsert_lead_impl(session, account_id, amo, ctx)
+    except Exception as e:
+        logger.error(f"Error upserting lead {amo.get('id')} for account {account_id}: {e}", exc_info=True)
+        return None
+
+
+async def _upsert_lead_impl(
+    session: AsyncSession,
+    account_id: int,
+    amo: Dict[str, Any],
+    ctx: Optional[SyncContext] = None,
+) -> Optional[Lead]:
+    try:
         amo_id = str(amo["id"])
         pipe_ext = str(amo.get("pipeline_id", ""))
         stage_ext = str(amo.get("status_id", ""))
@@ -328,12 +342,41 @@ async def upsert_lead(
 
         return lead
 
-    except Exception as e:
-        logger.error(f"Error upserting lead {amo.get('id')} for account {account_id}: {e}", exc_info=True)
-        return None
+    except Exception:
+        raise
 
 
 async def process_status_changed(
+    session: AsyncSession,
+    account_id: int,
+    subdomain: str,
+    base_domain: str,
+    token: str,
+    event: Dict[str, Any],
+    ctx: SyncContext,
+):
+    ev_id = str(event.get("id", ""))
+    lead_ext = str(event.get("entity_id", ""))
+    try:
+        async with session.begin_nested():
+            await _process_status_changed_impl(session, account_id, subdomain, base_domain, token, event, ctx)
+    except Exception as e:
+        logger.error(f"Error processing status change for event {ev_id} (lead {lead_ext}): {e}", exc_info=True)
+        try:
+            async with session.begin_nested():
+                await session.execute(
+                    insert(ProcessedCrmEvent).values(
+                        account_id=account_id,
+                        external_event_id=ev_id,
+                        lead_external_id=lead_ext,
+                        result="error",
+                    ).on_conflict_do_nothing()
+                )
+        except Exception:
+            pass
+
+
+async def _process_status_changed_impl(
     session: AsyncSession,
     account_id: int,
     subdomain: str,
@@ -483,6 +526,11 @@ async def process_status_changed(
         # Create new open interval
         if not open_hist or open_hist.stage_id != stage_id:
             await session.execute(
+                update(LeadStageHistory)
+                .where(LeadStageHistory.lead_id == lead.id, LeadStageHistory.exited_at.is_(None))
+                .values(exited_at=ts, duration_seconds=0)
+            )
+            await session.execute(
                 insert(LeadStageHistory).values(
                     lead_id=lead.id,
                     stage_id=stage_id,
@@ -511,6 +559,14 @@ async def process_status_changed(
 
 
 async def process_lead_deleted(session: AsyncSession, account_id: int, event: Dict[str, Any]):
+    try:
+        async with session.begin_nested():
+            await _process_lead_deleted_impl(session, account_id, event)
+    except Exception as e:
+        logger.error(f"Error processing lead deleted for event {event.get('id')}: {e}", exc_info=True)
+
+
+async def _process_lead_deleted_impl(session: AsyncSession, account_id: int, event: Dict[str, Any]):
     ev_id = str(event["id"])
     lead_ext = str(event["entity_id"])
     created_at_sec = event.get("created_at", 0)
@@ -551,6 +607,14 @@ async def process_lead_deleted(session: AsyncSession, account_id: int, event: Di
 
 
 async def create_fallback_interval(session: AsyncSession, lead_id: int):
+    try:
+        async with session.begin_nested():
+            await _create_fallback_interval_impl(session, lead_id)
+    except Exception as e:
+        logger.debug(f"Fallback interval skipped for lead {lead_id}: {e}")
+
+
+async def _create_fallback_interval_impl(session: AsyncSession, lead_id: int):
     lead = (await session.execute(select(Lead).where(Lead.id == lead_id))).scalar_one_or_none()
     if not lead or not lead.current_stage_id:
         return

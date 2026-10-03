@@ -136,6 +136,8 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
         if lead_row:
             await create_fallback_interval(session, lead_row.id)
 
+        await session.commit()
+
     # 3. Advance last_synced_at
     overlap_min = settings.SYNC_OVERLAP_MINUTES
     new_sync_time = job_started_at - timedelta(minutes=overlap_min)
