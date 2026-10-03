@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, AlertTriangle, CheckCircle2, XCircle, ChevronRight, Zap } from 'lucide-react';
+import { Clock, AlertTriangle, ChevronRight, Zap } from 'lucide-react';
 import { useLanguage } from '../../../../i18n/LanguageContext';
 import { StageStatItem } from '../StagesStatsTable';
 
@@ -14,9 +14,6 @@ export default function StageTimeBarChart({ items = [], onStageClick }: StageTim
   const workingStages = items.filter(
     (s) => s.externalId !== '142' && s.externalId !== '143',
   );
-
-  const wonStage = items.find((s) => s.externalId === '142');
-  const lostStage = items.find((s) => s.externalId === '143');
 
   const maxDuration = Math.max(
     ...workingStages.map((s) => s.avgSecondsActual || 0),
@@ -36,13 +33,6 @@ export default function StageTimeBarChart({ items = [], onStageClick }: StageTim
     0,
   );
 
-  const totalWonCount = wonStage?.leadsCount || 0;
-  const totalLostCount = lostStage?.leadsCount || 0;
-  const totalClosedCount = totalWonCount + totalLostCount;
-  const winRate =
-    totalClosedCount > 0
-      ? Math.round((totalWonCount / totalClosedCount) * 1000) / 10
-      : 0;
 
   if (workingStages.length === 0) {
     return null;
@@ -169,42 +159,7 @@ export default function StageTimeBarChart({ items = [], onStageClick }: StageTim
           );
         })}
       </div>
-
-      {/* Outcome Stages Footer Summary */}
-      {(wonStage || lostStage) && (
-        <div className="mt-4 pt-3 border-t border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex flex-wrap items-center gap-3">
-            {wonStage && (
-              <div
-                onClick={() => onStageClick && onStageClick(wonStage.stageId)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 font-semibold cursor-pointer hover:bg-emerald-500/20 transition-colors"
-                title={`${wonStage.name}: ${wonStage.leadsCount} сделок`}
-              >
-                <CheckCircle2 size={14} className="text-emerald-500" />
-                <span>{wonStage.name}: <strong>{wonStage.leadsCount}</strong></span>
-              </div>
-            )}
-
-            {lostStage && (
-              <div
-                onClick={() => onStageClick && onStageClick(lostStage.stageId)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20 font-semibold cursor-pointer hover:bg-rose-500/20 transition-colors"
-                title={`${lostStage.name}: ${lostStage.leadsCount} сделок`}
-              >
-                <XCircle size={14} className="text-rose-500" />
-                <span>{lostStage.name}: <strong>{lostStage.leadsCount}</strong></span>
-              </div>
-            )}
-          </div>
-
-          {totalClosedCount > 0 && (
-            <div className="text-slate-500 dark:text-slate-400 font-medium">
-              {lang === 'uz' ? 'Yopilgan bitimlar konversiyasi: ' : 'Конверсия закрытых: '}
-              <strong className="text-slate-900 dark:text-white font-bold">{winRate}%</strong>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
+
