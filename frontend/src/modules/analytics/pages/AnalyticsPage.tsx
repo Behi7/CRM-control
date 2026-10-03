@@ -12,6 +12,7 @@ import {
   Target,
   Sparkles,
   ChevronDown,
+  AlertTriangle,
 } from 'lucide-react';
 import { analyticsApi, FilterParams } from '../api/analytics.api';
 import { userApi } from '@/api/client';
@@ -22,6 +23,7 @@ import { useFilterContext } from '@/shared/context/FilterContext';
 import FilterBar from '@/shared/components/FilterBar';
 import MultiSelectDropdown from '../components/filters/MultiSelectDropdown';
 import StagesStatsTable from '../components/StagesStatsTable';
+import StageTimeBarChart from '../components/charts/StageTimeBarChart';
 
 import { AnalyticsTab, MultiSelectOption } from '../types';
 import OverviewTab from '../components/tabs/OverviewTab';
@@ -36,7 +38,7 @@ interface AnalyticsPageProps {
 }
 
 export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPageProps) {
-  const { t, lang } = useLanguage();
+  const { t, lang, formatDuration } = useLanguage();
   const { role } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -102,13 +104,25 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
     enabled: !!effectiveAccountId && !applied.pipelineId,
   });
 
-  const [collapsedPipelines, setCollapsedPipelines] = useState<Record<number, boolean>>({});
+  const [expandedPipelines, setExpandedPipelines] = useState<Record<number, boolean>>({});
 
-  const togglePipelineCollapse = (pId: number) => {
-    setCollapsedPipelines((prev) => ({
+  const togglePipelineExpand = (pId: number) => {
+    setExpandedPipelines((prev) => ({
       ...prev,
       [pId]: !prev[pId],
     }));
+  };
+
+  const expandAllPipelines = (pipelineIds: number[]) => {
+    const next: Record<number, boolean> = {};
+    pipelineIds.forEach((id) => {
+      next[id] = true;
+    });
+    setExpandedPipelines(next);
+  };
+
+  const collapseAllPipelines = () => {
+    setExpandedPipelines({});
   };
 
   const handleStageClick = (stageId: number) => {
@@ -240,17 +254,23 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
                     {(statsQuery.error as any)?.message || 'Неизвестная ошибка'}
                   </div>
                 ) : statsQuery.data ? (
-                  <StagesStatsTable
-                    items={statsQuery.data.items || []}
-                    onStageClick={handleStageClick}
-                  />
+                  <div className="space-y-4 animate-in fade-in-50 duration-200">
+                    <StageTimeBarChart
+                      items={statsQuery.data.items || []}
+                      onStageClick={handleStageClick}
+                    />
+                    <StagesStatsTable
+                      items={statsQuery.data.items || []}
+                      onStageClick={handleStageClick}
+                    />
+                  </div>
                 ) : (
                   <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-slate-500">
                     {lang === 'uz' ? 'Tanlangan voronka bo\'yicha ma\'lumot yo\'q' : 'Нет данных по этапам для выбранной воронки'}
                   </div>
                 )
               ) : (
-                // All pipelines view
+                // All pipelines view (collapsed by default, expandable with chart & table)
                 allStatsQuery.isLoading ? (
                   <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500">
                     {lang === 'uz' ? 'Barcha voronkalar bo\'yicha bosqichlar vaqti yuklanmoqda...' : 'Загрузка аналитики времени по всем воронкам...'}
@@ -261,69 +281,118 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
                     {(allStatsQuery.error as any)?.message || 'Неизвестная ошибка'}
                   </div>
                 ) : allStatsQuery.data?.pipelines?.length ? (
-                  <div className="space-y-6">
-                    {allStatsQuery.data.pipelines.map((p) => {
-                      const isCollapsed = !!collapsedPipelines[p.pipelineId];
-                      return (
-                        <div
-                          key={p.pipelineId}
-                          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden transition-all"
+                  <div className="space-y-4">
+                    {/* Control Bar: Expand all / Collapse all */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                        {lang === 'uz'
+                          ? `Jami ${allStatsQuery.data.pipelines.length} ta voronka (ochish uchun bosing)`
+                          : `Всего воронок: ${allStatsQuery.data.pipelines.length} (нажмите на воронку для просмотра графиков и деталей)`}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => expandAllPipelines(allStatsQuery.data!.pipelines.map((p) => p.pipelineId))}
+                          className="px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 transition-colors cursor-pointer"
                         >
-                          {/* Pipeline Card Header */}
-                          <div className="px-5 py-4 bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() => togglePipelineCollapse(p.pipelineId)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors cursor-pointer"
-                              >
-                                <ChevronDown
-                                  size={18}
-                                  className={`transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
-                                />
-                              </button>
-                              <div>
-                                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                                  <span>{p.pipelineName}</span>
-                                </h3>
-                                <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                                  <span>{p.items?.length || 0} {lang === 'uz' ? 'bosqich' : 'этапов'}</span>
-                                  <span>•</span>
-                                  <span>{p.totalPassedLeads || 0} {lang === 'uz' ? 'o\'tgan bitimlar' : 'прошедших сделок'}</span>
-                                  <span>•</span>
-                                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                                    {p.totalActiveLeads || 0} {lang === 'uz' ? 'ish jarayonida' : 'в работе'}
-                                  </span>
+                          {lang === 'uz' ? 'Barchasini ochish' : 'Развернуть все'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={collapseAllPipelines}
+                          className="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                        >
+                          {lang === 'uz' ? 'Barchasini yopish' : 'Свернуть все'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {allStatsQuery.data.pipelines.map((p) => {
+                        const isExpanded = !!expandedPipelines[p.pipelineId];
+                        const workingStages = (p.items || []).filter(
+                          (s) => s.externalId !== '142' && s.externalId !== '143' && (s.avgSecondsActual || 0) > 0,
+                        );
+                        const bottleneck = workingStages.reduce<any>((max, s) => {
+                          if (!max || (s.avgSecondsActual || 0) > (max.avgSecondsActual || 0)) return s;
+                          return max;
+                        }, null);
+
+                        return (
+                          <div
+                            key={p.pipelineId}
+                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden transition-all"
+                          >
+                            {/* Pipeline Card Header (Clickable anywhere to expand/collapse) */}
+                            <div
+                              onClick={() => togglePipelineExpand(p.pipelineId)}
+                              className="px-5 py-4 bg-slate-50/80 dark:bg-slate-800/50 hover:bg-slate-100/70 dark:hover:bg-slate-800/80 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 cursor-pointer select-none transition-colors"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+                                  <ChevronDown
+                                    size={18}
+                                    className={`transition-transform duration-200 ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
+                                  />
                                 </div>
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
+                                      {p.pipelineName}
+                                    </h3>
+                                    {bottleneck && !isExpanded && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
+                                        <AlertTriangle size={11} className="text-rose-500 shrink-0" />
+                                        <span className="truncate max-w-[220px]">
+                                          {lang === 'uz' ? 'Tor joy: ' : 'Затык: '}{bottleneck.name} ({formatDuration(bottleneck.avgSecondsActual)})
+                                        </span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                                    <span>{p.items?.length || 0} {lang === 'uz' ? 'bosqich' : 'этапов'}</span>
+                                    <span>•</span>
+                                    <span>{p.totalPassedLeads || 0} {lang === 'uz' ? 'o\'tgan' : 'прошедших'}</span>
+                                    <span>•</span>
+                                    <span className="text-indigo-600 dark:text-indigo-400 font-semibold">
+                                      {p.totalActiveLeads || 0} {lang === 'uz' ? 'ishda' : 'в работе'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPipelineId(p.pipelineId);
+                                    applyFilters();
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+                                >
+                                  {lang === 'uz' ? 'Faqat shu voronkani tanlash' : 'Выбрать только эту воронку'}
+                                </button>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPipelineId(p.pipelineId);
-                                  applyFilters();
-                                }}
-                                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
-                              >
-                                {lang === 'uz' ? 'Faqat shu voronkani tanlash' : 'Выбрать только эту воронку'}
-                              </button>
-                            </div>
+                            {/* Pipeline Stages (Chart + Table) */}
+                            {isExpanded && (
+                              <div className="p-4 sm:p-5 space-y-4 animate-in fade-in-50 duration-200">
+                                <StageTimeBarChart
+                                  items={p.items || []}
+                                  onStageClick={handleStageClick}
+                                />
+                                <StagesStatsTable
+                                  items={p.items || []}
+                                  onStageClick={handleStageClick}
+                                />
+                              </div>
+                            )}
                           </div>
-
-                          {/* Pipeline Stages Table */}
-                          {!isCollapsed && (
-                            <div className="p-4">
-                              <StagesStatsTable
-                                items={p.items || []}
-                                onStageClick={handleStageClick}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 ) : (
                   <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-slate-500">

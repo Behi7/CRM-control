@@ -2,7 +2,7 @@ import React from 'react';
 import { HelpCircle } from 'lucide-react';
 import { useLanguage } from '../../../i18n/LanguageContext';
 
-interface StageStatItem {
+export interface StageStatItem {
   stageId: number;
   externalId: string;
   name: string;
