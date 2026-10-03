@@ -378,6 +378,13 @@ async def process_status_changed(
             )
             if status == 200 and data:
                 fetched_lead_data = data
+            elif status != 404 and status != 204:
+                # Transient network or server error: do not reserve dedup, postpone event for next sync pass
+                logger.warning(
+                    f"Transient error fetching lead {lead_ext} for event {ev_id}: status={status}. "
+                    "Postponing event for next sync pass."
+                )
+                return
 
         # Step 3: Atomic dedup reservation (prevents TOCTOU race conditions)
         dedup_stmt = (
@@ -482,21 +489,26 @@ async def _process_status_changed_impl(
             )
 
         term_status = "won" if status_after == 142 else "lost"
-        term_updates = {
-            "status": term_status,
-            "crm_closed_at": ts,
-            "updated_at": ts,
-            "current_stage_id": None,
-        }
-        if target_pipeline_id and target_pipeline_id != lead.pipeline_id:
-            term_updates["pipeline_id"] = target_pipeline_id
-            lead.pipeline_id = target_pipeline_id
+        if not lead.updated_at or ts >= lead.updated_at:
+            term_updates = {
+                "status": term_status,
+                "crm_closed_at": ts,
+                "updated_at": ts,
+                "current_stage_id": None,
+            }
+            if target_pipeline_id and target_pipeline_id != lead.pipeline_id:
+                term_updates["pipeline_id"] = target_pipeline_id
+                lead.pipeline_id = target_pipeline_id
 
-        await session.execute(
-            update(Lead)
-            .where(Lead.id == lead.id)
-            .values(**term_updates)
-        )
+            await session.execute(
+                update(Lead)
+                .where(Lead.id == lead.id)
+                .values(**term_updates)
+            )
+            lead.status = term_status
+            lead.crm_closed_at = ts
+            lead.updated_at = ts
+            lead.current_stage_id = None
         result = f"closed_{term_status}"
 
     else:
@@ -619,15 +631,28 @@ async def _process_status_changed_impl(
                 )
             )
 
-        # Update lead
-        updates = {"current_stage_id": stage_id, "updated_at": ts}
-        if target_pipeline_id and target_pipeline_id != lead.pipeline_id:
-            updates["pipeline_id"] = target_pipeline_id
-            lead.pipeline_id = target_pipeline_id
-        if lead.status in ("won", "lost"):
-            updates["status"] = "open"
-            updates["crm_closed_at"] = None
-        await session.execute(update(Lead).where(Lead.id == lead.id).values(**updates))
+        # Update lead current status only if event is newer than current state in DB
+        if not lead.updated_at or ts >= lead.updated_at:
+            updates = {"current_stage_id": stage_id, "updated_at": ts}
+            if target_pipeline_id and target_pipeline_id != lead.pipeline_id:
+                updates["pipeline_id"] = target_pipeline_id
+                lead.pipeline_id = target_pipeline_id
+
+            # Re-open deal ONLY if event timestamp is strictly later than closed timestamp:
+            if lead.status in ("won", "lost") and (not lead.crm_closed_at or ts > lead.crm_closed_at):
+                updates["status"] = "open"
+                updates["crm_closed_at"] = None
+                lead.status = "open"
+                lead.crm_closed_at = None
+            elif lead.status in ("won", "lost"):
+                # Outdated event from the past: deal was closed later, preserve won/lost and keep current_stage_id None
+                updates.pop("current_stage_id", None)
+
+            if updates:
+                await session.execute(update(Lead).where(Lead.id == lead.id).values(**updates))
+                lead.updated_at = ts
+                if "current_stage_id" in updates:
+                    lead.current_stage_id = updates["current_stage_id"]
 
     # Update processed event from 'processing' to final result
     await session.execute(

@@ -78,13 +78,16 @@ class CrmClient:
                 )
 
                 if resp.status_code == 429:
-                    retry_after_hdr = resp.headers.get("Retry-After")
-                    try:
-                        wait_sec = float(retry_after_hdr) if retry_after_hdr else 2.0 * (attempt + 1)
-                    except Exception:
-                        wait_sec = 2.0 * (attempt + 1)
-                    await asyncio.sleep(max(wait_sec, 1.5 * (attempt + 1)))
-                    continue
+                    if attempt < max_retries - 1:
+                        retry_after_hdr = resp.headers.get("Retry-After")
+                        try:
+                            wait_sec = float(retry_after_hdr) if retry_after_hdr else 2.0 * (attempt + 1)
+                        except Exception:
+                            wait_sec = 2.0 * (attempt + 1)
+                        await asyncio.sleep(max(wait_sec, 1.5 * (attempt + 1)))
+                        continue
+                    else:
+                        return 429, {"error": "Rate limit exceeded"}
 
                 if resp.status_code in (502, 503, 504):
                     if attempt < max_retries - 1:

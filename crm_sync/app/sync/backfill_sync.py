@@ -233,8 +233,20 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
                     await session.commit()
                     return False
 
-                if status == 204 or not data or status != 200:
+                if status == 204 or (status == 200 and not data):
                     break
+
+                if status != 200:
+                    logger.error(f"Error fetching backfill events for account {account_id}: status={status}")
+                    await session.execute(
+                        update(Account).where(Account.id == account_id).values(
+                            backfill_status="error",
+                            backfill_error=f"Events fetch failed: status={status}",
+                            backfill_error_at=datetime.now(timezone.utc),
+                        )
+                    )
+                    await session.commit()
+                    return False
 
                 embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
                 items = embedded.get("events") or []

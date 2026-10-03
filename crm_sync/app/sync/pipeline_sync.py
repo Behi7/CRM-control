@@ -33,6 +33,7 @@ async def sync_pipelines_and_stages(
             return False
         if status != 200 or not data:
             logger.error(f"Failed to fetch pipelines for account {account_id}: status={status}")
+            await session.rollback()
             return False
 
         embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
@@ -105,11 +106,13 @@ async def sync_pipelines_and_stages(
         # Sync Amo Users (Managers)
         users_ok = await sync_amo_users(session, account_id, subdomain, base_domain, token)
         if not users_ok:
+            await session.rollback()
             return False
 
         # Sync Custom Fields Definitions
         fields_ok = await sync_custom_fields(session, account_id, subdomain, base_domain, token)
         if not fields_ok:
+            await session.rollback()
             return False
 
         await session.commit()

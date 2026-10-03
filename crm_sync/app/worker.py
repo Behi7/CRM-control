@@ -90,8 +90,24 @@ async def sync_loop():
                         logger.info(f"Account #{acc_id} ({subdomain}) is no longer active, skipping.")
                         continue
 
-                    # Check fresh backfill status
-                    if acc_fresh.backfill_status in ("pending", "in_progress"):
+                    # Check fresh backfill status with cooldown retry
+                    should_retry_backfill = False
+                    if acc_fresh.backfill_status == "error":
+                        err_time = acc_fresh.backfill_error_at
+                        if err_time:
+                            if err_time.tzinfo is None:
+                                err_time = err_time.replace(tzinfo=timezone.utc)
+                            elapsed = (datetime.now(timezone.utc) - err_time).total_seconds()
+                            if elapsed >= settings.STALE_THRESHOLD_MINUTES * 60:
+                                should_retry_backfill = True
+                                logger.info(
+                                    f"Retrying backfill for Account #{acc_id} ({subdomain}) after cooldown "
+                                    f"({int(elapsed // 60)}m >= {settings.STALE_THRESHOLD_MINUTES}m)..."
+                                )
+                        else:
+                            should_retry_backfill = True
+
+                    if acc_fresh.backfill_status in ("pending", "in_progress") or should_retry_backfill:
                         logger.info(f"Account #{acc_id} ({subdomain}) starting backfill (status={acc_fresh.backfill_status})...")
                         await run_backfill(session, acc_id)
                     elif acc_fresh.backfill_status == "done":
@@ -99,7 +115,7 @@ async def sync_loop():
                     else:
                         logger.warning(
                             f"Account #{acc_id} ({subdomain}) backfill status is '{acc_fresh.backfill_status}' "
-                            f"(error={acc_fresh.backfill_error}). Skipping sync until retry."
+                            f"(error={acc_fresh.backfill_error}). Waiting for cooldown before retry."
                         )
 
             # Check if 60 minutes passed for pipeline sync

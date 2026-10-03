@@ -66,11 +66,12 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
                 await session.commit()
                 return False
 
-            if status == 204 or not data:
+            if status == 204 or (status == 200 and not data):
                 break
             if status != 200:
                 logger.error(f"Error fetching delta leads for account {account_id}: status={status}")
-                break
+                await session.rollback()
+                return False
 
             embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
             items = embedded.get("leads") or []
@@ -128,8 +129,12 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
                 await session.commit()
                 return False
 
-            if status == 204 or not data or status != 200:
+            if status == 204 or (status == 200 and not data):
                 break
+            if status != 200:
+                logger.error(f"Error fetching delta events for account {account_id}: status={status}")
+                await session.rollback()
+                return False
 
             embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
             items = embedded.get("events") or []
