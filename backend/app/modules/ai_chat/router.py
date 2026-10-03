@@ -5,7 +5,8 @@ from sqlalchemy import text
 import httpx
 from app.core.database import sync_engine
 from app.core.security import get_current_user, decrypt_token
-from app.modules.time_analytics.router import get_stages_stats, format_duration
+from app.modules.analytics.stages import get_stages_stats
+from app.modules.analytics.common import format_duration
 
 router = APIRouter(tags=["AI Chat & Predictions"])
 

@@ -1,28 +1,14 @@
-import os
 import json
 import urllib.request
-from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import HTTPException
 from sqlalchemy import text
 from app.core.database import sync_engine as engine
-from app.core.security import get_current_user
-
-router = APIRouter(tags=["02 BI Analytics"])
-
-def check_account_access(user: dict, account_id: int):
-    if user.get("role") != "admin" and user.get("accountId") != account_id:
-        raise HTTPException(status_code=403, detail="Access denied to this account")
+from app.modules.analytics.common import check_account_access
 
 
-@router.get("/health")
-def health():
-    return {"status": "ok", "module": "02_python_analytics"}
-
-
-@router.get("/accounts")
-def list_accounts_bi(user: dict = Depends(get_current_user)):
-    """Список аккаунтов со статистикой обогащения БД (для левого меню и шапки Модуля 02)."""
+def list_accounts_bi(user: dict):
+    """Список аккаунтов со статистикой обогащения БД."""
     role = user.get("role")
     user_acc_id = user.get("accountId")
 
@@ -57,13 +43,8 @@ def list_accounts_bi(user: dict = Depends(get_current_user)):
         return [dict(r) for r in rows]
 
 
-@router.post("/analytics/{account_id}/enrich")
-def trigger_account_enrichment(
-    account_id: int,
-    authorization: str | None = Header(default=None),
-    user: dict = Depends(get_current_user),
-):
-    """Отправляет задачу на внеочередное обогащение в микросервис 00_crm_sync через очередь."""
+def trigger_account_enrichment(account_id: int, authorization: str | None, user: dict):
+    """Отправляет задачу на внеочередное обогащение в микросервис crm_sync."""
     check_account_access(user, account_id)
     try:
         req = urllib.request.Request(
@@ -75,22 +56,23 @@ def trigger_account_enrichment(
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except Exception:
-        return {"ok": True, "message": "Задача на обогащение передана микросервису 00_crm_sync"}
+        return {"ok": True, "message": "Задача на обогащение передана микросервису crm_sync"}
 
 
-@router.get("/analytics/{account_id}")
 def get_detailed_analytics(
     account_id: int,
-    pipeline_id: Optional[int] = Query(default=None),
-    date_from: Optional[str] = Query(default=None),
-    date_to: Optional[str] = Query(default=None),
-    manager_ids: Optional[str] = Query(default=None),
-    tag_ids: Optional[str] = Query(default=None),
-    sources: Optional[str] = Query(default=None),
-    user: dict = Depends(get_current_user),
+    pipeline_id: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    status: Optional[str] = None,
+    manager_ids: Optional[str] = None,
+    tag_ids: Optional[str] = None,
+    sources: Optional[str] = None,
+    user: dict = None,
 ):
-    """Глубокая BI-аналитика AmoCRM по аккаунту."""
-    check_account_access(user, account_id)
+    """Глубокая BI-аналитика AmoCRM по аккаунту с полной поддержкой фильтрации по статусу сделки."""
+    if user:
+        check_account_access(user, account_id)
 
     with engine.connect() as conn:
         account = conn.execute(
@@ -167,6 +149,12 @@ def get_detailed_analytics(
         if date_to:
             conditions.append("l.crm_created_at <= CAST(:date_to AS timestamptz)")
             params["date_to"] = f"{date_to}T23:59:59Z"
+
+        if status and status != "all":
+            statuses = [s.strip() for s in status.split(",") if s.strip() in ("open", "won", "lost")]
+            if statuses:
+                conditions.append("l.status = ANY(:filter_statuses)")
+                params["filter_statuses"] = statuses
 
         if manager_ids:
             m_ids = [int(x) for x in manager_ids.split(",") if x.strip().isdigit()]
@@ -266,11 +254,11 @@ def get_detailed_analytics(
             "uniqueContacts": int(kpi_row["unique_contacts"] or 0),
         }
 
-        # 2. Динамика по времени (по месяцам + данные для японских свечей чека и конверсии)
+        # 2. Динамика по дням (timeseries)
         timeseries_rows = conn.execute(
             text(f"""
                 SELECT
-                    TO_CHAR(DATE_TRUNC('month', l.crm_created_at), 'YYYY-MM') AS period,
+                    TO_CHAR(DATE_TRUNC('day', l.crm_created_at), 'YYYY-MM-DD') AS period,
                     COUNT(*) AS "totalLeads",
                     COUNT(*) FILTER (WHERE l.status = 'won') AS "wonLeads",
                     COUNT(*) FILTER (WHERE l.status = 'lost') AS "lostLeads",
@@ -387,7 +375,7 @@ def get_detailed_analytics(
                 "stageSkipsCount": int(r["stageSkipsCount"] or 0),
             })
 
-        # 5. Маркетинг, Источники сделок AmoCRM, Теги и Кастомные поля
+        # 4. Маркетинг, Источники сделок AmoCRM, Теги и Кастомные поля
         utm_rows = conn.execute(
             text(f"""
                 SELECT
@@ -466,7 +454,7 @@ def get_detailed_analytics(
             for r in tag_rows
         ]
 
-        # Кастомные поля: фильтруем ТОЛЬКО официальные списочные поля (select, multiselect)
+        # Кастомные поля
         cf_rows = conn.execute(
             text(f"""
                 WITH unpacked AS (
@@ -596,7 +584,7 @@ def get_detailed_analytics(
 
         custom_fields_lists = list(fields_grouped_map.values())
 
-        # 6. Причины отказа (системное поле loss_reason_name + кастомное списочное поле Rad etish sababi / Причина отказа)
+        # 5. Причины отказа
         loss_rows = conn.execute(
             text(f"""
                 SELECT
@@ -638,7 +626,7 @@ def get_detailed_analytics(
             for r in loss_rows
         ]
 
-        # Сводка по повторным обращениям контактов (для 8-й KPI карточки в Обзоре)
+        # 6. Сводка по повторным обращениям контактов
         ltv_stats = conn.execute(
             text(f"""
                 WITH contact_agg AS (
@@ -660,7 +648,7 @@ def get_detailed_analytics(
         unique_c = int(ltv_stats["unique_contacts"] or 0) if ltv_stats else 0
         repeat_c = int(ltv_stats["repeat_contacts"] or 0) if ltv_stats else 0
 
-        # ТОП открытых сделок в зоне риска (просроченные задачи / без задач / зависшие > 14 дней)
+        # 7. Сделки в зоне риска
         risk_rows = conn.execute(
             text(f"""
                 SELECT
@@ -697,7 +685,7 @@ def get_detailed_analytics(
         ).mappings().all()
 
         return {
-            "module": "02_python_analytics",
+            "module": "analytics",
             "account": dict(account),
             "filtersMeta": {
                 "pipelines": pipelines,
@@ -740,4 +728,3 @@ def get_detailed_analytics(
                 ],
             },
         }
-

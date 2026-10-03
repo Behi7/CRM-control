@@ -1,148 +1,15 @@
-import os
-import json
-import base64
-from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
-from pydantic import BaseModel
+from typing import Any, Optional
+from fastapi import HTTPException
 from sqlalchemy import text
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from app.config import settings
 from app.core.database import sync_engine
-from app.core.security import get_current_user
+from app.modules.analytics.common import (
+    check_account_access,
+    get_data_freshness,
+    build_filter_clauses,
+)
 
-router = APIRouter(tags=["01 Time Analytics"])
 
-def check_account_access(user: dict, account_id: int):
-    if user.get("role") != "admin" and user.get("accountId") != account_id:
-        raise HTTPException(status_code=403, detail="Access denied to this account")
-
-def get_data_freshness(conn, account_id: int) -> dict:
-    row = conn.execute(
-        text("SELECT last_synced_at, backfill_status FROM accounts WHERE id = :id"),
-        {"id": account_id}
-    ).mappings().first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Account not found")
-
-    last_synced = row["last_synced_at"]
-    backfill_status = row["backfill_status"]
-    stale_seconds = settings.STALE_THRESHOLD_MINUTES * 60
-    now = datetime.now(timezone.utc)
-
-    is_stale = (
-        last_synced is None
-        or (now - last_synced).total_seconds() > stale_seconds
-        or backfill_status != "done"
-    )
-    return {
-        "dataFreshness": {
-            "lastSyncedAt": last_synced.isoformat() if last_synced else None,
-            "isStale": is_stale,
-        }
-    }
-
-def parse_date_boundary(d_str: str | None, end_of_day: bool) -> datetime | None:
-    if not d_str:
-        return None
-    d = d_str.strip()
-    try:
-        if len(d) == 10 and d[4] == '-' and d[7] == '-':
-            iso = f"{d}T23:59:59.999999+00:00" if end_of_day else f"{d}T00:00:00+00:00"
-            return datetime.fromisoformat(iso)
-        return datetime.fromisoformat(d.replace("Z", "+00:00"))
-    except Exception:
-        return None
-
-def parse_int_list(val: Any) -> list[int]:
-    if not val:
-        return []
-    if isinstance(val, list):
-        res = []
-        for x in val:
-            res.extend(parse_int_list(x))
-        return res
-    if isinstance(val, str):
-        parts = [p.strip() for p in val.split(",") if p.strip()]
-        return [int(p) for p in parts if p.isdigit()]
-    return []
-
-def build_filter_clauses(
-    tag_ids_raw: Any = None,
-    status_raw: str | None = None,
-    manager_ids_raw: Any = None,
-    date_from_raw: str | None = None,
-    date_to_raw: str | None = None,
-) -> tuple[str, dict]:
-    where_parts = []
-    params: dict[str, Any] = {}
-
-    tag_ids = parse_int_list(tag_ids_raw)
-    if tag_ids:
-        where_parts.append("""
-            l.id IN (
-                SELECT lt.lead_id FROM lead_tags lt
-                WHERE lt.tag_id = ANY(:filter_tag_ids)
-                GROUP BY lt.lead_id HAVING COUNT(DISTINCT lt.tag_id) = :filter_tag_count
-            )
-        """)
-        params["filter_tag_ids"] = tag_ids
-        params["filter_tag_count"] = len(tag_ids)
-
-    if status_raw and status_raw != "all":
-        statuses = [s.strip() for s in status_raw.split(",") if s.strip() in ("open", "won", "lost")]
-        if statuses:
-            where_parts.append("l.status = ANY(:filter_statuses)")
-            params["filter_statuses"] = statuses
-
-    manager_ids = parse_int_list(manager_ids_raw)
-    if manager_ids:
-        where_parts.append("l.responsible_user_id = ANY(:filter_manager_ids)")
-        params["filter_manager_ids"] = manager_ids
-
-    date_from = parse_date_boundary(date_from_raw, False)
-    date_to = parse_date_boundary(date_to_raw, True)
-
-    if date_from and date_to:
-        if date_from > date_to:
-            date_from, date_to = date_to, date_from
-        where_parts.append("l.crm_created_at >= :filter_date_from AND l.crm_created_at <= :filter_date_to")
-        params["filter_date_from"] = date_from
-        params["filter_date_to"] = date_to
-    elif date_from:
-        where_parts.append("l.crm_created_at >= :filter_date_from")
-        params["filter_date_from"] = date_from
-    elif date_to:
-        where_parts.append("l.crm_created_at <= :filter_date_to")
-        params["filter_date_to"] = date_to
-
-    clause = ("AND " + " AND ".join(where_parts)) if where_parts else ""
-    return clause, params
-
-def format_duration(seconds: float | int | None, lang: str = "ru") -> str:
-    if seconds is None:
-        return "—"
-    sec = int(round(seconds))
-    if sec <= 0:
-        return "0 son" if lang == "uz" else "0 сек"
-    d = sec // 86400
-    h = (sec % 86400) // 3600
-    m = (sec % 3600) // 60
-    parts = []
-    if lang == "uz":
-        if d > 0: parts.append(f"{d}k")
-        if h > 0: parts.append(f"{h}s")
-        if m > 0: parts.append(f"{m}d")
-        return " ".join(parts) or "<1d"
-    else:
-        if d > 0: parts.append(f"{d}д")
-        if h > 0: parts.append(f"{h}ч")
-        if m > 0: parts.append(f"{m}м")
-        return " ".join(parts) or "<1м"
-
-@router.get("/accounts/{account_id}/pipelines")
-def get_pipelines(account_id: int, user: dict = Depends(get_current_user)):
+def get_pipelines(account_id: int, user: dict):
     check_account_access(user, account_id)
     with sync_engine.connect() as conn:
         freshness = get_data_freshness(conn, account_id)
@@ -155,8 +22,8 @@ def get_pipelines(account_id: int, user: dict = Depends(get_current_user)):
         rows = conn.execute(sql, {"acc_id": account_id}).mappings().all()
         return {**freshness, "items": [dict(r) for r in rows]}
 
-@router.get("/accounts/{account_id}/tags")
-def get_tags(account_id: int, user: dict = Depends(get_current_user)):
+
+def get_tags(account_id: int, user: dict):
     check_account_access(user, account_id)
     with sync_engine.connect() as conn:
         freshness = get_data_freshness(conn, account_id)
@@ -171,8 +38,8 @@ def get_tags(account_id: int, user: dict = Depends(get_current_user)):
         rows = conn.execute(sql, {"acc_id": account_id}).mappings().all()
         return {**freshness, "items": [dict(r) for r in rows]}
 
-@router.get("/accounts/{account_id}/managers")
-def get_managers(account_id: int, user: dict = Depends(get_current_user)):
+
+def get_managers(account_id: int, user: dict):
     check_account_access(user, account_id)
     with sync_engine.connect() as conn:
         freshness = get_data_freshness(conn, account_id)
@@ -185,15 +52,15 @@ def get_managers(account_id: int, user: dict = Depends(get_current_user)):
         rows = conn.execute(sql, {"acc_id": account_id}).mappings().all()
         return {**freshness, "items": [dict(r) for r in rows]}
 
-@router.get("/pipelines/{pipeline_id}/stages-stats")
+
 def get_stages_stats(
     pipeline_id: int,
-    tag_ids: list[int] = Query(default=[]),
-    status: str | None = Query(default=None),
-    manager_ids: list[int] = Query(default=[]),
-    date_from: str | None = Query(default=None),
-    date_to: str | None = Query(default=None),
-    user: dict = Depends(get_current_user),
+    tag_ids: list[int],
+    status: str | None,
+    manager_ids: list[int],
+    date_from: str | None,
+    date_to: str | None,
+    user: dict,
 ):
     with sync_engine.connect() as conn:
         pipe_row = conn.execute(
@@ -291,17 +158,17 @@ def get_stages_stats(
 
         return {**freshness, "items": items}
 
-@router.get("/stages/{stage_id}/leads")
+
 def get_stage_leads(
     stage_id: int,
-    tag_ids: list[int] = Query(default=[]),
-    status: str | None = Query(default=None),
-    manager_ids: list[int] = Query(default=[]),
-    date_from: str | None = Query(default=None),
-    date_to: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-    user: dict = Depends(get_current_user),
+    tag_ids: list[int],
+    status: str | None,
+    manager_ids: list[int],
+    date_from: str | None,
+    date_to: str | None,
+    limit: int,
+    offset: int,
+    user: dict,
 ):
     with sync_engine.connect() as conn:
         stage = conn.execute(
@@ -363,8 +230,8 @@ def get_stage_leads(
 
         return {"items": items}
 
-@router.get("/leads/{lead_id}/history")
-def get_lead_history(lead_id: int, user: dict = Depends(get_current_user)):
+
+def get_lead_history(lead_id: int, user: dict):
     with sync_engine.connect() as conn:
         lead = conn.execute(
             text("""
@@ -419,8 +286,8 @@ def get_lead_history(lead_id: int, user: dict = Depends(get_current_user)):
             "history": h_items,
         }
 
-@router.get("/leads/{lead_id}/skips")
-def get_lead_skips(lead_id: int, user: dict = Depends(get_current_user)):
+
+def get_lead_skips(lead_id: int, user: dict):
     with sync_engine.connect() as conn:
         lead = conn.execute(
             text("SELECT account_id FROM leads WHERE id = :id"),
@@ -455,4 +322,80 @@ def get_lead_skips(lead_id: int, user: dict = Depends(get_current_user)):
                 }
                 for r in rows
             ]
+        }
+
+
+def search_leads(
+    account_id: int,
+    q: str,
+    page: int,
+    per_page: int,
+    manager_ids: list[int],
+    tag_ids: list[int],
+    status: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    user: dict,
+):
+    check_account_access(user, account_id)
+    with sync_engine.connect() as conn:
+        where_parts = ["l.account_id = :acc_id"]
+        params: dict[str, Any] = {"acc_id": account_id}
+
+        clean_q = q.strip()
+        if clean_q:
+            if clean_q.isdigit():
+                where_parts.append("(l.external_id = :ext_id OR l.name ILIKE :q_like)")
+                params["ext_id"] = int(clean_q)
+                params["q_like"] = f"%{clean_q}%"
+            else:
+                where_parts.append("l.name ILIKE :q_like")
+                params["q_like"] = f"%{clean_q}%"
+
+        filter_clause, filter_params = build_filter_clauses(
+            tag_ids, status, manager_ids, date_from, date_to
+        )
+        if filter_clause:
+            where_parts.append(filter_clause.removeprefix("AND ").strip())
+            params.update(filter_params)
+
+        where_sql = " AND ".join(where_parts)
+        offset = (page - 1) * per_page
+        params["limit"] = per_page
+        params["offset"] = offset
+
+        count_sql = text(f"SELECT COUNT(*) FROM leads l WHERE {where_sql}")
+        total = conn.execute(count_sql, params).scalar() or 0
+
+        leads_sql = text(f"""
+            SELECT
+                l.id,
+                l.external_id AS "externalId",
+                l.name,
+                l.status,
+                l.price,
+                l.crm_created_at AS "crmCreatedAt",
+                s.name AS "stageName",
+                u.name AS "managerName"
+            FROM leads l
+            LEFT JOIN stages s ON s.id = l.current_stage_id
+            LEFT JOIN amo_users u ON u.id = l.responsible_user_id
+            WHERE {where_sql}
+            ORDER BY l.crm_created_at DESC
+            LIMIT :limit OFFSET :offset
+        """)
+        rows = conn.execute(leads_sql, params).mappings().all()
+
+        items = []
+        for r in rows:
+            d = dict(r)
+            d["price"] = float(d["price"]) if d.get("price") is not None else None
+            d["crmCreatedAt"] = d["crmCreatedAt"].isoformat() if d.get("crmCreatedAt") else None
+            items.append(d)
+
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "perPage": per_page,
         }

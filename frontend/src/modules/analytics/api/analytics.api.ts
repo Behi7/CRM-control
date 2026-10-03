@@ -19,7 +19,32 @@ export function buildFilterQS(f: FilterParams): string {
   return qs ? `?${qs}` : '';
 }
 
-export const timeAnalyticsApi = {
+export interface AnalyticsParams {
+  pipelineId?: number | null;
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+  managerIds?: number[];
+  tagIds?: number[];
+  sources?: string[];
+}
+
+export const analyticsApi = {
+  accounts: () => baseApi<any[]>('/accounts'),
+  analytics: (accountId: number, params: AnalyticsParams = {}) => {
+    const p = new URLSearchParams();
+    if (params.pipelineId) p.set('pipeline_id', String(params.pipelineId));
+    if (params.dateFrom) p.set('date_from', params.dateFrom);
+    if (params.dateTo) p.set('date_to', params.dateTo);
+    if (params.status && params.status !== 'all') p.set('status', params.status);
+    if (params.managerIds?.length) p.set('manager_ids', params.managerIds.join(','));
+    if (params.tagIds?.length) p.set('tag_ids', params.tagIds.join(','));
+    if (params.sources?.length) p.set('sources', params.sources.join('||'));
+    const qs = p.toString();
+    return baseApi<any>(`/analytics/${accountId}${qs ? `?${qs}` : ''}`);
+  },
+  triggerEnrich: (accountId: number) =>
+    baseApi<{ ok: boolean; message: string }>(`/analytics/${accountId}/enrich`, { method: 'POST' }),
   pipelines: (accountId: number) =>
     baseApi<{ items: any[]; dataFreshness: any }>(`/accounts/${accountId}/pipelines`),
   tags: (accountId: number) =>
@@ -37,9 +62,10 @@ export const timeAnalyticsApi = {
     if (filters.dateFrom) p.set('dateFrom', filters.dateFrom);
     if (filters.dateTo) p.set('dateTo', filters.dateTo);
     if (filters.status && filters.status !== 'all') p.set('status', filters.status);
-    return baseApi(`/stages/${stageId}/active-leads?${p.toString()}`);
+    return baseApi(`/stages/${stageId}/leads?${p.toString()}`);
   },
   leadHistory: (leadId: number) => baseApi(`/leads/${leadId}/history`),
+  leadSkips: (leadId: number) => baseApi(`/leads/${leadId}/skips`),
   searchLeads: (accountId: number, q: string, page = 1, perPage = 50, filters: FilterParams = {}) => {
     const p = new URLSearchParams();
     p.set('q', q);
@@ -54,5 +80,8 @@ export const timeAnalyticsApi = {
   },
 };
 
-// Alias for backwards compatibility
-export const userApi = timeAnalyticsApi;
+// Aliases for backwards compatibility
+export const biAnalyticsApi = analyticsApi;
+export const py2Api = analyticsApi;
+export const timeAnalyticsApi = analyticsApi;
+export type BiAnalyticsParams = AnalyticsParams;

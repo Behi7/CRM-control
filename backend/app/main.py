@@ -11,8 +11,7 @@ from app.models import User
 # Routers
 from app.modules.auth.router import router as auth_router
 from app.modules.admin.router import router as admin_router
-from app.modules.time_analytics.router import router as time_router
-from app.modules.bi_analytics.router import router as bi_router
+from app.modules.analytics.router import router as analytics_router
 from app.modules.ai_chat.router import router as ai_router
 
 @asynccontextmanager
@@ -64,21 +63,19 @@ def health():
         "status": "ok",
         "app": "unified_python_backend",
         "version": "2.0.0",
-        "modules": ["auth", "admin", "time_analytics", "bi_analytics", "ai_predictions"]
+        "modules": ["auth", "admin", "analytics", "ai_chat", "ai_predictions"]
     }
 
 # Mount Routers directly
 app.include_router(auth_router)
 app.include_router(admin_router)
-app.include_router(time_router)
-app.include_router(bi_router)
+app.include_router(analytics_router)
 app.include_router(ai_router)
 
 # Mount Routers under /api prefix as well (for direct proxying without url rewriting)
 app.include_router(auth_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
-app.include_router(time_router, prefix="/api")
-app.include_router(bi_router, prefix="/api")
-app.include_router(bi_router, prefix="/api/py2")
+app.include_router(analytics_router, prefix="/api")
+app.include_router(analytics_router, prefix="/api/py2")
 app.include_router(ai_router, prefix="/api")
 app.include_router(ai_router, prefix="/api/py3")

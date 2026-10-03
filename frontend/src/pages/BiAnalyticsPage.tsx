@@ -1,1 +1,1 @@
-export { default } from '../modules/02_bi_analytics/pages/BiAnalyticsPage';
+export { default } from '../modules/analytics/pages/AnalyticsPage';

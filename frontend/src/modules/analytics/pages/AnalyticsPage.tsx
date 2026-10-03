@@ -13,17 +13,17 @@ import {
   RefreshCw,
   Sparkles,
 } from 'lucide-react';
-import { py2Api } from '../api/bi-analytics.api';
-import { userApi, FilterParams } from '@/api/client';
+import { analyticsApi, FilterParams } from '../api/analytics.api';
+import { userApi } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
 import AiChatDrawer from '@/modules/ai_chat/components/AiChatDrawer';
 import { useFilterContext } from '@/shared/context/FilterContext';
 import FilterBar from '@/shared/components/FilterBar';
-import MultiSelectDropdown from '@/shared/components/MultiSelectDropdown';
-import StagesStatsTable from '@/modules/01_time_analytics/components/StagesStatsTable';
+import MultiSelectDropdown from '../components/filters/MultiSelectDropdown';
+import StagesStatsTable from '../components/StagesStatsTable';
 
-import { BiTab, MultiSelectOption } from '../types';
+import { AnalyticsTab, MultiSelectOption } from '../types';
 import OverviewTab from '../components/tabs/OverviewTab';
 import ManagersTab from '../components/tabs/ManagersTab';
 import MarketingTab from '../components/tabs/MarketingTab';
@@ -31,12 +31,12 @@ import LossesTab from '../components/tabs/LossesTab';
 import CustomFieldsTab from '../components/tabs/CustomFieldsTab';
 import RiskAuditTab from '../components/tabs/RiskAuditTab';
 
-interface BiAnalyticsPageProps {
-  defaultTab?: BiTab;
+interface AnalyticsPageProps {
+  defaultTab?: AnalyticsTab;
 }
 
-export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalyticsPageProps) {
-  const { t } = useLanguage();
+export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPageProps) {
+  const { t, lang } = useLanguage();
   const { role } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -46,8 +46,8 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
     typeof window !== 'undefined' ? window.innerWidth >= 1280 : true,
   );
 
-  const paramTab = searchParams.get('tab') as BiTab | null;
-  const [activeTab, setActiveTab] = useState<BiTab>(() => paramTab || defaultTab);
+  const paramTab = searchParams.get('tab') as AnalyticsTab | null;
+  const [activeTab, setActiveTab] = useState<AnalyticsTab>(() => paramTab || defaultTab);
 
   useEffect(() => {
     if (paramTab && paramTab !== activeTab) {
@@ -55,7 +55,7 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
     }
   }, [paramTab]);
 
-  const handleTabChange = (tabId: BiTab) => {
+  const handleTabChange = (tabId: AnalyticsTab) => {
     setActiveTab(tabId);
     const next = new URLSearchParams(searchParams);
     next.set('tab', tabId);
@@ -90,7 +90,7 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
 
   const statsQuery = useQuery({
     queryKey: ['stats', applied.pipelineId, timeFilters],
-    queryFn: () => userApi.stagesStats(applied.pipelineId!, timeFilters),
+    queryFn: () => analyticsApi.stagesStats(applied.pipelineId!, timeFilters),
     enabled: !!applied.pipelineId,
   });
 
@@ -115,13 +115,15 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
 
   const prevSourcesRef = useRef<MultiSelectOption[]>([]);
 
+  // BI Analytics Query with full status filter support
   const biQuery = useQuery({
     queryKey: [
-      'py2-bi-analytics',
+      'analytics-data',
       effectiveAccountId,
       applied.pipelineId,
       applied.dateFrom,
       applied.dateTo,
+      applied.status,
       applied.managerIds,
       applied.tagIds,
       selectedSourceIds,
@@ -130,10 +132,11 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
       const activeSourceNames = selectedSourceIds
         .map((id: number) => prevSourcesRef.current.find((s) => s.id === id)?.name)
         .filter(Boolean) as string[];
-      return py2Api.analytics(effectiveAccountId!, {
+      return analyticsApi.analytics(effectiveAccountId!, {
         pipelineId: applied.pipelineId,
         dateFrom: applied.dateFrom || undefined,
         dateTo: applied.dateTo || undefined,
+        status: applied.status,
         managerIds: applied.managerIds.length > 0 ? applied.managerIds : undefined,
         tagIds: applied.tagIds.length > 0 ? applied.tagIds : undefined,
         sources: activeSourceNames.length > 0 ? activeSourceNames : undefined,
@@ -147,10 +150,10 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
   }
 
   const enrichMut = useMutation({
-    mutationFn: () => py2Api.triggerEnrich(effectiveAccountId!),
+    mutationFn: () => analyticsApi.triggerEnrich(effectiveAccountId!),
     onSuccess: () => {
       setTimeout(() => {
-        qc.invalidateQueries({ queryKey: ['py2-bi-analytics', effectiveAccountId] });
+        qc.invalidateQueries({ queryKey: ['analytics-data', effectiveAccountId] });
       }, 4000);
     },
   });
@@ -163,6 +166,16 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
   const marketing = data?.marketing || { utmSources: [], tagsBreakdown: [], customFieldsBreakdown: [], customFieldsLists: [] };
   const lossesAndLtv = data?.lossesAndLtv || { lossReasons: [], ltv: {}, riskDeals: [] };
 
+  const tabLabels: Record<AnalyticsTab, { label: string; icon: any }> = {
+    overview: { label: lang === 'uz' ? 'Umumiy va Moliya' : 'Обзор и Финансы', icon: DollarSign },
+    time_stages: { label: lang === 'uz' ? 'Bosqichlar vaqti' : 'Время на этапах', icon: Clock },
+    managers: { label: lang === 'uz' ? 'Menejerlar' : 'Менеджеры и Дисциплина', icon: Award },
+    marketing: { label: lang === 'uz' ? 'Marketing va UTM' : 'Маркетинг и Теги', icon: TagIcon },
+    losses_ltv: { label: lang === 'uz' ? 'Rad sabablari' : 'Причины отказа', icon: XCircle },
+    custom_fields: { label: lang === 'uz' ? 'AmoCRM maydonlari' : 'Кастомные поля', icon: Filter },
+    risk_audit: { label: lang === 'uz' ? 'Xavfli bitimlar' : 'Сделки в зоне риска', icon: ShieldAlert },
+  };
+
   return (
     <div className="p-4 lg:p-6 mx-auto max-w-[1920px]">
       <div className="flex gap-6 items-start">
@@ -172,11 +185,12 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
               <h1 className="text-xl lg:text-2xl font-bold text-slate-900 dark:text-white">
-                Детальная аналитика продаж AmoCRM
+                {lang === 'uz' ? 'AmoCRM Sotuvlar Tahlili' : 'Детальная аналитика продаж AmoCRM'}
               </h1>
               {data?.account && (
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Аккаунт: <strong className="text-slate-700 dark:text-slate-200">{data.account.subdomain}.{data.account.baseDomain}</strong>
+                  {lang === 'uz' ? 'Hisob: ' : 'Аккаунт: '}
+                  <strong className="text-slate-700 dark:text-slate-200">{data.account.subdomain}.{data.account.baseDomain}</strong>
                 </p>
               )}
             </div>
@@ -188,7 +202,11 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
                 className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw size={15} className={enrichMut.isPending ? 'animate-spin' : ''} />
-                <span>{enrichMut.isPending ? 'Обогащаем БД...' : 'Обогатить БД из AmoCRM'}</span>
+                <span>
+                  {enrichMut.isPending
+                    ? (lang === 'uz' ? 'Tahlil yangilanmoqda...' : 'Обогащаем БД...')
+                    : (lang === 'uz' ? 'AmoCRM ma\'lumotlarini yangilash' : 'Обогатить БД из AmoCRM')}
+                </span>
               </button>
             </div>
           </div>
@@ -197,8 +215,8 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
           <FilterBar showStatus={true}>
             {sourcesList.length > 0 && (
               <MultiSelectDropdown
-                label="Источники"
-                placeholder="Все источники"
+                label={lang === 'uz' ? 'Manbalar' : 'Источники'}
+                placeholder={lang === 'uz' ? 'Barcha manbalar' : 'Все источники'}
                 options={sourcesList}
                 selectedIds={selectedSourceIds}
                 icon={<Target size={13} />}
@@ -209,21 +227,13 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
 
           {/* Navigation Tabs */}
           <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
-            {[
-              { id: 'overview', label: 'Обзор и Финансы', icon: DollarSign },
-              { id: 'managers', label: 'Менеджеры и Дисциплина', icon: Award },
-              { id: 'marketing', label: 'Маркетинг и Теги', icon: TagIcon },
-              { id: 'losses_ltv', label: 'Причины отказа', icon: XCircle },
-              { id: 'custom_fields', label: 'Кастомные поля', icon: Filter },
-              { id: 'risk_audit', label: 'Сделки в зоне риска', icon: ShieldAlert },
-              { id: 'time_stages', label: 'Время на этапах', icon: Clock },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.id;
+            {(Object.keys(tabLabels) as AnalyticsTab[]).map((tabId) => {
+              const { label, icon: Icon } = tabLabels[tabId];
+              const active = activeTab === tabId;
               return (
                 <button
-                  key={tab.id}
-                  onClick={() => handleTabChange(tab.id as BiTab)}
+                  key={tabId}
+                  onClick={() => handleTabChange(tabId)}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     active
                       ? 'bg-indigo-600 text-white shadow-sm'
@@ -231,7 +241,7 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
                   }`}
                 >
                   <Icon size={15} />
-                  <span>{tab.label}</span>
+                  <span>{label}</span>
                 </button>
               );
             })}
@@ -242,11 +252,12 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
             <div className="space-y-4">
               {statsQuery.isLoading ? (
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500">
-                  Загрузка аналитики времени на этапах...
+                  {lang === 'uz' ? 'Bosqichlar vaqti yuklanmoqda...' : 'Загрузка аналитики времени на этапах...'}
                 </div>
               ) : statsQuery.isError ? (
                 <div className="bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 rounded-2xl p-6 text-sm">
-                  Ошибка загрузки этапов: {(statsQuery.error as any)?.message || 'Неизвестная ошибка'}
+                  {lang === 'uz' ? 'Xatolik yuz berdi: ' : 'Ошибка загрузки этапов: '}
+                  {(statsQuery.error as any)?.message || 'Неизвестная ошибка'}
                 </div>
               ) : statsQuery.data ? (
                 <StagesStatsTable
@@ -255,17 +266,18 @@ export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalytics
                 />
               ) : (
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-slate-500">
-                  Нет данных по этапам для выбранной воронки
+                  {lang === 'uz' ? 'Tanlangan voronka bo\'yicha ma\'lumot yo\'q' : 'Нет данных по этапам для выбранной воронки'}
                 </div>
               )}
             </div>
           ) : biQuery.isLoading ? (
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500">
-              Загрузка глубокой аналитики AmoCRM...
+              {lang === 'uz' ? 'Chuqur tahlil yuklanmoqda...' : 'Загрузка глубокой аналитики AmoCRM...'}
             </div>
           ) : biQuery.isError ? (
             <div className="bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 rounded-2xl p-6 text-sm">
-              Ошибка загрузки аналитики: {(biQuery.error as any)?.message || 'Неизвестная ошибка'}
+              {lang === 'uz' ? 'Xatolik yuz berdi: ' : 'Ошибка загрузки аналитики: '}
+              {(biQuery.error as any)?.message || 'Неизвестная ошибка'}
             </div>
           ) : (
             <>

@@ -8,7 +8,7 @@ import { Sparkles } from 'lucide-react';
 import AiChatDrawer from '../components/AiChatDrawer';
 import { useFilterContext } from '../shared/context/FilterContext';
 import FilterBar from '../shared/components/FilterBar';
-import StagesStatsTable from '../modules/01_time_analytics/components/StagesStatsTable';
+import StagesStatsTable from '../modules/analytics/components/StagesStatsTable';
 
 export default function StatsPage() {
   const { accountId: paramAccountId } = useParams();

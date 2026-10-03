@@ -1,5 +1,5 @@
 import { baseApi } from '../../../shared/api/base-client';
-import { FilterParams } from '../../01_time_analytics/api/time-analytics.api';
+import { FilterParams } from '../../analytics/api/analytics.api';
 
 export interface SendAiChatPayload {
   message: string;
