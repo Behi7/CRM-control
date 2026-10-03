@@ -159,6 +159,131 @@ def get_stages_stats(
         return {**freshness, "items": items}
 
 
+def get_all_pipelines_stages_stats(
+    account_id: int,
+    tag_ids: list[int],
+    status: str | None,
+    manager_ids: list[int],
+    date_from: str | None,
+    date_to: str | None,
+    user: dict,
+):
+    check_account_access(user, account_id)
+    with sync_engine.connect() as conn:
+        freshness = get_data_freshness(conn, account_id)
+
+        filter_clause, filter_params = build_filter_clauses(
+            tag_ids, status, manager_ids, date_from, date_to
+        )
+
+        stages_sql = text("""
+            SELECT
+                p.id AS "pipelineId",
+                p.name AS "pipelineName",
+                s.id AS "stageId",
+                s.external_id AS "externalId",
+                s.name AS "stageName",
+                s.sort_order AS "sortOrder"
+            FROM stages s
+            JOIN pipelines p ON p.id = s.pipeline_id
+            WHERE p.account_id = :acc_id
+              AND p.is_archived = false
+              AND s.is_archived = false
+            ORDER BY p.id ASC, s.sort_order ASC, s.id ASC
+        """)
+        stage_rows = conn.execute(stages_sql, {"acc_id": account_id}).mappings().all()
+
+        if not stage_rows:
+            return {**freshness, "pipelines": []}
+
+        stats_sql = text(f"""
+            SELECT
+                h.stage_id,
+                AVG(h.duration_seconds)::numeric(12,2) AS avg_duration,
+                COUNT(DISTINCT h.lead_id) AS passed_leads_count
+            FROM lead_stage_history h
+            JOIN leads l ON l.id = h.lead_id
+            WHERE l.account_id = :acc_id
+              AND h.duration_seconds IS NOT NULL
+              {filter_clause}
+            GROUP BY h.stage_id
+        """)
+        params = {"acc_id": account_id, **filter_params}
+        stats_map = {
+            r["stage_id"]: r
+            for r in conn.execute(stats_sql, params).mappings().all()
+        }
+
+        active_sql = text(f"""
+            SELECT l.current_stage_id, COUNT(l.id) AS active_leads_count
+            FROM leads l
+            WHERE l.account_id = :acc_id
+              AND l.status = 'open'
+              {filter_clause}
+            GROUP BY l.current_stage_id
+        """)
+        active_map = {
+            r["current_stage_id"]: r["active_leads_count"]
+            for r in conn.execute(active_sql, params).mappings().all()
+        }
+
+        skips_sql = text(f"""
+            SELECT s.skipped_stage_id, COUNT(s.id) AS skips_count
+            FROM lead_stage_skips s
+            JOIN leads l ON l.id = s.lead_id
+            WHERE l.account_id = :acc_id
+              {filter_clause}
+            GROUP BY s.skipped_stage_id
+        """)
+        skips_map = {
+            r["skipped_stage_id"]: r["skips_count"]
+            for r in conn.execute(skips_sql, params).mappings().all()
+        }
+
+        pipelines_map = {}
+        for r in stage_rows:
+            p_id = r["pipelineId"]
+            if p_id not in pipelines_map:
+                pipelines_map[p_id] = {
+                    "pipelineId": p_id,
+                    "pipelineName": r["pipelineName"],
+                    "totalPassedLeads": 0,
+                    "totalActiveLeads": 0,
+                    "items": [],
+                }
+
+            s_id = r["stageId"]
+            st = stats_map.get(s_id, {})
+            avg_actual = float(st["avg_duration"]) if st.get("avg_duration") is not None else None
+            passed_cnt = int(st.get("passed_leads_count") or 0)
+            active_cnt = int(active_map.get(s_id) or 0)
+            skips_cnt = int(skips_map.get(s_id) or 0)
+
+            total_including_skips = passed_cnt + skips_cnt
+            if total_including_skips > 0 and avg_actual is not None:
+                avg_skips = round((avg_actual * passed_cnt) / total_including_skips, 2)
+            else:
+                avg_skips = avg_actual
+
+            pipelines_map[p_id]["totalPassedLeads"] += passed_cnt
+            pipelines_map[p_id]["totalActiveLeads"] += active_cnt
+            pipelines_map[p_id]["items"].append({
+                "stageId": s_id,
+                "externalId": r["externalId"],
+                "name": r["stageName"],
+                "avgSecondsActual": avg_actual,
+                "avgSecondsIncludingSkips": avg_skips,
+                "skipsCount": skips_cnt,
+                "leadsCount": passed_cnt,
+                "activeLeadsCount": active_cnt,
+            })
+
+        return {
+            **freshness,
+            "pipelines": list(pipelines_map.values()),
+        }
+
+
 def get_stage_leads(
     stage_id: int,
     tag_ids: list[int],

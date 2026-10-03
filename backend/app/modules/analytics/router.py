@@ -65,6 +65,27 @@ def get_managers(account_id: int, user: dict = Depends(get_current_user)):
     return stages.get_managers(account_id, user)
 
 
+@router.get("/accounts/{account_id}/all-stages-stats")
+def get_all_stages_stats(
+    account_id: int,
+    tag_ids: list[int] = Query(default=[]),
+    status: str | None = Query(default=None),
+    manager_ids: list[int] = Query(default=[]),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
+):
+    return stages.get_all_pipelines_stages_stats(
+        account_id=account_id,
+        tag_ids=tag_ids,
+        status=status,
+        manager_ids=manager_ids,
+        date_from=date_from,
+        date_to=date_to,
+        user=user,
+    )
+
+
 @router.get("/pipelines/{pipeline_id}/stages-stats")
 def get_stages_stats(
     pipeline_id: int,

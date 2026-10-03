@@ -12,6 +12,7 @@ import {
   Target,
   RefreshCw,
   Sparkles,
+  ChevronDown,
 } from 'lucide-react';
 import { analyticsApi, FilterParams } from '../api/analytics.api';
 import { userApi } from '@/api/client';
@@ -95,6 +96,21 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
     queryFn: () => analyticsApi.stagesStats(applied.pipelineId!, timeFilters),
     enabled: !!applied.pipelineId,
   });
+
+  const allStatsQuery = useQuery({
+    queryKey: ['all-stats', effectiveAccountId, timeFilters],
+    queryFn: () => analyticsApi.allStagesStats(effectiveAccountId!, timeFilters),
+    enabled: !!effectiveAccountId && !applied.pipelineId,
+  });
+
+  const [collapsedPipelines, setCollapsedPipelines] = useState<Record<number, boolean>>({});
+
+  const togglePipelineCollapse = (pId: number) => {
+    setCollapsedPipelines((prev) => ({
+      ...prev,
+      [pId]: !prev[pId],
+    }));
+  };
 
   const handleStageClick = (stageId: number) => {
     const path = role === 'admin' ? `/admin/stage/${stageId}` : `/stage/${stageId}`;
@@ -252,55 +268,108 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
           {/* Main Tab Content */}
           {activeTab === 'time_stages' ? (
             <div className="space-y-4">
-              {!applied.pipelineId ? (
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-10 text-center text-slate-600 dark:text-slate-400">
-                  <Clock className="w-10 h-10 mx-auto mb-3 text-slate-400 opacity-60" />
-                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                    {lang === 'uz'
-                      ? 'Bosqichlar vaqtini ko\'rish uchun aniq bir voronkani tanlang'
-                      : 'Для просмотра времени на этапах выберите конкретную воронку'}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-                    {lang === 'uz'
-                      ? 'Har bir voronka o\'zining alohida bosqichlariga ega bo\'lgani sababli, vaqt tahlili aniq bir voronka bo\'yicha hisoblanadi'
-                      : 'Так как у каждой воронки AmoCRM свой уникальный набор этапов, статистика времени отображается по выбранной воронке'}
-                  </p>
-                  {pipelines.length > 0 && (
-                    <div className="flex flex-wrap justify-center gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-                      {pipelines.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => {
-                            setPipelineId(p.id);
-                            applyFilters();
-                          }}
-                          className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer shadow-2xs"
-                        >
-                          {p.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : statsQuery.isLoading ? (
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500">
-                  {lang === 'uz' ? 'Bosqichlar vaqti yuklanmoqda...' : 'Загрузка аналитики времени на этапах...'}
-                </div>
-              ) : statsQuery.isError ? (
-                <div className="bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 rounded-2xl p-6 text-sm">
-                  {lang === 'uz' ? 'Xatolik yuz berdi: ' : 'Ошибка загрузки этапов: '}
-                  {(statsQuery.error as any)?.message || 'Неизвестная ошибка'}
-                </div>
-              ) : statsQuery.data ? (
-                <StagesStatsTable
-                  items={statsQuery.data.items || []}
-                  onStageClick={handleStageClick}
-                />
+              {applied.pipelineId ? (
+                // Single pipeline view
+                statsQuery.isLoading ? (
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500">
+                    {lang === 'uz' ? 'Bosqichlar vaqti yuklanmoqda...' : 'Загрузка аналитики времени на этапах...'}
+                  </div>
+                ) : statsQuery.isError ? (
+                  <div className="bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 rounded-2xl p-6 text-sm">
+                    {lang === 'uz' ? 'Xatolik yuz berdi: ' : 'Ошибка загрузки этапов: '}
+                    {(statsQuery.error as any)?.message || 'Неизвестная ошибка'}
+                  </div>
+                ) : statsQuery.data ? (
+                  <StagesStatsTable
+                    items={statsQuery.data.items || []}
+                    onStageClick={handleStageClick}
+                  />
+                ) : (
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-slate-500">
+                    {lang === 'uz' ? 'Tanlangan voronka bo\'yicha ma\'lumot yo\'q' : 'Нет данных по этапам для выбранной воронки'}
+                  </div>
+                )
               ) : (
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-slate-500">
-                  {lang === 'uz' ? 'Tanlangan voronka bo\'yicha ma\'lumot yo\'q' : 'Нет данных по этапам для выбранной воронки'}
-                </div>
+                // All pipelines view
+                allStatsQuery.isLoading ? (
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500">
+                    {lang === 'uz' ? 'Barcha voronkalar bo\'yicha bosqichlar vaqti yuklanmoqda...' : 'Загрузка аналитики времени по всем воронкам...'}
+                  </div>
+                ) : allStatsQuery.isError ? (
+                  <div className="bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 rounded-2xl p-6 text-sm">
+                    {lang === 'uz' ? 'Xatolik yuz berdi: ' : 'Ошибка загрузки этапов: '}
+                    {(allStatsQuery.error as any)?.message || 'Неизвестная ошибка'}
+                  </div>
+                ) : allStatsQuery.data?.pipelines?.length ? (
+                  <div className="space-y-6">
+                    {allStatsQuery.data.pipelines.map((p) => {
+                      const isCollapsed = !!collapsedPipelines[p.pipelineId];
+                      return (
+                        <div
+                          key={p.pipelineId}
+                          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden transition-all"
+                        >
+                          {/* Pipeline Card Header */}
+                          <div className="px-5 py-4 bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => togglePipelineCollapse(p.pipelineId)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors cursor-pointer"
+                              >
+                                <ChevronDown
+                                  size={18}
+                                  className={`transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}
+                                />
+                              </button>
+                              <div>
+                                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                  <span>{p.pipelineName}</span>
+                                </h3>
+                                <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                                  <span>{p.items?.length || 0} {lang === 'uz' ? 'bosqich' : 'этапов'}</span>
+                                  <span>•</span>
+                                  <span>{p.totalPassedLeads || 0} {lang === 'uz' ? 'o\'tgan bitimlar' : 'прошедших сделок'}</span>
+                                  <span>•</span>
+                                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                                    {p.totalActiveLeads || 0} {lang === 'uz' ? 'ish jarayonida' : 'в работе'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPipelineId(p.pipelineId);
+                                  applyFilters();
+                                }}
+                                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+                              >
+                                {lang === 'uz' ? 'Faqat shu voronkani tanlash' : 'Выбрать только эту воронку'}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Pipeline Stages Table */}
+                          {!isCollapsed && (
+                            <div className="p-4">
+                              <StagesStatsTable
+                                items={p.items || []}
+                                onStageClick={handleStageClick}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-slate-500">
+                    {lang === 'uz' ? 'Voronkalar bo\'yicha ma\'lumot topilmadi' : 'Нет данных по воронкам'}
+                  </div>
+                )
               )}
             </div>
           ) : biQuery.isLoading ? (

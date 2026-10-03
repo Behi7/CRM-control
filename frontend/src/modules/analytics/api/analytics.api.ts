@@ -53,6 +53,17 @@ export const analyticsApi = {
     baseApi<{ items: any[]; dataFreshness: any }>(`/accounts/${accountId}/managers`),
   stagesStats: (pipelineId: number, filters: FilterParams = {}) =>
     baseApi<{ items: any[]; dataFreshness: any }>(`/pipelines/${pipelineId}/stages-stats${buildFilterQS(filters)}`),
+  allStagesStats: (accountId: number, filters: FilterParams = {}) =>
+    baseApi<{
+      pipelines: Array<{
+        pipelineId: number;
+        pipelineName: string;
+        totalPassedLeads: number;
+        totalActiveLeads: number;
+        items: any[];
+      }>;
+      dataFreshness: any;
+    }>(`/accounts/${accountId}/all-stages-stats${buildFilterQS(filters)}`),
   activeLeads: (stageId: number, page = 1, perPage = 50, filters: FilterParams = {}) => {
     const p = new URLSearchParams();
     p.set('page', String(page));
