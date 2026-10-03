@@ -43,7 +43,7 @@ async def build_sync_context(session: AsyncSession, account_id: int) -> SyncCont
                 "id": s.id,
                 "pipeline_id": s.pipeline_id,
                 "external_id": s.external_id,
-                "sort_order": s.sort_order,
+                "sort_order": s.sort_order if s.sort_order is not None else 0,
                 "name": s.name,
             }
 
@@ -165,8 +165,6 @@ async def _upsert_lead_impl(
         lead_stmt = select(Lead).where(Lead.account_id == account_id, Lead.external_id == amo_id)
         lead_res = await session.execute(lead_stmt)
         existing_lead = lead_res.scalar_one_or_none()
-        if existing_lead and existing_lead.status == "gone":
-            status = "gone"
 
         # Responsible User
         responsible_user_id = None
@@ -537,7 +535,7 @@ async def _process_status_changed_impl(
                     "id": st_obj.id,
                     "pipeline_id": st_obj.pipeline_id,
                     "external_id": st_obj.external_id,
-                    "sort_order": st_obj.sort_order,
+                    "sort_order": st_obj.sort_order if st_obj.sort_order is not None else 0,
                     "name": st_obj.name,
                 }
 
@@ -573,11 +571,13 @@ async def _process_status_changed_impl(
             to_stage = ctx.stage_objects.get(stage_id)
 
             if from_stage and to_stage and from_stage["pipeline_id"] == to_stage["pipeline_id"]:
-                diff = to_stage["sort_order"] - from_stage["sort_order"]
+                from_sort = from_stage.get("sort_order") if from_stage.get("sort_order") is not None else 0
+                to_sort = to_stage.get("sort_order") if to_stage.get("sort_order") is not None else 0
+                diff = to_sort - from_sort
                 if abs(diff) > 1:
                     dir_str = "forward" if diff > 0 else "backward"
-                    lo = min(from_stage["sort_order"], to_stage["sort_order"])
-                    hi = max(from_stage["sort_order"], to_stage["sort_order"])
+                    lo = min(from_sort, to_sort)
+                    hi = max(from_sort, to_sort)
 
                     # Intermediate stages
                     between_stmt = select(Stage).where(
@@ -708,6 +708,82 @@ async def _process_lead_deleted_impl(session: AsyncSession, account_id: int, eve
             ProcessedCrmEvent.external_event_id == ev_id,
         )
         .values(result="deleted")
+    )
+
+
+async def process_lead_restored(session: AsyncSession, account_id: int, event: Dict[str, Any]):
+    try:
+        async with session.begin_nested():
+            await _process_lead_restored_impl(session, account_id, event)
+    except Exception as e:
+        logger.error(f"Error processing lead restored for event {event.get('id')}: {e}", exc_info=True)
+
+
+async def _process_lead_restored_impl(session: AsyncSession, account_id: int, event: Dict[str, Any]):
+    ev_id = str(event["id"])
+    lead_ext = str(event["entity_id"])
+    created_at_sec = int(event.get("created_at") or 0)
+    ts = datetime.fromtimestamp(created_at_sec, tz=timezone.utc) if created_at_sec > 0 else datetime.now(timezone.utc)
+
+    # Atomic dedup reservation
+    dedup_stmt = (
+        insert(ProcessedCrmEvent)
+        .values(
+            account_id=account_id,
+            external_event_id=ev_id,
+            lead_external_id=lead_ext,
+            result="processing",
+        )
+        .on_conflict_do_nothing()
+    )
+    dedup_res = await session.execute(dedup_stmt)
+    if dedup_res.rowcount == 0:
+        return
+
+    lead_stmt = select(Lead).where(Lead.account_id == account_id, Lead.external_id == lead_ext)
+    lead = (await session.execute(lead_stmt)).scalar_one_or_none()
+    if not lead:
+        await session.execute(
+            update(ProcessedCrmEvent)
+            .where(
+                ProcessedCrmEvent.account_id == account_id,
+                ProcessedCrmEvent.external_event_id == ev_id,
+            )
+            .values(result="restored_unknown_lead")
+        )
+        return
+
+    # If lead was marked gone, restore to open and clear crm_closed_at if needed
+    updates = {"status": "open", "updated_at": ts}
+    await session.execute(
+        update(Lead).where(Lead.id == lead.id).values(**updates)
+    )
+
+    # If lead has current_stage_id, check if open interval exists
+    if lead.current_stage_id:
+        open_hist_stmt = (
+            select(LeadStageHistory)
+            .where(LeadStageHistory.lead_id == lead.id, LeadStageHistory.exited_at.is_(None))
+        )
+        open_hist = (await session.execute(open_hist_stmt)).scalars().first()
+        if not open_hist:
+            await session.execute(
+                insert(LeadStageHistory).values(
+                    lead_id=lead.id,
+                    stage_id=lead.current_stage_id,
+                    entered_at=ts,
+                    exited_at=None,
+                    source_event_id=ev_id,
+                )
+            )
+
+    await session.execute(
+        update(ProcessedCrmEvent)
+        .where(
+            ProcessedCrmEvent.account_id == account_id,
+            ProcessedCrmEvent.external_event_id == ev_id,
+        )
+        .values(result="restored")
     )
 
 

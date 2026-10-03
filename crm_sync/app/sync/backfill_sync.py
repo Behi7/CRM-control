@@ -11,7 +11,7 @@ from app.core.crm_client import crm_client
 from app.sync.pipeline_sync import sync_pipelines_and_stages
 from app.sync.event_sync import (
     build_sync_context, upsert_lead, process_status_changed,
-    process_lead_deleted, create_fallback_interval
+    process_lead_deleted, process_lead_restored, create_fallback_interval
 )
 
 logger = logging.getLogger("BackfillSync")
@@ -69,16 +69,16 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
         pipe_sync_ok = await sync_pipelines_and_stages(session, account_id, acc.subdomain, acc.base_domain, token)
         if not pipe_sync_ok:
             acc_check = (await session.execute(select(Account.token_status).where(Account.id == account_id))).scalar_one_or_none()
-            if acc_check == "expired":
-                await session.execute(
-                    update(Account).where(Account.id == account_id).values(
-                        backfill_status="error",
-                        backfill_error="Token expired (401)",
-                        backfill_error_at=datetime.now(timezone.utc),
-                    )
+            error_msg = "Token expired (401)" if acc_check == "expired" else "Pipeline and stage structure sync failed"
+            await session.execute(
+                update(Account).where(Account.id == account_id).values(
+                    backfill_status="error",
+                    backfill_error=error_msg,
+                    backfill_error_at=datetime.now(timezone.utc),
                 )
-                await session.commit()
-                return False
+            )
+            await session.commit()
+            return False
 
         # 3. Fetch all historical leads
         cursor = acc.backfill_cursor or {}
@@ -271,6 +271,8 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
                         await process_status_changed(session, account_id, acc.subdomain, acc.base_domain, token, ev, ctx)
                     elif ev_type == "lead_deleted":
                         await process_lead_deleted(session, account_id, ev)
+                    elif ev_type == "lead_restored":
+                        await process_lead_restored(session, account_id, ev)
 
                 # Fallback interval check
                 lead_row = (await session.execute(
@@ -278,6 +280,9 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
                 )).scalar_one_or_none()
                 if lead_row:
                     await create_fallback_interval(session, lead_row.id)
+
+                # Commit per lead to release savepoints and prevent subtrans SLRU exhaustion
+                await session.commit()
 
             window_from = window_to
             next_cursor = {

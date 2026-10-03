@@ -103,10 +103,14 @@ async def sync_pipelines_and_stages(
             await session.execute(archive_pipes_stmt)
 
         # Sync Amo Users (Managers)
-        await sync_amo_users(session, account_id, subdomain, base_domain, token)
+        users_ok = await sync_amo_users(session, account_id, subdomain, base_domain, token)
+        if not users_ok:
+            return False
 
         # Sync Custom Fields Definitions
-        await sync_custom_fields(session, account_id, subdomain, base_domain, token)
+        fields_ok = await sync_custom_fields(session, account_id, subdomain, base_domain, token)
+        if not fields_ok:
+            return False
 
         await session.commit()
         logger.info(f"Successfully synced {len(pipes)} pipelines for account {account_id}")
@@ -124,7 +128,7 @@ async def sync_amo_users(
     subdomain: str,
     base_domain: str,
     token: str,
-):
+) -> bool:
     try:
         all_users = []
         MAX_USER_PAGES = 100  # Safety cap: 100 * 250 = 25,000 managers
@@ -146,10 +150,14 @@ async def sync_amo_users(
                     update(Account).where(Account.id == account_id).values(token_status="expired")
                 )
                 await session.commit()
-                return
+                return False
 
-            if status != 200 or not data:
+            if status == 204 or (status == 200 and not data):
                 break
+
+            if status != 200:
+                logger.error(f"Failed to fetch amo users for account {account_id}: status={status}")
+                return False
 
             embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
             users = embedded.get("users") or []
@@ -202,10 +210,11 @@ async def sync_amo_users(
             await session.execute(archive_users_stmt)
 
         logger.info(f"Synced {len(all_users)} amo users for account {account_id}")
+        return True
 
     except Exception as e:
         logger.error(f"Error in sync_amo_users for account {account_id}: {e}", exc_info=True)
-        raise
+        return False
 
 
 async def sync_custom_fields(
@@ -214,7 +223,7 @@ async def sync_custom_fields(
     subdomain: str,
     base_domain: str,
     token: str,
-):
+) -> bool:
     try:
         all_fields = []
         MAX_FIELD_PAGES = 100  # Safety cap: 100 * 250 = 25,000 custom fields
@@ -236,10 +245,14 @@ async def sync_custom_fields(
                     update(Account).where(Account.id == account_id).values(token_status="expired")
                 )
                 await session.commit()
-                return
+                return False
 
-            if status != 200 or not data:
+            if status == 204 or (status == 200 and not data):
                 break
+
+            if status != 200:
+                logger.error(f"Failed to fetch custom fields for account {account_id}: status={status}")
+                return False
 
             embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
             fields = embedded.get("custom_fields") or []
@@ -308,7 +321,8 @@ async def sync_custom_fields(
             await session.execute(archive_fields_stmt)
 
         logger.info(f"Synced {len(all_fields)} custom fields for account {account_id}")
+        return True
 
     except Exception as e:
         logger.error(f"Error in sync_custom_fields for account {account_id}: {e}", exc_info=True)
-        raise
+        return False

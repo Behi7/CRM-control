@@ -10,7 +10,7 @@ from app.core.crm_client import crm_client
 from app.config import settings
 from app.sync.event_sync import (
     build_sync_context, upsert_lead, process_status_changed,
-    process_lead_deleted, create_fallback_interval
+    process_lead_deleted, process_lead_restored, create_fallback_interval
 )
 
 logger = logging.getLogger("DeltaSync")
@@ -164,6 +164,8 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
                     await process_status_changed(session, account_id, acc.subdomain, acc.base_domain, token, ev, ctx)
                 elif ev_type == "lead_deleted":
                     await process_lead_deleted(session, account_id, ev)
+                elif ev_type == "lead_restored":
+                    await process_lead_restored(session, account_id, ev)
 
             # Check fallback interval
             lead_row = (await session.execute(
