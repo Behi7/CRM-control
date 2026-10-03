@@ -4,11 +4,11 @@ from typing import Dict, Any, List
 from collections import defaultdict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from models import Account, Lead
-from security import decrypt_token
-from crm_client import crm_client
-from config import settings
-from event_sync import (
+from app.models import Account, Lead
+from app.core.security import decrypt_token
+from app.core.crm_client import crm_client
+from app.config import settings
+from app.sync.event_sync import (
     build_sync_context, upsert_lead, process_status_changed,
     process_lead_deleted, create_fallback_interval
 )

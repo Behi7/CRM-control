@@ -4,11 +4,11 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.dialects.postgresql import insert
-from models import (
+from app.models import (
     Lead, Pipeline, Stage, AmoUser, Tag, LeadTag,
     LeadStageHistory, LeadStageSkip, ProcessedCrmEvent
 )
-from crm_client import crm_client
+from app.core.crm_client import crm_client
 
 logger = logging.getLogger("EventSync")
 

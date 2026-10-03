@@ -3,8 +3,8 @@ from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
-from models import Pipeline, Stage, AmoUser, CustomFieldDefinition
-from crm_client import crm_client
+from app.models import Pipeline, Stage, AmoUser, CustomFieldDefinition
+from app.core.crm_client import crm_client
 
 logger = logging.getLogger("PipelineSync")
 

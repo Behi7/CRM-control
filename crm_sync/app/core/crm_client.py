@@ -2,7 +2,7 @@ import asyncio
 import time
 import httpx
 from typing import Optional, Dict, Any, Tuple
-from config import settings
+from app.config import settings
 
 class CrmClient:
     def __init__(self, rps: int = 5):

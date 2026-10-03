@@ -2,7 +2,7 @@ import os
 import json
 import base64
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from config import settings
+from app.config import settings
 
 def _get_encryption_key() -> bytes:
     raw = (settings.TOKEN_ENCRYPTION_KEY or "").strip()
