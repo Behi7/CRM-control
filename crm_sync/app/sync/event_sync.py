@@ -384,12 +384,12 @@ async def process_status_changed(
             if status == 200 and data:
                 fetched_lead_data = data
 
-        # Step 4: Pure DB writes wrapped inside savepoint
-        async with session.begin_nested():
-            if not lead and fetched_lead_data:
-                lead = await upsert_lead(session, account_id, fetched_lead_data, ctx)
+        # Step 4: If lead not in DB, upsert it now (upsert_lead has its own isolated savepoint)
+        if not lead and fetched_lead_data:
+            lead = await upsert_lead(session, account_id, fetched_lead_data, ctx)
 
-            if not lead:
+        if not lead:
+            async with session.begin_nested():
                 await session.execute(
                     insert(ProcessedCrmEvent).values(
                         account_id=account_id,
@@ -398,8 +398,10 @@ async def process_status_changed(
                         result="skipped_unknown_lead",
                     ).on_conflict_do_nothing()
                 )
-                return
+            return
 
+        # Step 5: Pure DB writes for stage change and history wrapped inside savepoint
+        async with session.begin_nested():
             await _process_status_changed_impl(session, account_id, event, lead, ctx)
 
     except Exception as e:
@@ -645,16 +647,32 @@ async def _create_fallback_interval_impl(session: AsyncSession, lead_id: int):
     )
 
 
-async def cleanup_old_events(session: AsyncSession, retention_days: int = 30, account_id: Optional[int] = None) -> int:
-    """Удаляет старые записи из processed_crm_events для предотвращения бесконечного роста таблицы."""
+async def cleanup_old_events(
+    session: AsyncSession,
+    retention_days: int = 30,
+    account_id: Optional[int] = None,
+    batch_size: int = 5000,
+) -> int:
+    """Удаляет старые записи из processed_crm_events батчами для предотвращения блокировок БД."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-    stmt = delete(ProcessedCrmEvent).where(ProcessedCrmEvent.created_at < cutoff)
-    if account_id is not None:
-        stmt = stmt.where(ProcessedCrmEvent.account_id == account_id)
-    res = await session.execute(stmt)
-    await session.commit()
-    deleted = res.rowcount or 0
-    if deleted > 0:
-        logger.info(f"Cleaned up {deleted} old processed CRM events (retention={retention_days}d)")
-    return deleted
+    total_deleted = 0
+
+    while True:
+        subq = select(ProcessedCrmEvent.id).where(ProcessedCrmEvent.created_at < cutoff)
+        if account_id is not None:
+            subq = subq.where(ProcessedCrmEvent.account_id == account_id)
+        subq = subq.limit(batch_size)
+
+        stmt = delete(ProcessedCrmEvent).where(ProcessedCrmEvent.id.in_(subq))
+        res = await session.execute(stmt)
+        await session.commit()
+
+        deleted = res.rowcount or 0
+        total_deleted += deleted
+        if deleted < batch_size:
+            break
+
+    if total_deleted > 0:
+        logger.info(f"Cleaned up {total_deleted} old processed CRM events in batches (retention={retention_days}d)")
+    return total_deleted
 

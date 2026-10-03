@@ -5,6 +5,7 @@ from collections import defaultdict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from app.models import Account, Lead
+from app.core.database import AsyncSessionLocal
 from app.core.security import decrypt_token
 from app.core.crm_client import crm_client
 from app.sync.pipeline_sync import sync_pipelines_and_stages
@@ -202,11 +203,23 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
 
     except Exception as e:
         logger.error(f"Error during backfill for account {account_id}: {e}", exc_info=True)
-        await session.rollback()
-        await session.execute(
-            update(Account)
-            .where(Account.id == account_id)
-            .values(backfill_status="error", backfill_error=str(e), backfill_error_at=datetime.now(timezone.utc))
-        )
-        await session.commit()
+        try:
+            await session.rollback()
+        except Exception:
+            pass  # Original connection might be broken or already closed
+
+        try:
+            async with AsyncSessionLocal() as err_session:
+                await err_session.execute(
+                    update(Account)
+                    .where(Account.id == account_id)
+                    .values(
+                        backfill_status="error",
+                        backfill_error=str(e),
+                        backfill_error_at=datetime.now(timezone.utc),
+                    )
+                )
+                await err_session.commit()
+        except Exception as err_e:
+            logger.error(f"Failed to record backfill error status for account {account_id}: {err_e}")
         return False
