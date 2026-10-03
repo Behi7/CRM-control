@@ -12,7 +12,7 @@ export default function StageLeadsPage() {
   const { stageId } = useParams();
   const nav = useNavigate();
   const { role, logout } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [searchParams] = useSearchParams();
   const tagIds = (searchParams.get('tags') || '').split(',').filter(Boolean).map(Number).filter(n => !isNaN(n));
   const managerIds = (searchParams.get('managers') || '').split(',').filter(Boolean).map(Number).filter(n => !isNaN(n) && n > 0);
@@ -49,9 +49,18 @@ export default function StageLeadsPage() {
 
         </div>
 
-        <h1 className="text-2xl font-bold mb-4 text-slate-900 dark:text-slate-100">
-          {t('stage_leads_title')}
-        </h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            {leads.data?.stage?.name
+              ? `${t('stage_leads_title')}: ${leads.data.stage.name}`
+              : t('stage_leads_title')}
+          </h1>
+          {leads.data?.total !== undefined && (
+            <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              {lang === 'uz' ? 'Jami:' : 'Всего:'} <strong className="text-slate-800 dark:text-slate-200">{leads.data.total}</strong>
+            </span>
+          )}
+        </div>
 
         {(managerIds.length > 0 || dateFrom || dateTo) && (
           <div className="flex flex-wrap gap-2 mb-4">
@@ -107,11 +116,18 @@ export default function StageLeadsPage() {
                   </td>
                 </tr>
               ))}
+              {leads.data && leads.data.items?.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-slate-500 dark:text-slate-400">
+                    {lang === 'uz' ? 'Ushbu bosqichda faol bitimlar yo‘q' : 'На этом этапе сейчас нет активных сделок'}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
 
-        {leads.data && (
+        {leads.data && (leads.data.total || 0) > perPage && (
           <div className="flex justify-between items-center mt-4 text-sm">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}

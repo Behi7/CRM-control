@@ -315,6 +315,14 @@ def get_stage_leads(
             tag_ids, status, manager_ids, date_from, date_to
         )
 
+        stage_ext_id = str(stage["external_id"])
+        if stage_ext_id == "142":
+            stage_condition = "l.pipeline_id = :pipe_id AND l.status = 'won'"
+        elif stage_ext_id == "143":
+            stage_condition = "l.pipeline_id = :pipe_id AND l.status = 'lost'"
+        else:
+            stage_condition = "l.current_stage_id = :stage_id AND l.status = 'open'"
+
         sql = text(f"""
             SELECT
                 l.id,
@@ -327,18 +335,24 @@ def get_stage_leads(
                 l.crm_created_at AS "crmCreatedAt",
                 u.name AS "managerName",
                 u.name AS responsible_name,
-                h.entered_at,
-                h.entered_at AS "enteredAt",
+                COALESCE(h.entered_at, l.crm_created_at) AS entered_at,
+                COALESCE(h.entered_at, l.crm_created_at) AS "enteredAt",
                 h.exited_at,
                 h.exited_at AS "exitedAt",
                 h.duration_seconds,
                 h.duration_seconds AS "durationSeconds"
             FROM leads l
-            JOIN lead_stage_history h ON h.lead_id = l.id AND h.stage_id = :stage_id
+            LEFT JOIN LATERAL (
+                SELECT entered_at, exited_at, duration_seconds
+                FROM lead_stage_history
+                WHERE lead_id = l.id AND stage_id = :stage_id
+                ORDER BY entered_at DESC
+                LIMIT 1
+            ) h ON true
             LEFT JOIN amo_users u ON u.id = l.responsible_user_id
-            WHERE l.pipeline_id = :pipe_id
+            WHERE {stage_condition}
               {filter_clause}
-            ORDER BY h.entered_at DESC
+            ORDER BY COALESCE(h.entered_at, l.crm_created_at) DESC
             LIMIT :limit OFFSET :offset
         """)
         params = {
@@ -353,8 +367,7 @@ def get_stage_leads(
         count_sql = text(f"""
             SELECT COUNT(*)
             FROM leads l
-            JOIN lead_stage_history h ON h.lead_id = l.id AND h.stage_id = :stage_id
-            WHERE l.pipeline_id = :pipe_id
+            WHERE {stage_condition}
               {filter_clause}
         """)
         total = conn.execute(count_sql, {
@@ -378,7 +391,16 @@ def get_stage_leads(
             d["exitedAt"] = exited_iso
             items.append(d)
 
-        return {"items": items, "total": total}
+        return {
+            "items": items,
+            "total": total,
+            "stage": {
+                "id": stage["id"],
+                "name": stage["name"],
+                "externalId": stage["external_id"],
+                "pipelineId": stage["pipeline_id"],
+            },
+        }
 
 
 def get_lead_history(lead_id: int, user: dict):
