@@ -55,16 +55,18 @@ export default function FilterBar({ showStatus = true, className = '', children 
 
         {/* Pipeline selector */}
         <select
-          value={pipelineId || ''}
+          value={pipelineId ? String(pipelineId) : 'all'}
           onChange={(e) => {
-            const nextPipelineId = parseInt(e.target.value, 10) || null;
+            const val = e.target.value;
+            const nextPipelineId = val === 'all' || !val ? null : parseInt(val, 10);
             setPipelineId(nextPipelineId);
           }}
           className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
         >
+          <option value="all">{t('pipeline_all')}</option>
           {pipelines.map((p) => (
             <option key={p.id} value={p.id}>
-              Воронка: {p.name}
+              {t('pipeline')}: {p.name}
             </option>
           ))}
         </select>

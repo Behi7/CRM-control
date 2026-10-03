@@ -74,6 +74,8 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
     effectiveAccountId,
     applied,
     pipelineId,
+    setPipelineId,
+    applyFilters,
     pipelines,
   } = useFilterContext();
 
@@ -250,7 +252,38 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
           {/* Main Tab Content */}
           {activeTab === 'time_stages' ? (
             <div className="space-y-4">
-              {statsQuery.isLoading ? (
+              {!applied.pipelineId ? (
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-10 text-center text-slate-600 dark:text-slate-400">
+                  <Clock className="w-10 h-10 mx-auto mb-3 text-slate-400 opacity-60" />
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                    {lang === 'uz'
+                      ? 'Bosqichlar vaqtini ko\'rish uchun aniq bir voronkani tanlang'
+                      : 'Для просмотра времени на этапах выберите конкретную воронку'}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+                    {lang === 'uz'
+                      ? 'Har bir voronka o\'zining alohida bosqichlariga ega bo\'lgani sababli, vaqt tahlili aniq bir voronka bo\'yicha hisoblanadi'
+                      : 'Так как у каждой воронки AmoCRM свой уникальный набор этапов, статистика времени отображается по выбранной воронке'}
+                  </p>
+                  {pipelines.length > 0 && (
+                    <div className="flex flex-wrap justify-center gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
+                      {pipelines.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setPipelineId(p.id);
+                            applyFilters();
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer shadow-2xs"
+                        >
+                          {p.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : statsQuery.isLoading ? (
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500">
                   {lang === 'uz' ? 'Bosqichlar vaqti yuklanmoqda...' : 'Загрузка аналитики времени на этапах...'}
                 </div>

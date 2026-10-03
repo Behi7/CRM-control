@@ -65,7 +65,8 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
   const prevAccountRef = useRef<number | null>(effectiveAccountId);
 
   // Initialize from searchParams
-  const initPipelineId = Number(searchParams.get('pipeline')) || null;
+  const pParam = searchParams.get('pipeline');
+  const initPipelineId = pParam && pParam !== 'all' ? (Number(pParam) || null) : null;
   const initTagIds = (searchParams.get('tags') || '').split(',').filter(Boolean).map(Number).filter(Number.isInteger);
   const initStatus = searchParams.get('status') || 'all';
   const initManagerIds = (searchParams.get('managers') || '').split(',').filter(Boolean).map(Number).filter((n) => !isNaN(n) && n > 0);
@@ -137,7 +138,8 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
 
   // Sync draft states if URL searchParams change externally (e.g. browser back/forward)
   useEffect(() => {
-    const pId = Number(searchParams.get('pipeline')) || null;
+    const rawPParam = searchParams.get('pipeline');
+    const pId = rawPParam && rawPParam !== 'all' ? (Number(rawPParam) || null) : null;
     const tIds = (searchParams.get('tags') || '').split(',').filter(Boolean).map(Number).filter(Number.isInteger);
     const st = searchParams.get('status') || 'all';
     const mIds = (searchParams.get('managers') || '').split(',').filter(Boolean).map(Number).filter((n) => !isNaN(n) && n > 0);
@@ -150,7 +152,7 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
       dTo = tmp;
     }
 
-    if (pId !== null && pId !== pipelineId) {
+    if (pId !== pipelineId) {
       setPipelineId(pId);
     }
     setSelectedTags((prev) => (prev.length === tIds.length && prev.every((v, i) => v === tIds[i]) ? prev : tIds));
@@ -172,7 +174,7 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
   ) => {
     const next = new URLSearchParams(searchParams);
     if (nextPipe) next.set('pipeline', String(nextPipe));
-    else next.delete('pipeline');
+    else next.set('pipeline', 'all');
     if (nextTags.length > 0) next.set('tags', nextTags.join(','));
     else next.delete('tags');
     if (nextStatus && nextStatus !== 'all') next.set('status', nextStatus);
@@ -188,16 +190,17 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
     setSearchParams(next);
   };
 
-  // Auto-select first pipeline if none selected or selected is invalid for current account
+  // Validate pipeline if a specific ID is selected; if invalid for current account, fallback to all (null)
   useEffect(() => {
     if (!pipelinesQuery.data?.items?.length) return;
     const items = pipelinesQuery.data.items;
-    const exists = items.some((p: any) => p.id === pipelineId);
-    if (!exists) {
-      const firstId = items[0].id;
-      setPipelineId(firstId);
-      setApplied((prev) => ({ ...prev, pipelineId: firstId }));
-      updateUrlParams(firstId, selectedTags, selectedStatus, selectedManagers, datePreset, dateFrom, dateTo);
+    if (pipelineId !== null) {
+      const exists = items.some((p: any) => p.id === pipelineId);
+      if (!exists) {
+        setPipelineId(null);
+        setApplied((prev) => ({ ...prev, pipelineId: null }));
+        updateUrlParams(null, selectedTags, selectedStatus, selectedManagers, datePreset, dateFrom, dateTo);
+      }
     }
   }, [pipelinesQuery.data, pipelineId]);
 
@@ -245,8 +248,7 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetFilters = () => {
-    const firstId = pipelinesQuery.data?.items?.[0]?.id || pipelineId;
-    setPipelineId(firstId);
+    setPipelineId(null);
     setSelectedTags([]);
     setSelectedStatus('all');
     setSelectedManagers([]);
@@ -254,7 +256,7 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
     setDateFrom('');
     setDateTo('');
     setApplied({
-      pipelineId: firstId,
+      pipelineId: null,
       tagIds: [],
       status: 'all',
       managerIds: [],
@@ -262,7 +264,7 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
       dateFrom: '',
       dateTo: '',
     });
-    updateUrlParams(firstId, [], 'all', [], 'all', '', '');
+    updateUrlParams(null, [], 'all', [], 'all', '', '');
   };
 
   const pipelines: MultiSelectOption[] = pipelinesQuery.data?.items || [];
