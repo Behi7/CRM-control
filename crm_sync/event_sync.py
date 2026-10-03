@@ -186,9 +186,9 @@ async def upsert_lead(
 
         # Source / Contacts
         embedded_source = amo.get("_embedded", {}).get("source")
-        source_id = str(amo.get("source_id")) if amo.get("source_id") is not None else None
-        if not source_id and embedded_source and embedded_source.get("id"):
-            source_id = str(embedded_source.get("id"))
+        source_external_id = str(amo.get("source_id")) if amo.get("source_id") is not None else None
+        if not source_external_id and embedded_source and embedded_source.get("id"):
+            source_external_id = str(embedded_source.get("id"))
         source_name = embedded_source.get("name") if embedded_source else None
 
         contacts = amo.get("_embedded", {}).get("contacts", [])
@@ -263,7 +263,7 @@ async def upsert_lead(
             loss_reason_id=loss_reason_id,
             loss_reason_name=loss_reason_name,
             main_contact_id=main_contact_id,
-            source_id=source_id,
+            source_external_id=source_external_id,
             source_name=source_name,
             updated_at=crm_updated_at,
         ).on_conflict_do_update(
@@ -286,7 +286,7 @@ async def upsert_lead(
                 "loss_reason_id": loss_reason_id,
                 "loss_reason_name": loss_reason_name,
                 "main_contact_id": main_contact_id,
-                "source_id": source_id,
+                "source_external_id": source_external_id,
                 "source_name": source_name,
                 "updated_at": crm_updated_at,
             },
