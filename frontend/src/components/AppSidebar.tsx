@@ -28,7 +28,7 @@ interface AppShellProps {
 
 export default function AppSidebarLayout({ children }: AppShellProps) {
   const { role, logout } = useAuth();
-  const { lang } = useLanguage();
+  const { lang, setLang } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
   const params = useParams<{ accountId?: string }>();
@@ -143,20 +143,20 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
   const sidebarContent = (
     <div className="flex flex-col h-full bg-slate-900 text-slate-100 border-r border-slate-800 select-none">
       {/* Brand header */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80">
+      <div className="h-16 px-3 flex items-center justify-between border-b border-slate-800/80">
         {!collapsed && (
-          <div className="font-bold text-base tracking-tight text-white leading-tight truncate">
+          <div className="font-bold text-base tracking-tight text-white leading-tight truncate pl-1">
             Аналитика
           </div>
         )}
         <button
           onClick={toggleCollapsed}
-          className={`hidden lg:flex p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer ${
+          className={`hidden lg:flex w-10 h-10 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer items-center justify-center shrink-0 ${
             collapsed ? 'mx-auto' : ''
           }`}
           title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
         >
-          {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+          {collapsed ? <ChevronRight size={20} className="shrink-0" /> : <ChevronLeft size={20} className="shrink-0" />}
         </button>
       </div>
 
@@ -165,25 +165,21 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
         <div className="p-3 border-b border-slate-800/80">
           {!collapsed ? (
             <div>
-              <label className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5 flex items-center gap-1">
-                <Building2 size={12} className="text-blue-400" />
-                {labels.activeAccount}
-              </label>
               {role === 'admin' ? (
                 <select
                   value={activeAccountId}
                   onChange={(e) => handleAccountChange(Number(e.target.value))}
-                  className="w-full bg-slate-800/90 hover:bg-slate-800 text-slate-100 text-xs font-medium rounded-lg px-2.5 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+                  className="w-full bg-slate-800/90 hover:bg-slate-800 text-slate-100 text-xs font-medium rounded-lg px-2.5 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer truncate"
                 >
                   {accounts.map((acc: any) => (
                     <option key={acc.id} value={acc.id}>
-                      #{acc.id} • {acc.subdomain}.{acc.baseDomain || 'amocrm.ru'}
+                      {acc.subdomain ? `${acc.subdomain}.${acc.baseDomain || 'amocrm.ru'}` : (acc.name || 'Аккаунт')}
                     </option>
                   ))}
                 </select>
               ) : (
                 <div className="bg-slate-800/70 rounded-lg px-3 py-2 text-xs font-medium text-slate-200 truncate border border-slate-700/60">
-                  {currentAccObj ? `${currentAccObj.subdomain}.${currentAccObj.baseDomain}` : `Account #${activeAccountId}`}
+                  {currentAccObj?.subdomain ? `${currentAccObj.subdomain}.${currentAccObj.baseDomain || 'amocrm.ru'}` : 'Аккаунт'}
                 </div>
               )}
 
@@ -215,43 +211,52 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               })()}
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-1.5">
-              <div
-                className="w-10 h-10 mx-auto rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-blue-400"
-                title={currentAccObj ? `${currentAccObj.subdomain}.${currentAccObj.baseDomain}` : `Account #${activeAccountId}`}
-              >
-                #{activeAccountId}
-              </div>
-              {currentAccObj && (() => {
-                const lastSync = currentAccObj.lastSyncedAt;
-                const isStale = !lastSync || (Date.now() - new Date(lastSync).getTime() > 30 * 60 * 1000);
-                const syncDateStr = lastSync
-                  ? new Date(lastSync).toLocaleString(lang === 'uz' ? 'uz-UZ' : 'ru-RU')
-                  : (lang === 'uz' ? 'hech qachon' : 'никогда');
-                const tip = `${isStale ? '⚠️ Данные устарели. ' : '✓ '}Последняя синхронизация: ${syncDateStr}`;
-                return (
+            (() => {
+              const lastSync = currentAccObj?.lastSyncedAt;
+              const isStale = !lastSync || (Date.now() - new Date(lastSync).getTime() > 30 * 60 * 1000);
+              const accDomain = currentAccObj?.subdomain
+                ? `${currentAccObj.subdomain}.${currentAccObj.baseDomain || 'amocrm.ru'}`
+                : 'Аккаунт';
+              const syncDateStr = lastSync
+                ? new Date(lastSync).toLocaleString(lang === 'uz' ? 'uz-UZ' : 'ru-RU')
+                : (lang === 'uz' ? 'никогда' : 'никогда');
+              const tip = `${accDomain} (${isStale ? '⚠️ Данные устарели' : '✓ Данные актуальны'}, синхр: ${syncDateStr})`;
+
+              return (
+                <div className="flex justify-center">
                   <div
-                    className={`w-10 py-1 rounded-md text-center text-[11px] border ${
-                      isStale
-                        ? 'bg-yellow-500/10 text-yellow-300 border-yellow-500/30'
-                        : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                    }`}
+                    className="w-10 h-10 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center relative cursor-pointer transition-colors shrink-0"
                     title={tip}
+                    onClick={
+                      role === 'admin' && accounts.length > 1
+                        ? () => {
+                            const nextIdx = (accounts.findIndex((a: any) => a.id === activeAccountId) + 1) % accounts.length;
+                            handleAccountChange(accounts[nextIdx].id);
+                          }
+                        : undefined
+                    }
                   >
-                    {isStale ? '⚠️' : '✓'}
+                    <Building2 size={18} className="text-blue-400 shrink-0" />
+                    {currentAccObj && (
+                      <span
+                        className={`absolute top-1 right-1 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
+                          isStale ? 'bg-amber-400' : 'bg-emerald-400'
+                        }`}
+                      />
+                    )}
                   </div>
-                );
-              })()}
-            </div>
+                </div>
+              );
+            })()
           )}
         </div>
       )}
 
       {/* Navigation links */}
-      <div className="flex-1 overflow-y-auto py-4 px-2.5 space-y-6">
+      <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
         <div>
           {!collapsed && (
-            <div className="px-2.5 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <div className="px-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
               {labels.appsSection}
             </div>
           )}
@@ -261,7 +266,11 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                 setMobileOpen(false);
                 navigate(analyticsUrl);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer ${
+              className={`${
+                collapsed
+                  ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
+                  : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
+              } transition-all cursor-pointer ${
                 isAnalyticsActive
                   ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-950/50'
                   : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
@@ -276,13 +285,15 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               )}
             </button>
 
-
-
             <div
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left text-slate-500 cursor-not-allowed opacity-75"
+              className={`${
+                collapsed
+                  ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
+                  : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
+              } text-slate-500 cursor-not-allowed opacity-75`}
               title={labels.app03}
             >
-              <Cpu size={18} className="shrink-0" />
+              <Cpu size={20} className="shrink-0" />
               {!collapsed && <span className="text-xs truncate">{labels.app03}</span>}
             </div>
           </nav>
@@ -291,7 +302,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
         {role === 'admin' && (
           <div>
             {!collapsed && (
-              <div className="px-2.5 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <div className="px-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                 {labels.adminSection}
               </div>
             )}
@@ -301,14 +312,18 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                   setMobileOpen(false);
                   navigate('/admin/clients');
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                className={`${
+                  collapsed
+                    ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
+                    : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
+                } transition-all cursor-pointer ${
                   isClientsActive
                     ? 'bg-slate-800 text-white font-semibold'
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
                 title={labels.clients}
               >
-                <Users size={18} className="shrink-0" />
+                <Users size={19} className="shrink-0" />
                 {!collapsed && <span className="text-xs truncate">{labels.clients}</span>}
               </button>
 
@@ -317,7 +332,11 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                   setMobileOpen(false);
                   navigate('/admin/notifications');
                 }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                className={`${
+                  collapsed
+                    ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl relative shrink-0'
+                    : 'w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left'
+                } transition-all cursor-pointer ${
                   isNotifsActive
                     ? 'bg-slate-800 text-white font-semibold'
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
@@ -325,13 +344,17 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                 title={labels.notifs}
               >
                 <div className="flex items-center gap-3 overflow-hidden">
-                  <Bell size={18} className="shrink-0" />
+                  <Bell size={19} className="shrink-0" />
                   {!collapsed && <span className="text-xs truncate">{labels.notifs}</span>}
                 </div>
                 {notifsQuery.data && notifsQuery.data.length > 0 && (
-                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                    {notifsQuery.data.length}
-                  </span>
+                  collapsed ? (
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-slate-900" />
+                  ) : (
+                    <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                      {notifsQuery.data.length}
+                    </span>
+                  )
                 )}
               </button>
             </nav>
@@ -340,7 +363,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
       </div>
 
       {/* Footer controls */}
-      <div className="p-3 border-t border-slate-800/80 space-y-2">
+      <div className="p-3 border-t border-slate-800/80">
         {!collapsed ? (
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
@@ -349,22 +372,30 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
             </div>
             <button
               onClick={logout}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-slate-300 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-slate-300 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
               title={labels.logout}
             >
-              <LogOut size={15} />
+              <LogOut size={15} className="shrink-0" />
               <span>{labels.logout}</span>
             </button>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">
-            <ThemeToggle />
+            <button
+              type="button"
+              onClick={() => setLang(lang === 'ru' ? 'uz' : 'ru')}
+              className="w-10 h-10 mx-auto rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              title={lang === 'ru' ? 'Сменить язык (RU)' : 'Tilni o‘zgartirish (UZ)'}
+            >
+              {lang.toUpperCase()}
+            </button>
+            <ThemeToggle className="w-10 h-10 rounded-xl shrink-0" />
             <button
               onClick={logout}
-              className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer"
+              className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
               title={labels.logout}
             >
-              <LogOut size={16} />
+              <LogOut size={18} className="shrink-0" />
             </button>
           </div>
         )}
@@ -376,10 +407,10 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
     <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <aside
         className={`hidden lg:block shrink-0 transition-all duration-200 ${
-          collapsed ? 'w-20' : 'w-64'
+          collapsed ? 'w-16' : 'w-64'
         }`}
       >
-        <div className={`fixed top-0 left-0 bottom-0 z-30 ${collapsed ? 'w-20' : 'w-64'}`}>
+        <div className={`fixed top-0 left-0 bottom-0 z-30 transition-all duration-200 ${collapsed ? 'w-16' : 'w-64'}`}>
           {sidebarContent}
         </div>
       </aside>
