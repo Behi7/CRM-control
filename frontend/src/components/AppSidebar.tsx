@@ -95,25 +95,25 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
     localStorage.setItem('active_account_id', String(newAccId));
     const p = location.pathname;
     const qs = buildSharedQuery();
-    if (p.includes('/bi')) {
-      navigate(`/admin/bi/${newAccId}${qs}`);
-    } else if (p.includes('/search')) {
+    if (p.includes('/search')) {
       navigate(`/admin/search/${newAccId}${qs}`);
     } else {
-      navigate(`/admin/stats/${newAccId}${qs}`);
+      navigate(`/admin/bi/${newAccId}${qs}`);
     }
   };
 
   const isPathActive = (prefix: string) => location.pathname.startsWith(prefix);
 
-  const timeAnalyticsUrl =
-    role === 'admin' ? `/admin/stats/${activeAccountId}${buildSharedQuery()}` : `/stats${buildSharedQuery()}`;
-  const biAnalyticsUrl =
+  const analyticsUrl =
     role === 'admin' ? `/admin/bi/${activeAccountId}${buildSharedQuery()}` : `/bi${buildSharedQuery()}`;
   const searchUrl =
     role === 'admin' ? `/admin/search/${activeAccountId}` : `/search`;
 
-  const isTimeActive =
+  const isAnalyticsActive =
+    isPathActive('/admin/bi') ||
+    isPathActive('/bi') ||
+    isPathActive('/admin/analytics') ||
+    isPathActive('/analytics') ||
     isPathActive('/admin/stats') ||
     isPathActive('/stats') ||
     isPathActive('/admin/stage') ||
@@ -121,7 +121,6 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
     isPathActive('/admin/lead') ||
     isPathActive('/lead');
 
-  const isBiActive = isPathActive('/admin/bi') || isPathActive('/bi');
   const isSearchActive = isPathActive('/admin/search') || isPathActive('/search');
   const isClientsActive = isPathActive('/admin/clients');
   const isNotifsActive = isPathActive('/admin/notifications');
@@ -129,10 +128,8 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
   const currentAccObj = accounts.find((a: any) => a.id === activeAccountId);
 
   const labels = {
-    app01: lang === 'uz' ? 'Vaqt tahlili' : 'Аналитика времени',
-    app01Sub: lang === 'uz' ? 'Bosqichlar tezligi' : 'Тайминги и этапы',
-    app02: lang === 'uz' ? 'Detalli BI Tahlil' : 'Детальная аналитика',
-    app02Sub: lang === 'uz' ? 'Moliya, Voronka, UTM, LTV' : 'Финансы, Воронка, UTM, LTV',
+    appAnalytics: lang === 'uz' ? 'AmoCRM Tahlil Markazi' : 'Аналитика продаж',
+    appAnalyticsSub: lang === 'uz' ? 'Moliya, Vaqt, Voronka, UTM' : 'Финансы, Время, Воронка, UTM',
     search: lang === 'uz' ? 'Bitimlarni qidirish' : 'Поиск сделок',
     app03: lang === 'uz' ? 'AI Prognoz (Tez kunda)' : 'AI-Прогнозы',
     clients: lang === 'uz' ? 'AmoCRM Mijozlar' : 'Клиенты AmoCRM',
@@ -271,49 +268,26 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
             <button
               onClick={() => {
                 setMobileOpen(false);
-                navigate(timeAnalyticsUrl);
+                navigate(analyticsUrl);
               }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer ${
-                isTimeActive
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-950/50'
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-              title={labels.app01}
-            >
-              <Clock size={20} className="shrink-0" />
-              {!collapsed && (
-                <div className="overflow-hidden">
-                  <div className="text-xs font-semibold truncate">{labels.app01}</div>
-                  <div className={`text-[10px] truncate ${isTimeActive ? 'text-blue-100' : 'text-slate-400'}`}>
-                    {labels.app01Sub}
-                  </div>
-                </div>
-              )}
-            </button>
-
-            <button
-              onClick={() => {
-                setMobileOpen(false);
-                navigate(biAnalyticsUrl);
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer ${
-                isBiActive
+                isAnalyticsActive
                   ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-950/50'
                   : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
               }`}
-              title={labels.app02}
+              title={labels.appAnalytics}
             >
               <BarChart3 size={20} className="shrink-0" />
               {!collapsed && (
                 <div className="overflow-hidden flex-1">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-semibold truncate">{labels.app02}</span>
+                    <span className="text-xs font-semibold truncate">{labels.appAnalytics}</span>
                     <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      PY
+                      COMBINE
                     </span>
                   </div>
-                  <div className={`text-[10px] truncate ${isBiActive ? 'text-indigo-100' : 'text-slate-400'}`}>
-                    {labels.app02Sub}
+                  <div className={`text-[10px] truncate ${isAnalyticsActive ? 'text-indigo-100' : 'text-slate-400'}`}>
+                    {labels.appAnalyticsSub}
                   </div>
                 </div>
               )}

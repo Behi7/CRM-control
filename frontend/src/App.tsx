@@ -39,8 +39,9 @@ export default function App() {
         <>
           <Route path="/admin/clients" element={<WithSidebar><AdminClientsPage /></WithSidebar>} />
           <Route path="/admin/notifications" element={<WithSidebar><AdminNotificationsPage /></WithSidebar>} />
-          <Route path="/admin/stats/:accountId" element={<WithSidebar><StatsPage /></WithSidebar>} />
+          <Route path="/admin/analytics/:accountId" element={<WithSidebar><BiAnalyticsPage /></WithSidebar>} />
           <Route path="/admin/bi/:accountId" element={<WithSidebar><BiAnalyticsPage /></WithSidebar>} />
+          <Route path="/admin/stats/:accountId" element={<WithSidebar><BiAnalyticsPage defaultTab="time_stages" /></WithSidebar>} />
           <Route path="/admin/stage/:stageId" element={<WithSidebar><StageLeadsPage /></WithSidebar>} />
           <Route path="/admin/lead/:leadId" element={<WithSidebar><LeadDetailPage /></WithSidebar>} />
           <Route path="/admin/search/:accountId" element={<WithSidebar><SearchPage /></WithSidebar>} />
@@ -48,8 +49,9 @@ export default function App() {
       )}
       {role === 'viewer' && (
         <>
-          <Route path="/stats" element={<WithSidebar><StatsPage /></WithSidebar>} />
+          <Route path="/analytics" element={<WithSidebar><BiAnalyticsPage /></WithSidebar>} />
           <Route path="/bi" element={<WithSidebar><BiAnalyticsPage /></WithSidebar>} />
+          <Route path="/stats" element={<WithSidebar><BiAnalyticsPage defaultTab="time_stages" /></WithSidebar>} />
           <Route path="/stage/:stageId" element={<WithSidebar><StageLeadsPage /></WithSidebar>} />
           <Route path="/lead/:leadId" element={<WithSidebar><LeadDetailPage /></WithSidebar>} />
           <Route path="/search" element={<WithSidebar><SearchPage /></WithSidebar>} />
@@ -57,7 +59,7 @@ export default function App() {
       )}
       <Route
         path="*"
-        element={<Navigate to={role === 'admin' ? '/admin/clients' : role === 'viewer' ? '/stats' : '/login'} replace />}
+        element={<Navigate to={role === 'admin' ? '/admin/clients' : role === 'viewer' ? '/bi' : '/login'} replace />}
       />
     </Routes>
   );

@@ -1,5 +1,5 @@
 export type DatePreset = 'all' | 'today' | 'yesterday' | '7days' | '30days' | 'thismonth' | 'custom';
-export type BiTab = 'overview' | 'managers' | 'marketing' | 'losses_ltv' | 'custom_fields' | 'risk_audit';
+export type BiTab = 'overview' | 'managers' | 'marketing' | 'losses_ltv' | 'custom_fields' | 'risk_audit' | 'time_stages';
 
 export interface MultiSelectOption {
   id: number;

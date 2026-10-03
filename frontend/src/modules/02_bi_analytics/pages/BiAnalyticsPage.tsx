@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DollarSign,
   Award,
@@ -7,17 +8,20 @@ import {
   XCircle,
   Filter,
   ShieldAlert,
+  Clock,
   Target,
   RefreshCw,
   Sparkles,
 } from 'lucide-react';
 import { py2Api } from '../api/bi-analytics.api';
-import { userApi } from '@/api/client';
+import { userApi, FilterParams } from '@/api/client';
+import { useAuth } from '@/auth/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
 import AiChatDrawer from '@/modules/ai_chat/components/AiChatDrawer';
 import { useFilterContext } from '@/shared/context/FilterContext';
 import FilterBar from '@/shared/components/FilterBar';
 import MultiSelectDropdown from '@/shared/components/MultiSelectDropdown';
+import StagesStatsTable from '@/modules/01_time_analytics/components/StagesStatsTable';
 
 import { BiTab, MultiSelectOption } from '../types';
 import OverviewTab from '../components/tabs/OverviewTab';
@@ -27,13 +31,36 @@ import LossesTab from '../components/tabs/LossesTab';
 import CustomFieldsTab from '../components/tabs/CustomFieldsTab';
 import RiskAuditTab from '../components/tabs/RiskAuditTab';
 
-export default function BiAnalyticsPage() {
+interface BiAnalyticsPageProps {
+  defaultTab?: BiTab;
+}
+
+export default function BiAnalyticsPage({ defaultTab = 'overview' }: BiAnalyticsPageProps) {
   const { t } = useLanguage();
+  const { role } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
   const [chatOpen, setChatOpen] = useState(false);
   const [isWideScreen, setIsWideScreen] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1280 : true,
   );
+
+  const paramTab = searchParams.get('tab') as BiTab | null;
+  const [activeTab, setActiveTab] = useState<BiTab>(() => paramTab || defaultTab);
+
+  useEffect(() => {
+    if (paramTab && paramTab !== activeTab) {
+      setActiveTab(paramTab);
+    }
+  }, [paramTab]);
+
+  const handleTabChange = (tabId: BiTab) => {
+    setActiveTab(tabId);
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tabId);
+    setSearchParams(next, { replace: true });
+  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -50,8 +77,34 @@ export default function BiAnalyticsPage() {
     pipelines,
   } = useFilterContext();
 
-  const [activeTab, setActiveTab] = useState<BiTab>('overview');
   const [selectedSourceIds, setSelectedSourceIds] = useState<number[]>([]);
+
+  // Time Analytics Query (Stages Stats)
+  const timeFilters: FilterParams = useMemo(() => ({
+    tagIds: applied.tagIds,
+    managerIds: applied.managerIds,
+    dateFrom: applied.dateFrom || undefined,
+    dateTo: applied.dateTo || undefined,
+    status: applied.status,
+  }), [applied]);
+
+  const statsQuery = useQuery({
+    queryKey: ['stats', applied.pipelineId, timeFilters],
+    queryFn: () => userApi.stagesStats(applied.pipelineId!, timeFilters),
+    enabled: !!applied.pipelineId,
+  });
+
+  const handleStageClick = (stageId: number) => {
+    const path = role === 'admin' ? `/admin/stage/${stageId}` : `/stage/${stageId}`;
+    const params = new URLSearchParams();
+    if (applied.tagIds.length > 0) params.set('tags', applied.tagIds.join(','));
+    if (applied.status && applied.status !== 'all') params.set('status', applied.status);
+    if (applied.managerIds.length > 0) params.set('managers', applied.managerIds.join(','));
+    if (applied.dateFrom) params.set('dateFrom', applied.dateFrom);
+    if (applied.dateTo) params.set('dateTo', applied.dateTo);
+    const qs = params.toString();
+    navigate(qs ? `${path}?${qs}` : path);
+  };
 
   // AI Status query
   const aiStatus = useQuery({
@@ -141,7 +194,7 @@ export default function BiAnalyticsPage() {
           </div>
 
           {/* Unified Filter Bar with extra Sources filter */}
-          <FilterBar showStatus={false}>
+          <FilterBar showStatus={true}>
             {sourcesList.length > 0 && (
               <MultiSelectDropdown
                 label="Источники"
@@ -163,13 +216,14 @@ export default function BiAnalyticsPage() {
               { id: 'losses_ltv', label: 'Причины отказа', icon: XCircle },
               { id: 'custom_fields', label: 'Кастомные поля', icon: Filter },
               { id: 'risk_audit', label: 'Сделки в зоне риска', icon: ShieldAlert },
+              { id: 'time_stages', label: 'Время на этапах', icon: Clock },
             ].map((tab) => {
               const Icon = tab.icon;
               const active = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as BiTab)}
+                  onClick={() => handleTabChange(tab.id as BiTab)}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     active
                       ? 'bg-indigo-600 text-white shadow-sm'
@@ -184,7 +238,28 @@ export default function BiAnalyticsPage() {
           </div>
 
           {/* Main Tab Content */}
-          {biQuery.isLoading ? (
+          {activeTab === 'time_stages' ? (
+            <div className="space-y-4">
+              {statsQuery.isLoading ? (
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500">
+                  Загрузка аналитики времени на этапах...
+                </div>
+              ) : statsQuery.isError ? (
+                <div className="bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 rounded-2xl p-6 text-sm">
+                  Ошибка загрузки этапов: {(statsQuery.error as any)?.message || 'Неизвестная ошибка'}
+                </div>
+              ) : statsQuery.data ? (
+                <StagesStatsTable
+                  items={statsQuery.data.items || []}
+                  onStageClick={handleStageClick}
+                />
+              ) : (
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-slate-500">
+                  Нет данных по этапам для выбранной воронки
+                </div>
+              )}
+            </div>
+          ) : biQuery.isLoading ? (
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500">
               Загрузка глубокой аналитики AmoCRM...
             </div>
