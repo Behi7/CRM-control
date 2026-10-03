@@ -24,6 +24,8 @@ import FilterBar from '@/shared/components/FilterBar';
 import MultiSelectDropdown from '../components/filters/MultiSelectDropdown';
 import StagesStatsTable from '../components/StagesStatsTable';
 import StageTimeBarChart from '../components/charts/StageTimeBarChart';
+import StageOutcomesAnalytics from '../components/charts/StageOutcomesAnalytics';
+
 
 import { AnalyticsTab, MultiSelectOption } from '../types';
 import OverviewTab from '../components/tabs/OverviewTab';
@@ -259,10 +261,16 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
                       items={statsQuery.data.items || []}
                       onStageClick={handleStageClick}
                     />
+                    <StageOutcomesAnalytics
+                      wonStats={statsQuery.data.wonStats}
+                      lostStats={statsQuery.data.lostStats}
+                      onStageClick={handleStageClick}
+                    />
                     <StagesStatsTable
                       items={statsQuery.data.items || []}
                       onStageClick={handleStageClick}
                     />
+
                   </div>
                 ) : (
                   <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-slate-500">
@@ -381,6 +389,11 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
                               <div className="p-4 sm:p-5 space-y-4 animate-in fade-in-50 duration-200">
                                 <StageTimeBarChart
                                   items={p.items || []}
+                                  onStageClick={handleStageClick}
+                                />
+                                <StageOutcomesAnalytics
+                                  wonStats={p.wonStats}
+                                  lostStats={p.lostStats}
                                   onStageClick={handleStageClick}
                                 />
                                 <StagesStatsTable

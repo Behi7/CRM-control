@@ -44,3 +44,45 @@ export function fmtCount(val: number | undefined | null): string {
   if (val == null || isNaN(val)) return '0';
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Math.round(val));
 }
+
+export interface StageCohort {
+  key: string;
+  label: string;
+  labelUz: string;
+  count: number;
+  share: number;
+}
+
+export interface WonStageTime {
+  stageId: number;
+  stageName: string;
+  leadsCount: number;
+  avgSeconds: number;
+  avgDays: number;
+}
+
+export interface WonStats {
+  total: number;
+  avgDays: number;
+  medianDays: number;
+  cohorts: StageCohort[];
+  stagesTime: WonStageTime[];
+}
+
+export interface LostStageTime {
+  stageId: number;
+  stageName: string;
+  droppedCount: number;
+  avgSeconds: number;
+  avgDays: number;
+  share: number;
+}
+
+export interface LostStats {
+  total: number;
+  avgDays: number;
+  medianDays: number;
+  cohorts: StageCohort[];
+  stagesTimeBeforeLoss: LostStageTime[];
+}
+

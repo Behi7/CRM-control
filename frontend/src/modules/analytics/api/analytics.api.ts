@@ -29,6 +29,8 @@ export interface AnalyticsParams {
   sources?: string[];
 }
 
+import { WonStats, LostStats } from '../types';
+
 export const analyticsApi = {
   accounts: () => baseApi<any[]>('/accounts'),
   analytics: (accountId: number, params: AnalyticsParams = {}) => {
@@ -52,7 +54,12 @@ export const analyticsApi = {
   managers: (accountId: number) =>
     baseApi<{ items: any[]; dataFreshness: any }>(`/accounts/${accountId}/managers`),
   stagesStats: (pipelineId: number, filters: FilterParams = {}) =>
-    baseApi<{ items: any[]; dataFreshness: any }>(`/pipelines/${pipelineId}/stages-stats${buildFilterQS(filters)}`),
+    baseApi<{
+      items: any[];
+      wonStats?: WonStats;
+      lostStats?: LostStats;
+      dataFreshness: any;
+    }>(`/pipelines/${pipelineId}/stages-stats${buildFilterQS(filters)}`),
   allStagesStats: (accountId: number, filters: FilterParams = {}) =>
     baseApi<{
       pipelines: Array<{
@@ -61,9 +68,12 @@ export const analyticsApi = {
         totalPassedLeads: number;
         totalActiveLeads: number;
         items: any[];
+        wonStats?: WonStats;
+        lostStats?: LostStats;
       }>;
       dataFreshness: any;
     }>(`/accounts/${accountId}/all-stages-stats${buildFilterQS(filters)}`),
+
   activeLeads: (stageId: number, page = 1, perPage = 50, filters: FilterParams = {}) => {
     const p = new URLSearchParams();
     p.set('page', String(page));

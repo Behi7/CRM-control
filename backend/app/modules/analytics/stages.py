@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Any, Optional
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -7,6 +8,64 @@ from app.modules.analytics.common import (
     get_data_freshness,
     build_filter_clauses,
 )
+
+
+def _format_cohorts(row: Any) -> list[dict]:
+    if not row:
+        return _empty_cohorts()
+    total = int(row.get("total_leads") or 0)
+    cohort_defs = [
+        ("under_1d", "< 1 дня", "< 1 kun", "c_under_1d"),
+        ("2_3d", "2–3 дня", "2–3 kun", "c_2_3d"),
+        ("4_7d", "4–7 дней", "4–7 kun", "c_4_7d"),
+        ("8_14d", "8–14 дней", "8–14 kun", "c_8_14d"),
+        ("15_30d", "15–30 дней", "15–30 kun", "c_15_30d"),
+        ("over_30d", "> 30 дней", "> 30 kun", "c_over_30d"),
+    ]
+    cohorts = []
+    for key, label_ru, label_uz, col in cohort_defs:
+        cnt = int(row.get(col) or 0)
+        share = round((cnt / total * 100.0), 1) if total > 0 else 0.0
+        cohorts.append({
+            "key": key,
+            "label": label_ru,
+            "labelUz": label_uz,
+            "count": cnt,
+            "share": share,
+        })
+    return cohorts
+
+
+def _empty_cohorts() -> list[dict]:
+    return [
+        {"key": "under_1d", "label": "< 1 дня", "labelUz": "< 1 kun", "count": 0, "share": 0.0},
+        {"key": "2_3d", "label": "2–3 дня", "labelUz": "2–3 kun", "count": 0, "share": 0.0},
+        {"key": "4_7d", "label": "4–7 дней", "labelUz": "4–7 kun", "count": 0, "share": 0.0},
+        {"key": "8_14d", "label": "8–14 дней", "labelUz": "8–14 kun", "count": 0, "share": 0.0},
+        {"key": "15_30d", "label": "15–30 дней", "labelUz": "15–30 kun", "count": 0, "share": 0.0},
+        {"key": "over_30d", "label": "> 30 дней", "labelUz": "> 30 kun", "count": 0, "share": 0.0},
+    ]
+
+
+def _empty_won_stats() -> dict:
+    return {
+        "total": 0,
+        "avgDays": 0.0,
+        "medianDays": 0.0,
+        "cohorts": _empty_cohorts(),
+        "stagesTime": [],
+    }
+
+
+def _empty_lost_stats() -> dict:
+    return {
+        "total": 0,
+        "avgDays": 0.0,
+        "medianDays": 0.0,
+        "cohorts": _empty_cohorts(),
+        "stagesTimeBeforeLoss": [],
+    }
+
 
 
 def get_pipelines(account_id: int, user: dict):
@@ -178,7 +237,131 @@ def get_stages_stats(
                 "activeLeadsCount": active_cnt,
             })
 
-        return {**freshness, "items": items}
+        # Won & Lost Cycle Cohorts
+        cohorts_sql = text(f"""
+            SELECT
+                l.status,
+                COUNT(*) AS total_leads,
+                ROUND(AVG(EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0)::numeric, 1) AS avg_days,
+                ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0)::numeric, 1) AS median_days,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 <= 1) AS c_under_1d,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 > 1 AND EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 <= 3) AS c_2_3d,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 > 3 AND EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 <= 7) AS c_4_7d,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 > 7 AND EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 <= 14) AS c_8_14d,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 > 14 AND EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 <= 30) AS c_15_30d,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 > 30) AS c_over_30d
+            FROM leads l
+            WHERE l.pipeline_id = :pipe_id
+              AND l.status IN ('won', 'lost')
+              AND l.crm_closed_at IS NOT NULL
+              AND l.crm_created_at IS NOT NULL
+              AND l.crm_closed_at >= l.crm_created_at
+              {filter_clause}
+            GROUP BY l.status
+        """)
+        cohorts_rows = conn.execute(cohorts_sql, params).mappings().all()
+        cohorts_by_status = {r["status"]: r for r in cohorts_rows}
+
+        # Stage durations for won leads
+        won_stages_sql = text(f"""
+            SELECT
+                s.id AS stage_id,
+                s.name AS stage_name,
+                COUNT(DISTINCT h.lead_id) AS won_leads_count,
+                ROUND(AVG(h.duration_seconds)::numeric, 0) AS avg_seconds
+            FROM lead_stage_history h
+            JOIN leads l ON l.id = h.lead_id
+            JOIN stages s ON s.id = h.stage_id
+            WHERE l.pipeline_id = :pipe_id
+              AND s.pipeline_id = :pipe_id
+              AND l.status = 'won'
+              AND h.duration_seconds IS NOT NULL
+              AND s.is_archived = false
+              AND s.external_id NOT IN ('142', '143')
+              {filter_clause}
+            GROUP BY s.id, s.name, s.sort_order
+            ORDER BY s.sort_order ASC, s.id ASC
+        """)
+        won_stages_rows = conn.execute(won_stages_sql, params).mappings().all()
+        won_stages_time = [
+            {
+                "stageId": r["stage_id"],
+                "stageName": r["stage_name"],
+                "leadsCount": int(r["won_leads_count"] or 0),
+                "avgSeconds": int(r["avg_seconds"] or 0),
+                "avgDays": round(float(r["avg_seconds"] or 0) / 86400.0, 1),
+            }
+            for r in won_stages_rows
+        ]
+
+        # Stage time before loss for lost leads
+        lost_stages_sql = text(f"""
+            WITH last_stages AS (
+                SELECT
+                    h.stage_id,
+                    s.name AS stage_name,
+                    h.duration_seconds,
+                    ROW_NUMBER() OVER (PARTITION BY l.id ORDER BY h.id DESC) AS rn
+                FROM leads l
+                JOIN lead_stage_history h ON h.lead_id = l.id
+                JOIN stages s ON s.id = h.stage_id
+                WHERE l.pipeline_id = :pipe_id
+                  AND s.pipeline_id = :pipe_id
+                  AND l.status = 'lost'
+                  AND s.is_archived = false
+                  AND s.external_id NOT IN ('142', '143')
+                  {filter_clause}
+            )
+            SELECT
+                stage_id,
+                stage_name,
+                COUNT(*) AS dropped_count,
+                ROUND(AVG(duration_seconds)::numeric, 0) AS avg_seconds
+            FROM last_stages
+            WHERE rn = 1
+            GROUP BY stage_id, stage_name
+            ORDER BY dropped_count DESC
+            LIMIT 10
+        """)
+        lost_stages_rows = conn.execute(lost_stages_sql, params).mappings().all()
+        lost_total_count = int(cohorts_by_status.get("lost", {}).get("total_leads") or 0)
+        lost_stages_time = [
+            {
+                "stageId": r["stage_id"],
+                "stageName": r["stage_name"],
+                "droppedCount": int(r["dropped_count"] or 0),
+                "avgSeconds": int(r["avg_seconds"] or 0),
+                "avgDays": round(float(r["avg_seconds"] or 0) / 86400.0, 1),
+                "share": round(int(r["dropped_count"] or 0) / lost_total_count * 100.0, 1) if lost_total_count > 0 else 0.0,
+            }
+            for r in lost_stages_rows
+        ]
+
+        won_row = cohorts_by_status.get("won")
+        won_stats = {
+            "total": int(won_row["total_leads"]) if won_row else 0,
+            "avgDays": float(won_row["avg_days"]) if won_row and won_row["avg_days"] is not None else 0.0,
+            "medianDays": float(won_row["median_days"]) if won_row and won_row["median_days"] is not None else 0.0,
+            "cohorts": _format_cohorts(won_row) if won_row else _empty_cohorts(),
+            "stagesTime": won_stages_time,
+        }
+
+        lost_row = cohorts_by_status.get("lost")
+        lost_stats = {
+            "total": int(lost_row["total_leads"]) if lost_row else 0,
+            "avgDays": float(lost_row["avg_days"]) if lost_row and lost_row["avg_days"] is not None else 0.0,
+            "medianDays": float(lost_row["median_days"]) if lost_row and lost_row["median_days"] is not None else 0.0,
+            "cohorts": _format_cohorts(lost_row) if lost_row else _empty_cohorts(),
+            "stagesTimeBeforeLoss": lost_stages_time,
+        }
+
+        return {
+            **freshness,
+            "items": items,
+            "wonStats": won_stats,
+            "lostStats": lost_stats,
+        }
+
 
 
 def get_all_pipelines_stages_stats(
@@ -275,6 +458,107 @@ def get_all_pipelines_stages_stats(
             for r in conn.execute(skips_sql, params).mappings().all()
         }
 
+        # Won & Lost Cycle Cohorts for all pipelines
+        cohorts_sql = text(f"""
+            SELECT
+                l.pipeline_id,
+                l.status,
+                COUNT(*) AS total_leads,
+                ROUND(AVG(EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0)::numeric, 1) AS avg_days,
+                ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0)::numeric, 1) AS median_days,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 <= 1) AS c_under_1d,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 > 1 AND EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 <= 3) AS c_2_3d,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 > 3 AND EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 <= 7) AS c_4_7d,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 > 7 AND EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 <= 14) AS c_8_14d,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 > 14 AND EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 <= 30) AS c_15_30d,
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (l.crm_closed_at - l.crm_created_at)) / 86400.0 > 30) AS c_over_30d
+            FROM leads l
+            WHERE l.account_id = :acc_id
+              AND l.status IN ('won', 'lost')
+              AND l.crm_closed_at IS NOT NULL
+              AND l.crm_created_at IS NOT NULL
+              AND l.crm_closed_at >= l.crm_created_at
+              {filter_clause}
+            GROUP BY l.pipeline_id, l.status
+        """)
+        cohorts_rows = conn.execute(cohorts_sql, params).mappings().all()
+        cohorts_by_pipe_status = {(r["pipeline_id"], r["status"]): r for r in cohorts_rows}
+
+        # Stage durations for won leads across pipelines
+        won_stages_sql = text(f"""
+            SELECT
+                l.pipeline_id,
+                s.id AS stage_id,
+                s.name AS stage_name,
+                COUNT(DISTINCT h.lead_id) AS won_leads_count,
+                ROUND(AVG(h.duration_seconds)::numeric, 0) AS avg_seconds
+            FROM lead_stage_history h
+            JOIN leads l ON l.id = h.lead_id
+            JOIN stages s ON s.id = h.stage_id
+            WHERE l.account_id = :acc_id
+              AND s.pipeline_id = l.pipeline_id
+              AND l.status = 'won'
+              AND h.duration_seconds IS NOT NULL
+              AND s.is_archived = false
+              AND s.external_id NOT IN ('142', '143')
+              {filter_clause}
+            GROUP BY l.pipeline_id, s.id, s.name, s.sort_order
+            ORDER BY l.pipeline_id ASC, s.sort_order ASC, s.id ASC
+        """)
+        won_stages_by_pipe: dict[int, list[dict]] = defaultdict(list)
+        for r in conn.execute(won_stages_sql, params).mappings().all():
+            won_stages_by_pipe[r["pipeline_id"]].append({
+                "stageId": r["stage_id"],
+                "stageName": r["stage_name"],
+                "leadsCount": int(r["won_leads_count"] or 0),
+                "avgSeconds": int(r["avg_seconds"] or 0),
+                "avgDays": round(float(r["avg_seconds"] or 0) / 86400.0, 1),
+            })
+
+        # Stage time before loss for lost leads across pipelines
+        lost_stages_sql = text(f"""
+            WITH last_stages AS (
+                SELECT
+                    l.pipeline_id,
+                    h.stage_id,
+                    s.name AS stage_name,
+                    h.duration_seconds,
+                    ROW_NUMBER() OVER (PARTITION BY l.id ORDER BY h.id DESC) AS rn
+                FROM leads l
+                JOIN lead_stage_history h ON h.lead_id = l.id
+                JOIN stages s ON s.id = h.stage_id
+                WHERE l.account_id = :acc_id
+                  AND s.pipeline_id = l.pipeline_id
+                  AND l.status = 'lost'
+                  AND s.is_archived = false
+                  AND s.external_id NOT IN ('142', '143')
+                  {filter_clause}
+            )
+            SELECT
+                pipeline_id,
+                stage_id,
+                stage_name,
+                COUNT(*) AS dropped_count,
+                ROUND(AVG(duration_seconds)::numeric, 0) AS avg_seconds
+            FROM last_stages
+            WHERE rn = 1
+            GROUP BY pipeline_id, stage_id, stage_name
+            ORDER BY pipeline_id ASC, dropped_count DESC
+        """)
+        lost_stages_by_pipe: dict[int, list[dict]] = defaultdict(list)
+        for r in conn.execute(lost_stages_sql, params).mappings().all():
+            p_id = r["pipeline_id"]
+            p_lost_total = int(cohorts_by_pipe_status.get((p_id, "lost"), {}).get("total_leads") or 0)
+            if len(lost_stages_by_pipe[p_id]) < 10:
+                lost_stages_by_pipe[p_id].append({
+                    "stageId": r["stage_id"],
+                    "stageName": r["stage_name"],
+                    "droppedCount": int(r["dropped_count"] or 0),
+                    "avgSeconds": int(r["avg_seconds"] or 0),
+                    "avgDays": round(float(r["avg_seconds"] or 0) / 86400.0, 1),
+                    "share": round(int(r["dropped_count"] or 0) / p_lost_total * 100.0, 1) if p_lost_total > 0 else 0.0,
+                })
+
         pipelines_map = {}
         for r in stage_rows:
             p_id = r["pipelineId"]
@@ -322,6 +606,24 @@ def get_all_pipelines_stages_stats(
                 "leadsCount": passed_cnt,
                 "activeLeadsCount": active_cnt,
             })
+
+        for p_id, p_data in pipelines_map.items():
+            won_row = cohorts_by_pipe_status.get((p_id, "won"))
+            p_data["wonStats"] = {
+                "total": int(won_row["total_leads"]) if won_row else 0,
+                "avgDays": float(won_row["avg_days"]) if won_row and won_row["avg_days"] is not None else 0.0,
+                "medianDays": float(won_row["median_days"]) if won_row and won_row["median_days"] is not None else 0.0,
+                "cohorts": _format_cohorts(won_row) if won_row else _empty_cohorts(),
+                "stagesTime": won_stages_by_pipe.get(p_id, []),
+            }
+            lost_row = cohorts_by_pipe_status.get((p_id, "lost"))
+            p_data["lostStats"] = {
+                "total": int(lost_row["total_leads"]) if lost_row else 0,
+                "avgDays": float(lost_row["avg_days"]) if lost_row and lost_row["avg_days"] is not None else 0.0,
+                "medianDays": float(lost_row["median_days"]) if lost_row and lost_row["median_days"] is not None else 0.0,
+                "cohorts": _format_cohorts(lost_row) if lost_row else _empty_cohorts(),
+                "stagesTimeBeforeLoss": lost_stages_by_pipe.get(p_id, []),
+            }
 
         return {
             **freshness,
