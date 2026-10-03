@@ -87,9 +87,11 @@ services:
       - "80:80"
 
   tunnel:
-    image: cloudflare/cloudflared:latest
+    image: ngrok/ngrok:latest
     restart: always
-    command: tunnel --no-autoupdate --url http://frontend:80
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    command: http frontend:80 --url https://hemstitch-trowel-marbled.ngrok-free.dev
     depends_on:
       - frontend
 
