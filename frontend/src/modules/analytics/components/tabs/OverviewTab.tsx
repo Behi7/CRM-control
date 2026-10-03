@@ -233,16 +233,18 @@ export default function OverviewTab({ kpis, timeseries = [], lossesAndLtv }: Ove
         </div>
       </div>
 
-      {/* Monthly Timeseries Table */}
+      {/* Monthly / Daily Timeseries Table */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
         <h2 className="text-base font-bold mb-4 text-slate-900 dark:text-white">
-          Динамика лидов, продаж и выручки по месяцам
+          Динамика лидов, продаж и выручки {timeseries[0]?.period?.length > 7 ? 'по дням' : 'по месяцам'}
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
               <tr>
-                <th className="p-3 text-left rounded-l-lg">Период (Месяц)</th>
+                <th className="p-3 text-left rounded-l-lg">
+                  {timeseries[0]?.period?.length > 7 ? 'Период (День)' : 'Период (Месяц)'}
+                </th>
                 <th className="p-3 text-right">Новых сделок</th>
                 <th className="p-3 text-right">Успешно (Won)</th>
                 <th className="p-3 text-right">Отказ (Lost)</th>

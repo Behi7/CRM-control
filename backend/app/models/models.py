@@ -288,6 +288,8 @@ class ProcessedCrmEvent(Base):
 
     __table_args__ = (
         UniqueConstraint("account_id", "external_event_id", name="processed_crm_events_account_id_external_event_id_key"),
+        Index("idx_processed_crm_events_account", "account_id"),
+        Index("idx_processed_crm_events_created_at", "created_at"),
     )
 
     account = relationship("Account")

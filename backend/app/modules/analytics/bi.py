@@ -1,5 +1,6 @@
 import json
 import urllib.request
+from datetime import datetime
 from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -254,11 +255,26 @@ def get_detailed_analytics(
             "uniqueContacts": int(kpi_row["unique_contacts"] or 0),
         }
 
-        # 2. Динамика по дням (timeseries)
+        # 2. Динамика во времени (timeseries)
+        # Если задан короткий интервал (<= 35 дней) — группируем по дням (YYYY-MM-DD),
+        # иначе (если "Все" или период > 35 дней) — группируем по месяцам (YYYY-MM).
+        is_daily = False
+        if date_from and date_to:
+            try:
+                d_from = datetime.fromisoformat(date_from[:10])
+                d_to = datetime.fromisoformat(date_to[:10])
+                if (d_to - d_from).days <= 35:
+                    is_daily = True
+            except Exception:
+                pass
+
+        trunc_unit = 'day' if is_daily else 'month'
+        date_fmt = 'YYYY-MM-DD' if is_daily else 'YYYY-MM'
+
         timeseries_rows = conn.execute(
             text(f"""
                 SELECT
-                    TO_CHAR(DATE_TRUNC('day', l.crm_created_at), 'YYYY-MM-DD') AS period,
+                    TO_CHAR(DATE_TRUNC('{trunc_unit}', l.crm_created_at), '{date_fmt}') AS period,
                     COUNT(*) AS "totalLeads",
                     COUNT(*) FILTER (WHERE l.status = 'won') AS "wonLeads",
                     COUNT(*) FILTER (WHERE l.status = 'lost') AS "lostLeads",

@@ -362,11 +362,9 @@ async def process_status_changed(
         lead_stmt = select(Lead).where(Lead.account_id == account_id, Lead.external_id == lead_ext)
         lead = (await session.execute(lead_stmt)).scalar_one_or_none()
 
-        # Step 2: If lead not in DB, release connection completely before slow HTTP call
+        # Step 2: If lead not in DB, fetch from AmoCRM API
         fetched_lead_data = None
         if not lead:
-            await session.rollback()
-
             status, data = await crm_client.request(
                 subdomain=subdomain,
                 base_domain=base_domain,
@@ -697,10 +695,13 @@ async def cleanup_old_events(
     total_deleted = 0
 
     while True:
-        subq = select(ProcessedCrmEvent.id).where(ProcessedCrmEvent.created_at < cutoff)
+        subq = (
+            select(ProcessedCrmEvent.id)
+            .where(ProcessedCrmEvent.created_at < cutoff)
+        )
         if account_id is not None:
             subq = subq.where(ProcessedCrmEvent.account_id == account_id)
-        subq = subq.limit(batch_size)
+        subq = subq.order_by(ProcessedCrmEvent.created_at.asc()).limit(batch_size)
 
         stmt = delete(ProcessedCrmEvent).where(ProcessedCrmEvent.id.in_(subq))
         res = await session.execute(stmt)

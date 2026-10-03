@@ -146,13 +146,20 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
         <div className="flex flex-wrap items-center gap-2">
           {/* Zoom & Year selector pills */}
           <div className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-            {[
-              { id: 'last6', label: '6 мес.' },
-              { id: 'last12', label: '12 мес.' },
-              { id: 'all', label: `Все (${rawPts.length})` },
-              ...(availableYears.length > 1 ? [{ id: 'by_year', label: 'По годам' }] : []),
-              ...availableYears.map((y) => ({ id: y, label: `${y} г.` })),
-            ].map((z) => (
+            {(rawPts.length > 0 && String(rawPts[0]?.period || '').length > 7
+              ? [
+                  { id: 'last6', label: '6 дн.' },
+                  { id: 'last12', label: '12 дн.' },
+                  { id: 'all', label: `Все (${rawPts.length})` },
+                ]
+              : [
+                  { id: 'last6', label: '6 мес.' },
+                  { id: 'last12', label: '12 мес.' },
+                  { id: 'all', label: `Все (${rawPts.length})` },
+                  ...(availableYears.length > 1 ? [{ id: 'by_year', label: 'По годам' }] : []),
+                  ...availableYears.map((y) => ({ id: y, label: `${y} г.` })),
+                ]
+            ).map((z) => (
               <button
                 key={z.id}
                 type="button"
