@@ -145,26 +145,18 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
       {/* Brand header */}
       <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80">
         {!collapsed && (
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md shrink-0">
-              A
-            </div>
-            <div className="truncate">
-              <div className="font-bold text-sm tracking-tight text-white leading-tight">Аналитика</div>
-            </div>
-          </div>
-        )}
-        {collapsed && (
-          <div className="w-8 h-8 mx-auto rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md">
-            A
+          <div className="font-bold text-base tracking-tight text-white leading-tight truncate">
+            Аналитика
           </div>
         )}
         <button
           onClick={toggleCollapsed}
-          className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+          className={`hidden lg:flex p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer ${
+            collapsed ? 'mx-auto' : ''
+          }`}
           title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
         >
-          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
         </button>
       </div>
 
