@@ -91,11 +91,16 @@ async def sync_loop():
                         continue
 
                     # Check fresh backfill status
-                    if acc_fresh.backfill_status != "done":
-                        logger.info(f"Account #{acc_id} ({subdomain}) requires backfill. Starting...")
+                    if acc_fresh.backfill_status in ("pending", "in_progress"):
+                        logger.info(f"Account #{acc_id} ({subdomain}) starting backfill (status={acc_fresh.backfill_status})...")
                         await run_backfill(session, acc_id)
-                    else:
+                    elif acc_fresh.backfill_status == "done":
                         await run_delta_sync(session, acc_id)
+                    else:
+                        logger.warning(
+                            f"Account #{acc_id} ({subdomain}) backfill status is '{acc_fresh.backfill_status}' "
+                            f"(error={acc_fresh.backfill_error}). Skipping sync until retry."
+                        )
 
             # Check if 60 minutes passed for pipeline sync
             now = datetime.now(timezone.utc)

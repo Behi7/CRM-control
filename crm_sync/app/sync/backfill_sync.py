@@ -81,77 +81,105 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
                 return False
 
         # 3. Fetch all historical leads
+        cursor = acc.backfill_cursor or {}
+        current_stage = cursor.get("stage", "leads")
         ctx = await build_sync_context(session, account_id)
-        MAX_LEADS_PAGES = 2000  # safety cap: 2000 * 250 = 500,000 leads
-        page = 1
-        total_leads = 0
-        last_leads_first_id = None
+        total_leads = cursor.get("total_leads", 0)
 
-        while page <= MAX_LEADS_PAGES:
-            status, data = await crm_client.request(
-                subdomain=acc.subdomain,
-                base_domain=acc.base_domain,
-                token=token,
-                method="GET",
-                path="/api/v4/leads",
-                params={
-                    "page": page,
-                    "limit": 250,
-                    "with": "tags,contacts,loss_reason,source_id,source",
-                },
+        if current_stage == "leads":
+            MAX_LEADS_PAGES = 2000  # safety cap: 2000 * 250 = 500,000 leads
+            page = cursor.get("page", 1)
+            last_leads_first_id = cursor.get("last_leads_first_id")
+            if page > 1:
+                logger.info(f"Resuming backfill leads from page {page} for account {account_id} ({total_leads} leads already fetched)")
+
+            while page <= MAX_LEADS_PAGES:
+                status, data = await crm_client.request(
+                    subdomain=acc.subdomain,
+                    base_domain=acc.base_domain,
+                    token=token,
+                    method="GET",
+                    path="/api/v4/leads",
+                    params={
+                        "page": page,
+                        "limit": 250,
+                        "with": "tags,contacts,loss_reason,source_id,source",
+                    },
+                )
+                if status == 401:
+                    logger.warning(f"Account {account_id} token expired (401) during backfill leads")
+                    await session.execute(
+                        update(Account).where(Account.id == account_id).values(
+                            token_status="expired",
+                            backfill_status="error",
+                            backfill_error="Token expired (401)",
+                            backfill_error_at=datetime.now(timezone.utc),
+                        )
+                    )
+                    await session.commit()
+                    return False
+
+                if status == 204 or not data:
+                    break
+                if status != 200:
+                    logger.error(f"Error fetching backfill leads for account {account_id}: status={status}")
+                    await session.execute(
+                        update(Account).where(Account.id == account_id).values(
+                            backfill_status="error",
+                            backfill_error=f"Leads fetch failed: status={status}",
+                            backfill_error_at=datetime.now(timezone.utc),
+                        )
+                    )
+                    await session.commit()
+                    return False
+
+                embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
+                items = embedded.get("leads") or []
+                if not items:
+                    break
+
+                # Loop detection
+                current_first_id = items[0].get("id") if items else None
+                if current_first_id and current_first_id == last_leads_first_id:
+                    logger.warning(f"Backfill: detected pagination loop on page {page} for account {account_id}. Breaking.")
+                    break
+                last_leads_first_id = current_first_id
+
+                for amo_lead in items:
+                    await upsert_lead(session, account_id, amo_lead, ctx)
+                    total_leads += 1
+
+                # Persist progress in backfill_cursor
+                next_cursor = {
+                    "stage": "leads",
+                    "page": page + 1,
+                    "total_leads": total_leads,
+                    "last_leads_first_id": current_first_id,
+                }
+                await session.execute(
+                    update(Account).where(Account.id == account_id).values(backfill_cursor=next_cursor)
+                )
+                await session.commit()
+                if len(items) < 250:
+                    break
+                page += 1
+
+            if page > MAX_LEADS_PAGES:
+                logger.warning(f"Backfill hit max leads pages limit ({MAX_LEADS_PAGES}) for account {account_id}")
+
+            logger.info(f"Backfill: downloaded {total_leads} historical leads for account {account_id}")
+
+            # Switch cursor to events stage
+            cursor_events = {
+                "stage": "events",
+                "window_from": None,
+                "total_leads": total_leads,
+                "total_events": 0,
+            }
+            await session.execute(
+                update(Account).where(Account.id == account_id).values(backfill_cursor=cursor_events)
             )
-            if status == 401:
-                logger.warning(f"Account {account_id} token expired (401) during backfill leads")
-                await session.execute(
-                    update(Account).where(Account.id == account_id).values(
-                        token_status="expired",
-                        backfill_status="error",
-                        backfill_error="Token expired (401)",
-                        backfill_error_at=datetime.now(timezone.utc),
-                    )
-                )
-                await session.commit()
-                return False
-
-            if status == 204 or not data:
-                break
-            if status != 200:
-                logger.error(f"Error fetching backfill leads for account {account_id}: status={status}")
-                await session.execute(
-                    update(Account).where(Account.id == account_id).values(
-                        backfill_status="error",
-                        backfill_error=f"Leads fetch failed: status={status}",
-                        backfill_error_at=datetime.now(timezone.utc),
-                    )
-                )
-                await session.commit()
-                return False
-
-            embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
-            items = embedded.get("leads") or []
-            if not items:
-                break
-
-            # Loop detection
-            current_first_id = items[0].get("id") if items else None
-            if current_first_id and current_first_id == last_leads_first_id:
-                logger.warning(f"Backfill: detected pagination loop on page {page} for account {account_id}. Breaking.")
-                break
-            last_leads_first_id = current_first_id
-
-            for amo_lead in items:
-                await upsert_lead(session, account_id, amo_lead, ctx)
-                total_leads += 1
-
             await session.commit()
-            if len(items) < 250:
-                break
-            page += 1
-
-        if page > MAX_LEADS_PAGES:
-            logger.warning(f"Backfill hit max leads pages limit ({MAX_LEADS_PAGES}) for account {account_id}")
-
-        logger.info(f"Backfill: downloaded {total_leads} historical leads for account {account_id}")
 
         # 4. Fetch historical events in 30-day slices
         min_lead_time_res = await session.execute(
@@ -162,11 +190,15 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
 
         start_time = min_created - timedelta(days=1) if min_created else now_utc - timedelta(days=365)
         window_from = int(start_time.timestamp())
+        if cursor.get("stage") == "events" and cursor.get("window_from"):
+            window_from = max(window_from, int(cursor["window_from"]))
+            logger.info(f"Resuming backfill events from window timestamp {window_from} for account {account_id}")
+
         now_sec = int(now_utc.timestamp())
         slice_sec = 30 * 86400
         MAX_EVENTS_PAGES = 500  # safety cap: 500 * 100 = 50,000 events per 30-day window
 
-        total_events = 0
+        total_events = cursor.get("total_events", 0) if cursor.get("stage") == "events" else 0
         while window_from < now_sec:
             window_to = min(window_from + slice_sec, now_sec)
             page = 1
@@ -247,8 +279,17 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
                 if lead_row:
                     await create_fallback_interval(session, lead_row.id)
 
-            await session.commit()
             window_from = window_to
+            next_cursor = {
+                "stage": "events",
+                "window_from": window_from,
+                "total_leads": total_leads,
+                "total_events": total_events,
+            }
+            await session.execute(
+                update(Account).where(Account.id == account_id).values(backfill_cursor=next_cursor)
+            )
+            await session.commit()
 
         # 5. Mark backfill complete
         await session.execute(
@@ -258,6 +299,7 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
                 backfill_status="done",
                 backfill_error=None,
                 backfill_error_at=None,
+                backfill_cursor=None,
                 last_synced_at=now_utc,
             )
         )
