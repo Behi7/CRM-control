@@ -10,7 +10,6 @@ import {
   ShieldAlert,
   Clock,
   Target,
-  RefreshCw,
   Sparkles,
   ChevronDown,
 } from 'lucide-react';
@@ -167,15 +166,6 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
     prevSourcesRef.current = biQuery.data.filtersMeta.sources;
   }
 
-  const enrichMut = useMutation({
-    mutationFn: () => analyticsApi.triggerEnrich(effectiveAccountId!),
-    onSuccess: () => {
-      setTimeout(() => {
-        qc.invalidateQueries({ queryKey: ['analytics-data', effectiveAccountId] });
-      }, 4000);
-    },
-  });
-
   const data = biQuery.data;
   const kpis = data?.kpis;
   const sourcesList: MultiSelectOption[] = data?.filtersMeta?.sources || [];
@@ -211,21 +201,6 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
                   <strong className="text-slate-700 dark:text-slate-200">{data.account.subdomain}.{data.account.baseDomain}</strong>
                 </p>
               )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-              <button
-                onClick={() => enrichMut.mutate()}
-                disabled={enrichMut.isPending}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw size={15} className={enrichMut.isPending ? 'animate-spin' : ''} />
-                <span>
-                  {enrichMut.isPending
-                    ? (lang === 'uz' ? 'Tahlil yangilanmoqda...' : 'Обогащаем БД...')
-                    : (lang === 'uz' ? 'AmoCRM ma\'lumotlarini yangilash' : 'Обогатить БД из AmoCRM')}
-                </span>
-              </button>
             </div>
           </div>
 
