@@ -358,21 +358,15 @@ async def process_status_changed(
     ev_id = str(event.get("id", ""))
     lead_ext = str(event.get("entity_id", ""))
     try:
-        # Step 1: Dedup check (pure read query, no savepoint)
-        ev_stmt = select(ProcessedCrmEvent.id).where(
-            ProcessedCrmEvent.account_id == account_id,
-            ProcessedCrmEvent.external_event_id == ev_id,
-        )
-        if (await session.execute(ev_stmt)).scalar_one_or_none():
-            return
-
-        # Step 2: Check if lead exists in DB
+        # Step 1: Check if lead exists in DB
         lead_stmt = select(Lead).where(Lead.account_id == account_id, Lead.external_id == lead_ext)
         lead = (await session.execute(lead_stmt)).scalar_one_or_none()
 
-        # Step 3: Fetch lead data OUTSIDE the savepoint if not found (prevents holding DB connection during HTTP)
+        # Step 2: If lead not in DB, release connection completely before slow HTTP call
         fetched_lead_data = None
         if not lead:
+            await session.rollback()
+
             status, data = await crm_client.request(
                 subdomain=subdomain,
                 base_domain=base_domain,
@@ -384,20 +378,37 @@ async def process_status_changed(
             if status == 200 and data:
                 fetched_lead_data = data
 
-        # Step 4: If lead not in DB, upsert it now (upsert_lead has its own isolated savepoint)
+        # Step 3: Atomic dedup reservation (prevents TOCTOU race conditions)
+        dedup_stmt = (
+            insert(ProcessedCrmEvent)
+            .values(
+                account_id=account_id,
+                external_event_id=ev_id,
+                lead_external_id=lead_ext,
+                result="processing",
+            )
+            .on_conflict_do_nothing()
+        )
+        async with session.begin_nested():
+            dedup_res = await session.execute(dedup_stmt)
+
+        if dedup_res.rowcount == 0:
+            # Already processed or currently processing
+            return
+
+        # Step 4: If lead was missing, upsert it now (upsert_lead has its own isolated savepoint)
         if not lead and fetched_lead_data:
             lead = await upsert_lead(session, account_id, fetched_lead_data, ctx)
 
         if not lead:
-            async with session.begin_nested():
-                await session.execute(
-                    insert(ProcessedCrmEvent).values(
-                        account_id=account_id,
-                        external_event_id=ev_id,
-                        lead_external_id=lead_ext,
-                        result="skipped_unknown_lead",
-                    ).on_conflict_do_nothing()
+            await session.execute(
+                update(ProcessedCrmEvent)
+                .where(
+                    ProcessedCrmEvent.account_id == account_id,
+                    ProcessedCrmEvent.external_event_id == ev_id,
                 )
+                .values(result="skipped_unknown_lead")
+            )
             return
 
         # Step 5: Pure DB writes for stage change and history wrapped inside savepoint
@@ -409,12 +420,17 @@ async def process_status_changed(
         try:
             async with session.begin_nested():
                 await session.execute(
-                    insert(ProcessedCrmEvent).values(
+                    insert(ProcessedCrmEvent)
+                    .values(
                         account_id=account_id,
                         external_event_id=ev_id,
                         lead_external_id=lead_ext,
                         result="error",
-                    ).on_conflict_do_nothing()
+                    )
+                    .on_conflict_do_update(
+                        index_elements=["account_id", "external_event_id"],
+                        set_={"result": "error"},
+                    )
                 )
         except Exception:
             pass
@@ -472,12 +488,12 @@ async def _process_status_changed_impl(
 
         if not stage_id:
             await session.execute(
-                insert(ProcessedCrmEvent).values(
-                    account_id=account_id,
-                    external_event_id=ev_id,
-                    lead_external_id=lead_ext,
-                    result="skipped_unknown_stage",
-                ).on_conflict_do_nothing()
+                update(ProcessedCrmEvent)
+                .where(
+                    ProcessedCrmEvent.account_id == account_id,
+                    ProcessedCrmEvent.external_event_id == ev_id,
+                )
+                .values(result="skipped_unknown_stage")
             )
             return
 
@@ -555,14 +571,14 @@ async def _process_status_changed_impl(
             updates["crm_closed_at"] = None
         await session.execute(update(Lead).where(Lead.id == lead.id).values(**updates))
 
-    # Record processed event
+    # Update processed event from 'processing' to final result
     await session.execute(
-        insert(ProcessedCrmEvent).values(
-            account_id=account_id,
-            external_event_id=ev_id,
-            lead_external_id=lead_ext,
-            result=result,
-        ).on_conflict_do_nothing()
+        update(ProcessedCrmEvent)
+        .where(
+            ProcessedCrmEvent.account_id == account_id,
+            ProcessedCrmEvent.external_event_id == ev_id,
+        )
+        .values(result=result)
     )
 
 
@@ -580,9 +596,32 @@ async def _process_lead_deleted_impl(session: AsyncSession, account_id: int, eve
     created_at_sec = event.get("created_at", 0)
     ts = datetime.fromtimestamp(created_at_sec, tz=timezone.utc)
 
+    # Atomic dedup reservation
+    dedup_stmt = (
+        insert(ProcessedCrmEvent)
+        .values(
+            account_id=account_id,
+            external_event_id=ev_id,
+            lead_external_id=lead_ext,
+            result="processing",
+        )
+        .on_conflict_do_nothing()
+    )
+    dedup_res = await session.execute(dedup_stmt)
+    if dedup_res.rowcount == 0:
+        return
+
     lead_stmt = select(Lead).where(Lead.account_id == account_id, Lead.external_id == lead_ext)
     lead = (await session.execute(lead_stmt)).scalar_one_or_none()
     if not lead:
+        await session.execute(
+            update(ProcessedCrmEvent)
+            .where(
+                ProcessedCrmEvent.account_id == account_id,
+                ProcessedCrmEvent.external_event_id == ev_id,
+            )
+            .values(result="deleted_unknown_lead")
+        )
         return
 
     # Close open stage interval
@@ -605,12 +644,12 @@ async def _process_lead_deleted_impl(session: AsyncSession, account_id: int, eve
     )
 
     await session.execute(
-        insert(ProcessedCrmEvent).values(
-            account_id=account_id,
-            external_event_id=ev_id,
-            lead_external_id=lead_ext,
-            result="deleted",
-        ).on_conflict_do_nothing()
+        update(ProcessedCrmEvent)
+        .where(
+            ProcessedCrmEvent.account_id == account_id,
+            ProcessedCrmEvent.external_event_id == ev_id,
+        )
+        .values(result="deleted")
     )
 
 

@@ -1,8 +1,12 @@
 import asyncio
 import time
+import re
 import httpx
 from typing import Optional, Dict, Any, Tuple
 from app.config import settings
+
+_SAFE_SUBDOMAIN_RE = re.compile(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$')
+_ALLOWED_BASE_DOMAINS = {"amocrm.ru", "amocrm.com", "kommo.com"}
 
 class CrmClient:
     def __init__(self, rps: int = 5):
@@ -30,6 +34,11 @@ class CrmClient:
         json_data: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
     ) -> Tuple[int, Any]:
+        if not subdomain or not _SAFE_SUBDOMAIN_RE.match(subdomain):
+            raise ValueError(f"Invalid or unsafe subdomain: {subdomain!r}")
+        if not base_domain or base_domain not in _ALLOWED_BASE_DOMAINS:
+            raise ValueError(f"Disallowed or unsafe base_domain: {base_domain!r}")
+
         url = f"https://{subdomain}.{base_domain}{path}"
         headers = {
             "Authorization": f"Bearer {token}",
