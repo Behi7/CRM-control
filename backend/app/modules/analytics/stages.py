@@ -318,14 +318,20 @@ def get_stage_leads(
         sql = text(f"""
             SELECT
                 l.id,
+                l.external_id,
                 l.external_id AS "externalId",
                 l.name,
                 l.status,
                 l.price,
+                l.crm_created_at,
                 l.crm_created_at AS "crmCreatedAt",
                 u.name AS "managerName",
+                u.name AS responsible_name,
+                h.entered_at,
                 h.entered_at AS "enteredAt",
+                h.exited_at,
                 h.exited_at AS "exitedAt",
+                h.duration_seconds,
                 h.duration_seconds AS "durationSeconds"
             FROM leads l
             JOIN lead_stage_history h ON h.lead_id = l.id AND h.stage_id = :stage_id
@@ -344,16 +350,35 @@ def get_stage_leads(
         }
         rows = conn.execute(sql, params).mappings().all()
 
+        count_sql = text(f"""
+            SELECT COUNT(*)
+            FROM leads l
+            JOIN lead_stage_history h ON h.lead_id = l.id AND h.stage_id = :stage_id
+            WHERE l.pipeline_id = :pipe_id
+              {filter_clause}
+        """)
+        total = conn.execute(count_sql, {
+            "stage_id": stage_id,
+            "pipe_id": stage["pipeline_id"],
+            **filter_params,
+        }).scalar() or 0
+
         items = []
         for r in rows:
             d = dict(r)
             d["price"] = float(d["price"]) if d.get("price") is not None else None
-            d["crmCreatedAt"] = d["crmCreatedAt"].isoformat() if d.get("crmCreatedAt") else None
-            d["enteredAt"] = d["enteredAt"].isoformat() if d.get("enteredAt") else None
-            d["exitedAt"] = d["exitedAt"].isoformat() if d.get("exitedAt") else None
+            crm_iso = d["crm_created_at"].isoformat() if d.get("crm_created_at") else None
+            d["crm_created_at"] = crm_iso
+            d["crmCreatedAt"] = crm_iso
+            entered_iso = d["entered_at"].isoformat() if d.get("entered_at") else None
+            d["entered_at"] = entered_iso
+            d["enteredAt"] = entered_iso
+            exited_iso = d["exited_at"].isoformat() if d.get("exited_at") else None
+            d["exited_at"] = exited_iso
+            d["exitedAt"] = exited_iso
             items.append(d)
 
-        return {"items": items}
+        return {"items": items, "total": total}
 
 
 def get_lead_history(lead_id: int, user: dict):
@@ -378,10 +403,15 @@ def get_lead_history(lead_id: int, user: dict):
         history_sql = text("""
             SELECT
                 h.id,
+                h.stage_id,
                 h.stage_id AS "stageId",
+                s.name AS stage_name,
                 s.name AS "stageName",
+                h.entered_at,
                 h.entered_at AS "enteredAt",
+                h.exited_at,
                 h.exited_at AS "exitedAt",
+                h.duration_seconds,
                 h.duration_seconds AS "durationSeconds"
             FROM lead_stage_history h
             JOIN stages s ON s.id = h.stage_id
@@ -393,22 +423,88 @@ def get_lead_history(lead_id: int, user: dict):
         h_items = []
         for r in h_rows:
             d = dict(r)
-            d["enteredAt"] = d["enteredAt"].isoformat() if d.get("enteredAt") else None
-            d["exitedAt"] = d["exitedAt"].isoformat() if d.get("exitedAt") else None
+            entered_iso = d["entered_at"].isoformat() if d.get("entered_at") else None
+            exited_iso = d["exited_at"].isoformat() if d.get("exited_at") else None
+            d["entered_at"] = entered_iso
+            d["enteredAt"] = entered_iso
+            d["exited_at"] = exited_iso
+            d["exitedAt"] = exited_iso
             h_items.append(d)
+
+        # Skips
+        skips_sql = text("""
+            SELECT
+                s.id,
+                s.transition_at,
+                s.transition_at AS "transitionAt",
+                s.direction,
+                s_from.name AS from_stage_name,
+                s_from.name AS "fromStageName",
+                s_to.name AS to_stage_name,
+                s_to.name AS "toStageName",
+                s_skip.name AS skipped_stage_name,
+                s_skip.name AS "skippedStageName"
+            FROM lead_stage_skips s
+            LEFT JOIN stages s_from ON s_from.id = s.from_stage_id
+            LEFT JOIN stages s_to ON s_to.id = s.to_stage_id
+            LEFT JOIN stages s_skip ON s_skip.id = s.skipped_stage_id
+            WHERE s.lead_id = :lead_id
+            ORDER BY s.transition_at ASC
+        """)
+        s_rows = conn.execute(skips_sql, {"lead_id": lead_id}).mappings().all()
+        skips_items = []
+        for r in s_rows:
+            d = dict(r)
+            trans_iso = d["transition_at"].isoformat() if d.get("transition_at") else None
+            d["transition_at"] = trans_iso
+            d["transitionAt"] = trans_iso
+            skips_items.append(d)
+
+        # Tags
+        tags_sql = text("""
+            SELECT t.id, t.name, t.external_id
+            FROM tags t
+            JOIN lead_tags lt ON lt.tag_id = t.id
+            WHERE lt.lead_id = :lead_id
+            ORDER BY t.name ASC
+        """)
+        t_rows = conn.execute(tags_sql, {"lead_id": lead_id}).mappings().all()
+        lead_tags = [
+            {
+                "tagId": r["id"],
+                "tag_id": r["id"],
+                "id": r["id"],
+                "name": r["name"],
+                "tag": {"id": r["id"], "name": r["name"], "external_id": r["external_id"]},
+            }
+            for r in t_rows
+        ]
+
+        lead_created_iso = lead["crm_created_at"].isoformat() if lead.get("crm_created_at") else None
+        manager_name = lead.get("manager_name")
 
         return {
             "lead": {
                 "id": lead["id"],
+                "external_id": lead["external_id"],
                 "externalId": lead["external_id"],
                 "name": lead["name"],
                 "status": lead["status"],
                 "price": float(lead["price"]) if lead.get("price") is not None else None,
-                "crmCreatedAt": lead["crm_created_at"].isoformat() if lead.get("crm_created_at") else None,
+                "crm_created_at": lead_created_iso,
+                "crmCreatedAt": lead_created_iso,
+                "pipeline_name": lead["pipeline_name"],
                 "pipelineName": lead["pipeline_name"],
-                "managerName": lead["manager_name"],
+                "manager_name": manager_name,
+                "managerName": manager_name,
+                "responsible_name": manager_name,
+                "responsibleName": manager_name,
+                "responsibleUser": {"name": manager_name} if manager_name else None,
+                "leadTags": lead_tags,
+                "tags": lead_tags,
             },
             "history": h_items,
+            "skips": skips_items,
         }
 
 
@@ -426,10 +522,14 @@ def get_lead_skips(lead_id: int, user: dict):
         sql = text("""
             SELECT
                 s.id,
+                s.transition_at,
                 s.transition_at AS "transitionAt",
                 s.direction,
+                s_from.name AS from_stage_name,
                 s_from.name AS "fromStageName",
+                s_to.name AS to_stage_name,
                 s_to.name AS "toStageName",
+                s_skip.name AS skipped_stage_name,
                 s_skip.name AS "skippedStageName"
             FROM lead_stage_skips s
             LEFT JOIN stages s_from ON s_from.id = s.from_stage_id
@@ -439,15 +539,14 @@ def get_lead_skips(lead_id: int, user: dict):
             ORDER BY s.transition_at ASC
         """)
         rows = conn.execute(sql, {"lead_id": lead_id}).mappings().all()
-        return {
-            "items": [
-                {
-                    **dict(r),
-                    "transitionAt": r["transitionAt"].isoformat() if r.get("transitionAt") else None
-                }
-                for r in rows
-            ]
-        }
+        items = []
+        for r in rows:
+            d = dict(r)
+            trans_iso = d["transition_at"].isoformat() if d.get("transition_at") else None
+            d["transition_at"] = trans_iso
+            d["transitionAt"] = trans_iso
+            items.append(d)
+        return {"items": items}
 
 
 def search_leads(
@@ -495,13 +594,19 @@ def search_leads(
         leads_sql = text(f"""
             SELECT
                 l.id,
+                l.external_id,
                 l.external_id AS "externalId",
                 l.name,
                 l.status,
                 l.price,
+                l.crm_created_at,
                 l.crm_created_at AS "crmCreatedAt",
+                s.name AS stage_name,
                 s.name AS "stageName",
-                u.name AS "managerName"
+                u.name AS manager_name,
+                u.name AS "managerName",
+                u.name AS responsible_name,
+                u.name AS "responsibleName"
             FROM leads l
             LEFT JOIN stages s ON s.id = l.current_stage_id
             LEFT JOIN amo_users u ON u.id = l.responsible_user_id
@@ -515,7 +620,9 @@ def search_leads(
         for r in rows:
             d = dict(r)
             d["price"] = float(d["price"]) if d.get("price") is not None else None
-            d["crmCreatedAt"] = d["crmCreatedAt"].isoformat() if d.get("crmCreatedAt") else None
+            crm_iso = d["crm_created_at"].isoformat() if d.get("crm_created_at") else None
+            d["crm_created_at"] = crm_iso
+            d["crmCreatedAt"] = crm_iso
             items.append(d)
 
         return {

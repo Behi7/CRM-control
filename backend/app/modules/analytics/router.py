@@ -116,10 +116,15 @@ def get_stage_leads(
     manager_ids: list[int] = Query(default=[]),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
+    page: int | None = Query(default=None, ge=1),
+    per_page: int | None = Query(default=None, ge=1, le=500),
+    perPage: int | None = Query(default=None, ge=1, le=500),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     user: dict = Depends(get_current_user),
 ):
+    actual_limit = perPage or per_page or limit
+    actual_offset = ((page - 1) * actual_limit) if page else offset
     return stages.get_stage_leads(
         stage_id=stage_id,
         tag_ids=tag_ids,
@@ -127,8 +132,8 @@ def get_stage_leads(
         manager_ids=manager_ids,
         date_from=date_from,
         date_to=date_to,
-        limit=limit,
-        offset=offset,
+        limit=actual_limit,
+        offset=actual_offset,
         user=user,
     )
 

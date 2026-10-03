@@ -111,7 +111,7 @@ export default function SearchPage() {
                       className="border-t border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
                       onClick={() => nav(role === 'admin' ? `/admin/lead/${l.id}` : `/lead/${l.id}`)}
                     >
-                      <td className="p-3">{l.external_id}</td>
+                      <td className="p-3">{l.external_id || l.externalId}</td>
                       <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{l.name || '—'}</td>
                       <td className="p-3">
                         <span className="px-2 py-0.5 rounded text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
@@ -121,7 +121,7 @@ export default function SearchPage() {
                       <td className="p-3 text-slate-800 dark:text-slate-200">
                         {l.price ? Number(l.price).toLocaleString() : '—'}
                       </td>
-                      <td className="p-3 text-slate-600 dark:text-slate-400">{l.responsible_name || '—'}</td>
+                      <td className="p-3 text-slate-600 dark:text-slate-400">{l.responsible_name || l.managerName || l.manager_name || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

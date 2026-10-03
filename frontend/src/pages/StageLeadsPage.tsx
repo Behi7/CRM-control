@@ -81,17 +81,17 @@ export default function StageLeadsPage() {
               </tr>
             </thead>
             <tbody>
-              {leads.data?.items.map((l: any) => (
+              {leads.data?.items?.map((l: any) => (
                 <tr
                   key={l.id}
                   className="border-t border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
                   onClick={() => nav(role === 'admin' ? `/admin/lead/${l.id}` : `/lead/${l.id}`)}
                 >
-                  <td className="p-3">{l.external_id}</td>
-                  <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{l.name}</td>
+                  <td className="p-3">{l.external_id || l.externalId}</td>
+                  <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{l.name || '—'}</td>
                   <td className="p-3">{l.price ? Number(l.price).toLocaleString() : '—'}</td>
-                  <td className="p-3">{formatDate(l.entered_at, 'dd.MM.yyyy HH:mm')}</td>
-                  <td className="p-3 text-slate-600 dark:text-slate-400">{l.responsible_name || '—'}</td>
+                  <td className="p-3">{formatDate(l.entered_at || l.enteredAt, 'dd.MM.yyyy HH:mm')}</td>
+                  <td className="p-3 text-slate-600 dark:text-slate-400">{l.responsible_name || l.managerName || l.manager_name || '—'}</td>
                   <td className="p-3">
                     <span
                       className={`px-2 py-1 rounded text-xs font-medium ${
