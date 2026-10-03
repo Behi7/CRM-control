@@ -9,6 +9,7 @@ from app.models import Account
 from app.sync.pipeline_sync import sync_pipelines_and_stages
 from app.sync.delta_sync import run_delta_sync
 from app.sync.backfill_sync import run_backfill
+from app.sync.event_sync import cleanup_old_events
 from app.core.security import decrypt_token
 from app.config import settings
 
@@ -26,23 +27,43 @@ def handle_shutdown(sig, frame):
     logger.info(f"Received signal {sig}, initiating graceful shutdown...")
     running = False
 
-async def get_active_accounts():
+async def get_active_accounts() -> list[dict]:
+    """Возвращает скалярные DTO активных аккаунтов во избежание проблем с detached ORM объектами."""
     async with AsyncSessionLocal() as session:
-        stmt = select(Account).where(
+        stmt = select(
+            Account.id,
+            Account.subdomain,
+            Account.base_domain,
+            Account.backfill_status,
+        ).where(
             Account.status == "connected",
             Account.sync_status == "active",
         ).order_by(Account.id.asc())
         res = await session.execute(stmt)
-        return res.scalars().all()
+        return [
+            {
+                "id": row.id,
+                "subdomain": row.subdomain,
+                "base_domain": row.base_domain,
+                "backfill_status": row.backfill_status,
+            }
+            for row in res.all()
+        ]
 
 async def sync_loop():
     logger.info("🚀 AmoCRM Python Sync Worker initialized and started.")
     logger.info(f"Configuration: interval={settings.SYNC_INTERVAL_MINUTES}m, overlap={settings.SYNC_OVERLAP_MINUTES}m, rps={settings.AMO_CRM_RATE_LIMIT_RPS}")
 
-    # Initial pipeline check on startup
+    # Initial pipeline check and event cleanup on startup
     await run_pipelines_pass()
+    try:
+        async with AsyncSessionLocal() as session:
+            await cleanup_old_events(session, retention_days=30)
+    except Exception as e:
+        logger.error(f"Initial cleanup of old events failed: {e}")
 
     last_pipeline_sync = datetime.now(timezone.utc)
+    last_cleanup = datetime.now(timezone.utc)
     interval_sec = settings.SYNC_INTERVAL_MINUTES * 60
 
     while running:
@@ -51,23 +72,44 @@ async def sync_loop():
             accounts = await get_active_accounts()
             logger.info(f"Found {len(accounts)} active connected accounts for sync.")
 
-            for acc in accounts:
+            for acc_info in accounts:
                 if not running:
                     break
 
+                acc_id = acc_info["id"]
+                subdomain = acc_info["subdomain"]
+
                 async with AsyncSessionLocal() as session:
-                    # Check backfill
-                    if acc.backfill_status != "done":
-                        logger.info(f"Account #{acc.id} ({acc.subdomain}) requires backfill. Starting...")
-                        await run_backfill(session, acc.id)
+                    # Fetch fresh account state within active session to avoid stale data / race conditions
+                    acc_fresh = (
+                        await session.execute(select(Account).where(Account.id == acc_id))
+                    ).scalar_one_or_none()
+
+                    if not acc_fresh or acc_fresh.status != "connected" or acc_fresh.sync_status != "active":
+                        logger.info(f"Account #{acc_id} ({subdomain}) is no longer active, skipping.")
+                        continue
+
+                    # Check fresh backfill status
+                    if acc_fresh.backfill_status != "done":
+                        logger.info(f"Account #{acc_id} ({subdomain}) requires backfill. Starting...")
+                        await run_backfill(session, acc_id)
                     else:
-                        await run_delta_sync(session, acc.id)
+                        await run_delta_sync(session, acc_id)
 
             # Check if 60 minutes passed for pipeline sync
             now = datetime.now(timezone.utc)
             if (now - last_pipeline_sync).total_seconds() >= 3600:
                 await run_pipelines_pass()
                 last_pipeline_sync = now
+
+            # Check if 24 hours passed for cleanup of processed events
+            if (now - last_cleanup).total_seconds() >= 86400:
+                try:
+                    async with AsyncSessionLocal() as session:
+                        await cleanup_old_events(session, retention_days=30)
+                    last_cleanup = now
+                except Exception as e:
+                    logger.error(f"Error during scheduled cleanup of old events: {e}")
 
         except Exception as e:
             logger.error(f"Unexpected error in sync loop: {e}", exc_info=True)
@@ -85,15 +127,29 @@ async def run_pipelines_pass():
     try:
         accounts = await get_active_accounts()
         logger.info(f"Running pipeline & user definitions sync for {len(accounts)} accounts...")
-        for acc in accounts:
-            if not running or not acc.encrypted_token:
-                continue
+        for acc_info in accounts:
+            if not running:
+                break
+            acc_id = acc_info["id"]
             try:
-                token = decrypt_token(acc.encrypted_token)
                 async with AsyncSessionLocal() as session:
-                    await sync_pipelines_and_stages(session, acc.id, acc.subdomain, acc.base_domain, token)
+                    acc_fresh = (
+                        await session.execute(select(Account).where(Account.id == acc_id))
+                    ).scalar_one_or_none()
+
+                    if not acc_fresh or not acc_fresh.encrypted_token or acc_fresh.status != "connected":
+                        continue
+
+                    token = decrypt_token(acc_fresh.encrypted_token)
+                    await sync_pipelines_and_stages(
+                        session,
+                        acc_fresh.id,
+                        acc_fresh.subdomain,
+                        acc_fresh.base_domain,
+                        token,
+                    )
             except Exception as e:
-                logger.error(f"Error syncing pipelines for account #{acc.id}: {e}")
+                logger.error(f"Error syncing pipelines for account #{acc_id}: {e}")
     except Exception as e:
         logger.error(f"Error during run_pipelines_pass: {e}")
 

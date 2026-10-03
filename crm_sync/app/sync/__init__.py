@@ -3,7 +3,8 @@ from app.sync.delta_sync import run_delta_sync, run_enrich_account
 from app.sync.backfill_sync import run_backfill
 from app.sync.event_sync import (
     SyncContext, build_sync_context, upsert_lead,
-    process_status_changed, process_lead_deleted, create_fallback_interval
+    process_status_changed, process_lead_deleted, create_fallback_interval,
+    cleanup_old_events
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "process_status_changed",
     "process_lead_deleted",
     "create_fallback_interval",
+    "cleanup_old_events",
 ]

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
@@ -358,8 +358,50 @@ async def process_status_changed(
     ev_id = str(event.get("id", ""))
     lead_ext = str(event.get("entity_id", ""))
     try:
+        # Step 1: Dedup check (pure read query, no savepoint)
+        ev_stmt = select(ProcessedCrmEvent.id).where(
+            ProcessedCrmEvent.account_id == account_id,
+            ProcessedCrmEvent.external_event_id == ev_id,
+        )
+        if (await session.execute(ev_stmt)).scalar_one_or_none():
+            return
+
+        # Step 2: Check if lead exists in DB
+        lead_stmt = select(Lead).where(Lead.account_id == account_id, Lead.external_id == lead_ext)
+        lead = (await session.execute(lead_stmt)).scalar_one_or_none()
+
+        # Step 3: Fetch lead data OUTSIDE the savepoint if not found (prevents holding DB connection during HTTP)
+        fetched_lead_data = None
+        if not lead:
+            status, data = await crm_client.request(
+                subdomain=subdomain,
+                base_domain=base_domain,
+                token=token,
+                method="GET",
+                path=f"/api/v4/leads/{event['entity_id']}",
+                params={"with": "tags,contacts,loss_reason"},
+            )
+            if status == 200 and data:
+                fetched_lead_data = data
+
+        # Step 4: Pure DB writes wrapped inside savepoint
         async with session.begin_nested():
-            await _process_status_changed_impl(session, account_id, subdomain, base_domain, token, event, ctx)
+            if not lead and fetched_lead_data:
+                lead = await upsert_lead(session, account_id, fetched_lead_data, ctx)
+
+            if not lead:
+                await session.execute(
+                    insert(ProcessedCrmEvent).values(
+                        account_id=account_id,
+                        external_event_id=ev_id,
+                        lead_external_id=lead_ext,
+                        result="skipped_unknown_lead",
+                    ).on_conflict_do_nothing()
+                )
+                return
+
+            await _process_status_changed_impl(session, account_id, event, lead, ctx)
+
     except Exception as e:
         logger.error(f"Error processing status change for event {ev_id} (lead {lead_ext}): {e}", exc_info=True)
         try:
@@ -379,50 +421,14 @@ async def process_status_changed(
 async def _process_status_changed_impl(
     session: AsyncSession,
     account_id: int,
-    subdomain: str,
-    base_domain: str,
-    token: str,
     event: Dict[str, Any],
+    lead: Lead,
     ctx: SyncContext,
 ):
     ev_id = str(event["id"])
     lead_ext = str(event["entity_id"])
     created_at_sec = event.get("created_at", 0)
     ts = datetime.fromtimestamp(created_at_sec, tz=timezone.utc)
-
-    # Check if event already processed
-    ev_stmt = select(ProcessedCrmEvent).where(
-        ProcessedCrmEvent.account_id == account_id,
-        ProcessedCrmEvent.external_event_id == ev_id,
-    )
-    if (await session.execute(ev_stmt)).scalar_one_or_none():
-        return
-
-    # Find or fetch lead
-    lead_stmt = select(Lead).where(Lead.account_id == account_id, Lead.external_id == lead_ext)
-    lead = (await session.execute(lead_stmt)).scalar_one_or_none()
-    if not lead:
-        status, data = await crm_client.request(
-            subdomain=subdomain,
-            base_domain=base_domain,
-            token=token,
-            method="GET",
-            path=f"/api/v4/leads/{event['entity_id']}",
-            params={"with": "tags,contacts,loss_reason"},
-        )
-        if status == 200 and data:
-            lead = await upsert_lead(session, account_id, data, ctx)
-
-    if not lead:
-        await session.execute(
-            insert(ProcessedCrmEvent).values(
-                account_id=account_id,
-                external_event_id=ev_id,
-                lead_external_id=lead_ext,
-                result="skipped_unknown_lead",
-            ).on_conflict_do_nothing()
-        )
-        return
 
     status_info = extract_status_info(event.get("value_after"))
     status_after = status_info.get("status_id") if status_info else None
@@ -637,3 +643,18 @@ async def _create_fallback_interval_impl(session: AsyncSession, lead_id: int):
             duration_seconds=dur,
         )
     )
+
+
+async def cleanup_old_events(session: AsyncSession, retention_days: int = 30, account_id: Optional[int] = None) -> int:
+    """Удаляет старые записи из processed_crm_events для предотвращения бесконечного роста таблицы."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    stmt = delete(ProcessedCrmEvent).where(ProcessedCrmEvent.created_at < cutoff)
+    if account_id is not None:
+        stmt = stmt.where(ProcessedCrmEvent.account_id == account_id)
+    res = await session.execute(stmt)
+    await session.commit()
+    deleted = res.rowcount or 0
+    if deleted > 0:
+        logger.info(f"Cleaned up {deleted} old processed CRM events (retention={retention_days}d)")
+    return deleted
+

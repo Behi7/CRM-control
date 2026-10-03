@@ -56,10 +56,12 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
 
         # 3. Fetch all historical leads
         ctx = await build_sync_context(session, account_id)
+        MAX_LEADS_PAGES = 2000  # safety cap: 2000 * 250 = 500,000 leads
         page = 1
         total_leads = 0
+        last_leads_first_id = None
 
-        while True:
+        while page <= MAX_LEADS_PAGES:
             status, data = await crm_client.request(
                 subdomain=acc.subdomain,
                 base_domain=acc.base_domain,
@@ -79,6 +81,13 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
             if not items:
                 break
 
+            # Loop detection
+            current_first_id = items[0].get("id") if items else None
+            if current_first_id and current_first_id == last_leads_first_id:
+                logger.warning(f"Backfill: detected pagination loop on page {page} for account {account_id}. Breaking.")
+                break
+            last_leads_first_id = current_first_id
+
             for amo_lead in items:
                 await upsert_lead(session, account_id, amo_lead, ctx)
                 total_leads += 1
@@ -87,6 +96,9 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
             if len(items) < 250:
                 break
             page += 1
+
+        if page > MAX_LEADS_PAGES:
+            logger.warning(f"Backfill hit max leads pages limit ({MAX_LEADS_PAGES}) for account {account_id}")
 
         logger.info(f"Backfill: downloaded {total_leads} historical leads for account {account_id}")
 
@@ -101,14 +113,16 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
         window_from = int(start_time.timestamp())
         now_sec = int(now_utc.timestamp())
         slice_sec = 30 * 86400
+        MAX_EVENTS_PAGES = 500  # safety cap: 500 * 100 = 50,000 events per 30-day window
 
         total_events = 0
         while window_from < now_sec:
             window_to = min(window_from + slice_sec, now_sec)
             page = 1
             event_groups = defaultdict(list)
+            last_events_first_id = None
 
-            while True:
+            while page <= MAX_EVENTS_PAGES:
                 status, data = await crm_client.request(
                     subdomain=acc.subdomain,
                     base_domain=acc.base_domain,
@@ -130,6 +144,13 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
                 if not items:
                     break
 
+                # Loop detection
+                current_first_id = items[0].get("id") if items else None
+                if current_first_id and current_first_id == last_events_first_id:
+                    logger.warning(f"Backfill events: detected pagination loop on page {page} for account {account_id}. Breaking.")
+                    break
+                last_events_first_id = current_first_id
+
                 for ev in items:
                     event_groups[ev["entity_id"]].append(ev)
                     total_events += 1
@@ -138,6 +159,12 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
                 if len(items) < 100 or not links.get("next", {}).get("href"):
                     break
                 page += 1
+
+            if page > MAX_EVENTS_PAGES:
+                logger.warning(
+                    f"Backfill events hit max pages limit ({MAX_EVENTS_PAGES}) "
+                    f"in window {window_from}-{window_to} for account {account_id}"
+                )
 
             for lead_id, ev_list in event_groups.items():
                 ev_list.sort(key=lambda x: (x.get("created_at", 0), str(x.get("id", ""))))

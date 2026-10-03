@@ -37,9 +37,12 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
     logger.info(f"Starting delta sync for account {account_id} ({acc.subdomain}) from {window_from.isoformat()}...")
 
     # 1. Fetch updated leads
+    MAX_DELTA_LEADS_PAGES = 100  # safety cap: 100 * 250 = 25,000 leads per delta window
     page = 1
     leads_count = 0
-    while True:
+    last_leads_first_id = None
+
+    while page <= MAX_DELTA_LEADS_PAGES:
         status, data = await crm_client.request(
             subdomain=acc.subdomain,
             base_domain=acc.base_domain,
@@ -72,6 +75,13 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
         if not items:
             break
 
+        # Loop detection
+        current_first_id = items[0].get("id") if items else None
+        if current_first_id and current_first_id == last_leads_first_id:
+            logger.warning(f"Delta sync: detected pagination loop on page {page} for account {account_id}. Breaking.")
+            break
+        last_leads_first_id = current_first_id
+
         for amo_lead in items:
             await upsert_lead(session, account_id, amo_lead, ctx)
             leads_count += 1
@@ -80,15 +90,20 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
             break
         page += 1
 
+    if page > MAX_DELTA_LEADS_PAGES:
+        logger.warning(f"Delta sync hit max leads pages limit ({MAX_DELTA_LEADS_PAGES}) for account {account_id}")
+
     await session.commit()
     logger.info(f"Upserted {leads_count} updated leads for account {account_id}")
 
     # 2. Fetch status change events
+    MAX_DELTA_EVENTS_PAGES = 200  # safety cap: 200 * 100 = 20,000 events per delta window
     page = 1
     event_groups = defaultdict(list)
     events_count = 0
+    last_events_first_id = None
 
-    while True:
+    while page <= MAX_DELTA_EVENTS_PAGES:
         status, data = await crm_client.request(
             subdomain=acc.subdomain,
             base_domain=acc.base_domain,
@@ -110,6 +125,13 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
         if not items:
             break
 
+        # Loop detection
+        current_first_id = items[0].get("id") if items else None
+        if current_first_id and current_first_id == last_events_first_id:
+            logger.warning(f"Delta sync events: detected pagination loop on page {page} for account {account_id}. Breaking.")
+            break
+        last_events_first_id = current_first_id
+
         for ev in items:
             event_groups[ev["entity_id"]].append(ev)
             events_count += 1
@@ -118,6 +140,9 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
         if len(items) < 100 or not links.get("next", {}).get("href"):
             break
         page += 1
+
+    if page > MAX_DELTA_EVENTS_PAGES:
+        logger.warning(f"Delta sync events hit max pages limit ({MAX_DELTA_EVENTS_PAGES}) for account {account_id}")
 
     # Process events per lead in chronological order
     for lead_id, ev_list in event_groups.items():
@@ -163,11 +188,13 @@ async def run_enrich_account(session: AsyncSession, account_id: int) -> bool:
         return False
 
     ctx = await build_sync_context(session, account_id)
+    MAX_ENRICH_PAGES = 2000  # safety cap: 2000 * 250 = 500,000 leads
     page = 1
     total = 0
+    last_enrich_first_id = None
     logger.info(f"Starting full BI enrichment pass for account {account_id} ({acc.subdomain})...")
 
-    while True:
+    while page <= MAX_ENRICH_PAGES:
         status, data = await crm_client.request(
             subdomain=acc.subdomain,
             base_domain=acc.base_domain,
@@ -187,6 +214,13 @@ async def run_enrich_account(session: AsyncSession, account_id: int) -> bool:
         if not items:
             break
 
+        # Loop detection
+        current_first_id = items[0].get("id") if items else None
+        if current_first_id and current_first_id == last_enrich_first_id:
+            logger.warning(f"Enrich pass: detected pagination loop on page {page} for account {account_id}. Breaking.")
+            break
+        last_enrich_first_id = current_first_id
+
         for amo_lead in items:
             await upsert_lead(session, account_id, amo_lead, ctx)
             total += 1
@@ -195,6 +229,9 @@ async def run_enrich_account(session: AsyncSession, account_id: int) -> bool:
         if len(items) < 250:
             break
         page += 1
+
+    if page > MAX_ENRICH_PAGES:
+        logger.warning(f"Enrich pass hit max pages limit ({MAX_ENRICH_PAGES}) for account {account_id}")
 
     logger.info(f"Finished full BI enrichment for account {account_id}: processed {total} leads.")
     return True
