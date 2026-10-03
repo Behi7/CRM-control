@@ -35,7 +35,8 @@ async def sync_pipelines_and_stages(
             logger.error(f"Failed to fetch pipelines for account {account_id}: status={status}")
             return False
 
-        pipes = data.get("_embedded", {}).get("pipelines", [])
+        embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
+        pipes = embedded.get("pipelines") or []
         if not pipes and isinstance(data, list):
             pipes = data
 
@@ -60,7 +61,8 @@ async def sync_pipelines_and_stages(
             pipeline_id = res.scalar_one()
 
             # Stages
-            statuses = p.get("_embedded", {}).get("statuses", [])
+            p_embedded = (p.get("_embedded") or {}) if isinstance(p, dict) else {}
+            statuses = p_embedded.get("statuses") or []
             synced_stage_ext_ids = []
             for s in statuses:
                 s_ext = str(s["id"])
@@ -149,7 +151,8 @@ async def sync_amo_users(
             if status != 200 or not data:
                 break
 
-            users = data.get("_embedded", {}).get("users", [])
+            embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
+            users = embedded.get("users") or []
             if not users:
                 break
 
@@ -238,7 +241,8 @@ async def sync_custom_fields(
             if status != 200 or not data:
                 break
 
-            fields = data.get("_embedded", {}).get("custom_fields", [])
+            embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
+            fields = embedded.get("custom_fields") or []
             if not fields:
                 break
 

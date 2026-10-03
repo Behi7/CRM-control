@@ -192,25 +192,26 @@ async def _upsert_lead_impl(
         # Loss reason
         loss_reason_id = str(amo.get("loss_reason_id")) if amo.get("loss_reason_id") else None
         loss_reason_name = None
-        loss_reason_embedded = amo.get("_embedded", {}).get("loss_reason")
+        embedded = amo.get("_embedded") or {}
+        loss_reason_embedded = embedded.get("loss_reason")
         if isinstance(loss_reason_embedded, list) and loss_reason_embedded:
-            loss_reason_name = loss_reason_embedded[0].get("name")
+            loss_reason_name = loss_reason_embedded[0].get("name") if isinstance(loss_reason_embedded[0], dict) else None
         elif isinstance(loss_reason_embedded, dict):
             loss_reason_name = loss_reason_embedded.get("name")
 
         # Source / Contacts
-        embedded_source = amo.get("_embedded", {}).get("source")
+        embedded_source = embedded.get("source")
         source_external_id = str(amo.get("source_id")) if amo.get("source_id") is not None else None
-        if not source_external_id and embedded_source and embedded_source.get("id"):
+        if not source_external_id and embedded_source and isinstance(embedded_source, dict) and embedded_source.get("id"):
             source_external_id = str(embedded_source.get("id"))
-        source_name = embedded_source.get("name") if embedded_source else None
+        source_name = embedded_source.get("name") if isinstance(embedded_source, dict) else None
 
-        contacts = amo.get("_embedded", {}).get("contacts", [])
-        main_contact = next((c for c in contacts if c.get("is_main")), None) or (contacts[0] if contacts else None)
+        contacts = embedded.get("contacts") or []
+        main_contact = next((c for c in contacts if isinstance(c, dict) and c.get("is_main")), None) or (contacts[0] if (contacts and isinstance(contacts[0], dict)) else None)
         main_contact_id = str(main_contact["id"]) if main_contact and main_contact.get("id") else None
 
         closest_task_raw = amo.get("closest_task_at")
-        closest_task_at = datetime.fromtimestamp(closest_task_raw, tz=timezone.utc) if closest_task_raw and closest_task_raw > 0 else None
+        closest_task_at = datetime.fromtimestamp(closest_task_raw, tz=timezone.utc) if closest_task_raw and isinstance(closest_task_raw, (int, float)) and closest_task_raw > 0 else None
 
         price = amo.get("price")
         price_num = float(price) if price is not None else None
@@ -223,7 +224,7 @@ async def _upsert_lead_impl(
         utm_content = None
         utm_term = None
 
-        cf_values = amo.get("custom_fields_values")
+        cf_values = amo.get("custom_fields_values") or []
         if isinstance(cf_values, list) and cf_values:
             custom_fields = [
                 {
@@ -231,15 +232,17 @@ async def _upsert_lead_impl(
                     "name": cf.get("field_name"),
                     "code": cf.get("field_code"),
                     "type": cf.get("field_type"),
-                    "values": [v.get("value") for v in cf.get("values", [])],
+                    "values": [v.get("value") for v in (cf.get("values") or []) if isinstance(v, dict)],
                 }
-                for cf in cf_values
+                for cf in cf_values if isinstance(cf, dict)
             ]
 
             for cf in cf_values:
+                if not isinstance(cf, dict):
+                    continue
                 key = (cf.get("field_code") or cf.get("field_name") or "").strip().upper()
-                vals = cf.get("values", [])
-                val = str(vals[0].get("value")).strip() if vals and vals[0].get("value") is not None else None
+                vals = cf.get("values") or []
+                val = str(vals[0].get("value")).strip() if vals and isinstance(vals[0], dict) and vals[0].get("value") is not None else None
                 if not val:
                     continue
                 if key in ("UTM_SOURCE", "ИСТОЧНИК", "SOURCE"):
@@ -253,8 +256,10 @@ async def _upsert_lead_impl(
                 elif key == "UTM_TERM":
                     utm_term = utm_term or val
 
-        crm_created_at = datetime.fromtimestamp(amo.get("created_at", 0), tz=timezone.utc)
-        crm_updated_at = datetime.fromtimestamp(amo.get("updated_at", amo.get("created_at", 0)), tz=timezone.utc)
+        created_raw = int(amo.get("created_at") or 0)
+        crm_created_at = datetime.fromtimestamp(created_raw, tz=timezone.utc) if created_raw > 0 else datetime.now(timezone.utc)
+        updated_raw = int(amo.get("updated_at") or created_raw or 0)
+        crm_updated_at = datetime.fromtimestamp(updated_raw, tz=timezone.utc) if updated_raw > 0 else crm_created_at
 
         lead_insert_stmt = insert(Lead).values(
             account_id=account_id,
@@ -310,7 +315,7 @@ async def _upsert_lead_impl(
         lead = res.scalar_one()
 
         # Tags
-        tags_data = amo.get("_embedded", {}).get("tags", [])
+        tags_data = (amo.get("_embedded") or {}).get("tags") or []
         tag_ids = []
         for t in tags_data:
             t_ext = str(t["id"])
@@ -443,11 +448,23 @@ async def _process_status_changed_impl(
 ):
     ev_id = str(event["id"])
     lead_ext = str(event["entity_id"])
-    created_at_sec = event.get("created_at", 0)
-    ts = datetime.fromtimestamp(created_at_sec, tz=timezone.utc)
+    created_at_sec = int(event.get("created_at") or 0)
+    ts = datetime.fromtimestamp(created_at_sec, tz=timezone.utc) if created_at_sec > 0 else datetime.now(timezone.utc)
 
     status_info = extract_status_info(event.get("value_after"))
     status_after = status_info.get("status_id") if status_info else None
+    new_pipeline_ext = str(status_info.get("pipeline_id")) if (status_info and status_info.get("pipeline_id")) else None
+
+    target_pipeline_id = lead.pipeline_id
+    if new_pipeline_ext:
+        target_pipeline_id = ctx.pipeline_map.get(new_pipeline_ext)
+        if not target_pipeline_id:
+            p_stmt = select(Pipeline).where(Pipeline.account_id == account_id, Pipeline.external_id == new_pipeline_ext)
+            p_obj = (await session.execute(p_stmt)).scalar_one_or_none()
+            if p_obj:
+                target_pipeline_id = p_obj.id
+                ctx.pipeline_map[new_pipeline_ext] = target_pipeline_id
+
     result = "processed"
 
     # Terminal Won (142) or Lost (143)
@@ -467,22 +484,62 @@ async def _process_status_changed_impl(
             )
 
         term_status = "won" if status_after == 142 else "lost"
+        term_updates = {
+            "status": term_status,
+            "crm_closed_at": ts,
+            "updated_at": ts,
+            "current_stage_id": None,
+        }
+        if target_pipeline_id and target_pipeline_id != lead.pipeline_id:
+            term_updates["pipeline_id"] = target_pipeline_id
+            lead.pipeline_id = target_pipeline_id
+
         await session.execute(
             update(Lead)
             .where(Lead.id == lead.id)
-            .values(status=term_status, crm_closed_at=ts, updated_at=ts, current_stage_id=None)
+            .values(**term_updates)
         )
         result = f"closed_{term_status}"
 
     else:
-        # Regular stage
+        # Regular stage - tenant-isolated stage lookup
         stage_id = ctx.stage_map.get(f"stage_{status_after}") if status_after else None
         if not stage_id and status_after:
-            st_stmt = select(Stage).where(Stage.external_id == str(status_after))
-            st_obj = (await session.execute(st_stmt)).scalar_one_or_none()
+            st_stmt = (
+                select(Stage)
+                .join(Pipeline, Stage.pipeline_id == Pipeline.id)
+                .where(
+                    Pipeline.account_id == account_id,
+                    Stage.external_id == str(status_after),
+                )
+            )
+            if target_pipeline_id:
+                st_stmt = st_stmt.where(Stage.pipeline_id == target_pipeline_id)
+            elif lead.pipeline_id:
+                st_stmt = st_stmt.where(Stage.pipeline_id == lead.pipeline_id)
+
+            st_obj = (await session.execute(st_stmt)).scalars().first()
+            if not st_obj:
+                fallback_stmt = (
+                    select(Stage)
+                    .join(Pipeline, Stage.pipeline_id == Pipeline.id)
+                    .where(
+                        Pipeline.account_id == account_id,
+                        Stage.external_id == str(status_after),
+                    )
+                )
+                st_obj = (await session.execute(fallback_stmt)).scalars().first()
+
             if st_obj:
                 stage_id = st_obj.id
                 ctx.stage_map[f"stage_{status_after}"] = stage_id
+                ctx.stage_objects[stage_id] = {
+                    "id": st_obj.id,
+                    "pipeline_id": st_obj.pipeline_id,
+                    "external_id": st_obj.external_id,
+                    "sort_order": st_obj.sort_order,
+                    "name": st_obj.name,
+                }
 
         if not stage_id:
             await session.execute(
@@ -564,6 +621,9 @@ async def _process_status_changed_impl(
 
         # Update lead
         updates = {"current_stage_id": stage_id, "updated_at": ts}
+        if target_pipeline_id and target_pipeline_id != lead.pipeline_id:
+            updates["pipeline_id"] = target_pipeline_id
+            lead.pipeline_id = target_pipeline_id
         if lead.status in ("won", "lost"):
             updates["status"] = "open"
             updates["crm_closed_at"] = None
@@ -591,8 +651,8 @@ async def process_lead_deleted(session: AsyncSession, account_id: int, event: Di
 async def _process_lead_deleted_impl(session: AsyncSession, account_id: int, event: Dict[str, Any]):
     ev_id = str(event["id"])
     lead_ext = str(event["entity_id"])
-    created_at_sec = event.get("created_at", 0)
-    ts = datetime.fromtimestamp(created_at_sec, tz=timezone.utc)
+    created_at_sec = int(event.get("created_at") or 0)
+    ts = datetime.fromtimestamp(created_at_sec, tz=timezone.utc) if created_at_sec > 0 else datetime.now(timezone.utc)
 
     # Atomic dedup reservation
     dedup_stmt = (

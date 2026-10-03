@@ -72,7 +72,8 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
                 logger.error(f"Error fetching delta leads for account {account_id}: status={status}")
                 break
 
-            items = data.get("_embedded", {}).get("leads", [])
+            embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
+            items = embedded.get("leads") or []
             if not items:
                 break
 
@@ -130,7 +131,8 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
             if status == 204 or not data or status != 200:
                 break
 
-            items = data.get("_embedded", {}).get("events", [])
+            embedded = (data.get("_embedded") or {}) if isinstance(data, dict) else {}
+            items = embedded.get("events") or []
             if not items:
                 break
 
