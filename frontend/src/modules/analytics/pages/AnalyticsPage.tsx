@@ -189,21 +189,6 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
       <div className="flex gap-6 items-start">
         {/* Main Analytics Content */}
         <div className={`space-y-6 ${chatOpen && isWideScreen ? 'flex-1 min-w-0' : 'w-full'}`}>
-          {/* Page Header */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div>
-              <h1 className="text-xl lg:text-2xl font-bold text-slate-900 dark:text-white">
-                {lang === 'uz' ? 'AmoCRM Sotuvlar Tahlili' : 'Детальная аналитика продаж AmoCRM'}
-              </h1>
-              {data?.account && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  {lang === 'uz' ? 'Hisob: ' : 'Аккаунт: '}
-                  <strong className="text-slate-700 dark:text-slate-200">{data.account.subdomain}.{data.account.baseDomain}</strong>
-                </p>
-              )}
-            </div>
-          </div>
-
           {/* Unified Filter Bar with extra Sources filter */}
           <FilterBar showStatus={true}>
             {sourcesList.length > 0 && (

@@ -125,7 +125,10 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
   const isClientsActive = isPathActive('/admin/clients');
   const isNotifsActive = isPathActive('/admin/notifications');
 
-  const currentAccObj = accounts.find((a: any) => a.id === activeAccountId);
+  const currentAccObj = accounts.find((a: any) => a.id === activeAccountId) || accounts[0];
+  const amoAccountName = currentAccObj?.subdomain
+    ? `${currentAccObj.subdomain}.${currentAccObj.baseDomain || 'amocrm.ru'}`
+    : 'AmoCRM';
 
   const labels = {
     appAnalytics: lang === 'uz' ? 'AmoCRM Tahlil Markazi' : 'Аналитика продаж',
@@ -145,8 +148,23 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
       {/* Brand header */}
       <div className="h-16 px-3 flex items-center justify-between border-b border-slate-800/80">
         {!collapsed && (
-          <div className="font-bold text-base tracking-tight text-white leading-tight truncate pl-1">
-            Аналитика
+          <div className="flex items-center gap-2 overflow-hidden pl-1 flex-1 min-w-0 mr-2">
+            <div
+              className="font-bold text-sm tracking-tight text-white leading-tight truncate"
+              title={role === 'admin' ? 'Аналитика' : amoAccountName}
+            >
+              {role === 'admin' ? 'Аналитика' : amoAccountName}
+            </div>
+            {role !== 'admin' && currentAccObj && (() => {
+              const lastSync = currentAccObj.lastSyncedAt;
+              const isStale = !lastSync || (Date.now() - new Date(lastSync).getTime() > 30 * 60 * 1000);
+              return (
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${isStale ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                  title={isStale ? '⚠️ Данные устарели' : '✓ Данные актуальны'}
+                />
+              );
+            })()}
           </div>
         )}
         <button
@@ -160,28 +178,22 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
         </button>
       </div>
 
-      {/* Account Switcher */}
-      {accounts.length > 0 && (
+      {/* Account Switcher (only for admin) */}
+      {role === 'admin' && accounts.length > 0 && (
         <div className="p-3 border-b border-slate-800/80">
           {!collapsed ? (
             <div>
-              {role === 'admin' ? (
-                <select
-                  value={activeAccountId}
-                  onChange={(e) => handleAccountChange(Number(e.target.value))}
-                  className="w-full bg-slate-800/90 hover:bg-slate-800 text-slate-100 text-xs font-medium rounded-lg px-2.5 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer truncate"
-                >
-                  {accounts.map((acc: any) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.subdomain ? `${acc.subdomain}.${acc.baseDomain || 'amocrm.ru'}` : (acc.name || 'Аккаунт')}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="bg-slate-800/70 rounded-lg px-3 py-2 text-xs font-medium text-slate-200 truncate border border-slate-700/60">
-                  {currentAccObj?.subdomain ? `${currentAccObj.subdomain}.${currentAccObj.baseDomain || 'amocrm.ru'}` : 'Аккаунт'}
-                </div>
-              )}
+              <select
+                value={activeAccountId}
+                onChange={(e) => handleAccountChange(Number(e.target.value))}
+                className="w-full bg-slate-800/90 hover:bg-slate-800 text-slate-100 text-xs font-medium rounded-lg px-2.5 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer truncate"
+              >
+                {accounts.map((acc: any) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.subdomain ? `${acc.subdomain}.${acc.baseDomain || 'amocrm.ru'}` : (acc.name || 'Аккаунт')}
+                  </option>
+                ))}
+              </select>
 
               {currentAccObj && (() => {
                 const lastSync = currentAccObj.lastSyncedAt;
@@ -228,7 +240,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                     className="w-10 h-10 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center relative cursor-pointer transition-colors shrink-0"
                     title={tip}
                     onClick={
-                      role === 'admin' && accounts.length > 1
+                      accounts.length > 1
                         ? () => {
                             const nextIdx = (accounts.findIndex((a: any) => a.id === activeAccountId) + 1) % accounts.length;
                             handleAccountChange(accounts[nextIdx].id);
@@ -255,7 +267,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
       {/* Navigation links */}
       <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
         <div>
-          {!collapsed && (
+          {!collapsed && role === 'admin' && (
             <div className="px-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
               {labels.appsSection}
             </div>
@@ -423,7 +435,9 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
           >
             <Menu size={22} />
           </button>
-          <span className="font-bold text-sm">Аналитика</span>
+          <span className="font-bold text-sm truncate max-w-[200px]">
+            {role === 'admin' ? 'Аналитика' : amoAccountName}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <LanguageSwitcher />
