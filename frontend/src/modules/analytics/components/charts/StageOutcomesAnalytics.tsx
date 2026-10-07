@@ -89,7 +89,7 @@ export default function StageOutcomesAnalytics({
                   }`}
                 >
                   <Layers size={12} />
-                  <span>{lang === 'uz' ? 'Bosqichlar vaqti' : 'Время на этапах'}</span>
+                  <span>{lang === 'uz' ? 'Yutilganlar tezligi' : 'Скорость выигранных'}</span>
                 </button>
               </div>
             )}
