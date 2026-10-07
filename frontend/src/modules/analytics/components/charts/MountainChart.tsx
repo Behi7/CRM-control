@@ -18,6 +18,15 @@ interface MountainChartProps {
   timeseries: MountainPoint[];
 }
 
+interface ScreenCoord {
+  period: string;
+  x: number;
+  yWon: number;
+  yLost: number;
+  yOpen: number;
+  opacity: number;
+}
+
 export default function MountainChart({ timeseries = [] }: MountainChartProps) {
   const { lang } = useLanguage();
   const [mountainZoom, setMountainZoom] = useState<string>('last12');
@@ -88,92 +97,168 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
   );
   const targetMaxVal = Math.ceil(rawMax * 1.12);
 
-  // ── Fluid Animation Engine (60fps requestAnimationFrame) ──
-  const [animValues, setAnimValues] = useState<{
-    won: number[];
-    lost: number[];
-    open: number[];
-    maxVal: number;
-  } | null>(null);
+  const targetXAt = (i: number, total: number) =>
+    total <= 1 ? padL + chartW / 2 : padL + (i / (total - 1)) * chartW;
 
-  const prevRef = useRef<{
-    won: number[];
-    lost: number[];
-    open: number[];
-    maxVal: number;
-    periods: string[];
-  } | null>(null);
+  const targetYAt = (val: number, maxV: number) =>
+    padT + chartH - (Math.min(val, maxV) / (maxV || 1)) * chartH;
+
+  // ── True Screen-Space (X, Y) Coordinate Animation Engine ──
+  // Interpolates screen pixel coordinates directly, completely eliminating scale traps
+  // and enabling fluid horizontal morphing across zoom changes.
+  const [animCoords, setAnimCoords] = useState<ScreenCoord[]>([]);
+  const [displayMaxVal, setDisplayMaxVal] = useState<number>(targetMaxVal);
+
+  const prevCoordsRef = useRef<ScreenCoord[]>([]);
+  const prevMaxValRef = useRef<number>(targetMaxVal);
 
   useEffect(() => {
     if (pts.length === 0) {
-      setAnimValues(null);
-      prevRef.current = null;
+      setAnimCoords([]);
+      prevCoordsRef.current = [];
       return;
     }
 
-    const targetWon = pts.map(getWon);
-    const targetLost = pts.map(getLost);
-    const targetOpen = pts.map(getOpen);
+    // 1. Calculate ideal target coordinates for current points
+    const currentTargets: ScreenCoord[] = pts.map((p, i) => ({
+      period: p.period,
+      x: targetXAt(i, n),
+      yWon: targetYAt(getWon(p), targetMaxVal),
+      yLost: targetYAt(getLost(p), targetMaxVal),
+      yOpen: targetYAt(getOpen(p), targetMaxVal),
+      opacity: 1,
+    }));
 
-    const prev = prevRef.current;
-    let startWon: number[];
-    let startLost: number[];
-    let startOpen: number[];
-    let startMax: number;
+    const prevCoords = prevCoordsRef.current;
+    const startMax = prevMaxValRef.current || targetMaxVal;
 
-    if (!prev) {
-      // First mount: animate from zero for smooth entrance
-      startWon = pts.map(() => 0);
-      startLost = pts.map(() => 0);
-      startOpen = pts.map(() => 0);
-      startMax = targetMaxVal;
+    // 2. Pair every point with its start coordinate
+    type TransitionItem = {
+      period: string;
+      startX: number;
+      startYWon: number;
+      startYLost: number;
+      startYOpen: number;
+      startOpacity: number;
+      targetX: number;
+      targetYWon: number;
+      targetYLost: number;
+      targetYOpen: number;
+      targetOpacity: number;
+    };
+
+    const transitions: TransitionItem[] = [];
+
+    if (prevCoords.length === 0) {
+      // First mount: animate from zero baseline
+      currentTargets.forEach((tgt) => {
+        transitions.push({
+          period: tgt.period,
+          startX: tgt.x,
+          startYWon: baseY,
+          startYLost: baseY,
+          startYOpen: baseY,
+          startOpacity: 0,
+          targetX: tgt.x,
+          targetYWon: tgt.yWon,
+          targetYLost: tgt.yLost,
+          targetYOpen: tgt.yOpen,
+          targetOpacity: 1,
+        });
+      });
     } else {
-      // Interpolate from previous values matching periods
-      startWon = pts.map((p) => {
-        const idx = prev.periods.indexOf(p.period);
-        return idx !== -1 && prev.won[idx] !== undefined ? prev.won[idx] : 0;
+      const prevMap = new Map<string, ScreenCoord>(prevCoords.map((c) => [c.period, c]));
+
+      // Existing points and new incoming points
+      currentTargets.forEach((tgt, i) => {
+        const prev = prevMap.get(tgt.period);
+        if (prev) {
+          transitions.push({
+            period: tgt.period,
+            startX: prev.x,
+            startYWon: prev.yWon,
+            startYLost: prev.yLost,
+            startYOpen: prev.yOpen,
+            startOpacity: prev.opacity,
+            targetX: tgt.x,
+            targetYWon: tgt.yWon,
+            targetYLost: tgt.yLost,
+            targetYOpen: tgt.yOpen,
+            targetOpacity: 1,
+          });
+          prevMap.delete(tgt.period);
+        } else {
+          // New point entering (e.g. earlier month revealed when zooming out)
+          const neighborPrev = i > 0 ? prevCoords[0] : null;
+          const enterX = neighborPrev ? Math.max(padL, neighborPrev.x - 40) : tgt.x;
+          transitions.push({
+            period: tgt.period,
+            startX: enterX,
+            startYWon: baseY,
+            startYLost: baseY,
+            startYOpen: baseY,
+            startOpacity: 0,
+            targetX: tgt.x,
+            targetYWon: tgt.yWon,
+            targetYLost: tgt.yLost,
+            targetYOpen: tgt.yOpen,
+            targetOpacity: 1,
+          });
+        }
       });
-      startLost = pts.map((p) => {
-        const idx = prev.periods.indexOf(p.period);
-        return idx !== -1 && prev.lost[idx] !== undefined ? prev.lost[idx] : 0;
+
+      // Outgoing points that are removed (e.g. zooming in from 12 to 6 months)
+      prevMap.forEach((oldCoord) => {
+        transitions.push({
+          period: oldCoord.period,
+          startX: oldCoord.x,
+          startYWon: oldCoord.yWon,
+          startYLost: oldCoord.yLost,
+          startYOpen: oldCoord.yOpen,
+          startOpacity: oldCoord.opacity,
+          targetX: Math.max(padL - 60, oldCoord.x - chartW / 2),
+          targetYWon: baseY,
+          targetYLost: baseY,
+          targetYOpen: baseY,
+          targetOpacity: 0,
+        });
       });
-      startOpen = pts.map((p) => {
-        const idx = prev.periods.indexOf(p.period);
-        return idx !== -1 && prev.open[idx] !== undefined ? prev.open[idx] : 0;
-      });
-      startMax = prev.maxVal || targetMaxVal;
     }
 
     let rafId: number;
     const startTime = performance.now();
-    const duration = 460; // 460ms for smooth fluid transition
+    const duration = 460; // 460ms for silky-smooth fluid animation
 
     const tick = (now: number) => {
       const elapsed = now - startTime;
       const t = Math.min(1, elapsed / duration);
-      // easeOutCubic: fast responsive start with smooth silky deceleration
+      // easeOutCubic: fast responsive start with silky deceleration
       const eased = 1 - Math.pow(1 - t, 3);
 
-      const curWon = startWon.map((s, i) => s + ((targetWon[i] ?? 0) - s) * eased);
-      const curLost = startLost.map((s, i) => s + ((targetLost[i] ?? 0) - s) * eased);
-      const curOpen = startOpen.map((s, i) => s + ((targetOpen[i] ?? 0) - s) * eased);
+      const frameCoords: ScreenCoord[] = transitions.map((tr) => ({
+        period: tr.period,
+        x: tr.startX + (tr.targetX - tr.startX) * eased,
+        yWon: tr.startYWon + (tr.targetYWon - tr.startYWon) * eased,
+        yLost: tr.startYLost + (tr.targetYLost - tr.startYLost) * eased,
+        yOpen: tr.startYOpen + (tr.targetYOpen - tr.startYOpen) * eased,
+        opacity: tr.startOpacity + (tr.targetOpacity - tr.startOpacity) * eased,
+      }));
+
       const curMax = startMax + (targetMaxVal - startMax) * eased;
 
-      const nextState = {
-        won: curWon,
-        lost: curLost,
-        open: curOpen,
-        maxVal: curMax,
-      };
-
-      setAnimValues(nextState);
-      prevRef.current = {
-        ...nextState,
-        periods: pts.map((p) => p.period),
-      };
+      setAnimCoords(frameCoords);
+      setDisplayMaxVal(curMax);
+      prevCoordsRef.current = frameCoords;
+      prevMaxValRef.current = curMax;
 
       if (t < 1) {
         rafId = requestAnimationFrame(tick);
+      } else {
+        // Final frame: lock exact target coordinates for stability
+        setAnimCoords(currentTargets);
+        setDisplayMaxVal(targetMaxVal);
+        prevCoordsRef.current = currentTargets;
+        prevMaxValRef.current = targetMaxVal;
       }
     };
 
@@ -181,39 +266,42 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
     return () => cancelAnimationFrame(rafId);
   }, [mountainMode, mountainZoom, timeseries]);
 
-  const currentWon = animValues?.won || pts.map(getWon);
-  const currentLost = animValues?.lost || pts.map(getLost);
-  const currentOpen = animValues?.open || pts.map(getOpen);
-  const currentMaxVal = Math.max(animValues?.maxVal || targetMaxVal, 1);
+  // Current coordinate lookup map
+  const coordMap = new Map<string, ScreenCoord>(animCoords.map((c) => [c.period, c]));
 
-  const xAt = (i: number) => (n <= 1 ? padL + chartW / 2 : padL + (i / (n - 1)) * chartW);
-  const yAt = (val: number) => padT + chartH - (Math.min(val, currentMaxVal) / currentMaxVal) * chartH;
+  // Curve builder from animated screen coordinates
+  const buildSmoothPath = (selector: (c: ScreenCoord) => number) => {
+    // Only include visible points, sorted horizontally by x
+    const visiblePoints = pts
+      .map((p) => coordMap.get(p.period))
+      .filter((c): c is ScreenCoord => c !== undefined && c.opacity > 0.02)
+      .map((c) => ({ x: c.x, y: selector(c) }))
+      .sort((a, b) => a.x - b.x);
 
-  const buildSmoothPath = (values: number[]) => {
-    if (n === 0 || values.length === 0) return { strokePath: '', areaPath: '' };
-    const points = pts.map((_, i) => ({ x: xAt(i), y: yAt(values[i] || 0) }));
-    if (points.length === 1) {
-      const pt = points[0];
-      const strokePath = `M ${padL} ${pt.y} L ${W - padR} ${pt.y}`;
+    if (visiblePoints.length === 0) return { strokePath: '', areaPath: '' };
+    if (visiblePoints.length === 1) {
+      const pt = visiblePoints[0];
+      const strokePath = `M ${padL} ${pt.y.toFixed(1)} L ${W - padR} ${pt.y.toFixed(1)}`;
       const areaPath = `${strokePath} L ${W - padR} ${baseY} L ${padL} ${baseY} Z`;
       return { strokePath, areaPath };
     }
-    let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
-    for (let i = 0; i < points.length - 1; i++) {
-      const p0 = points[i];
-      const p1 = points[i + 1];
+
+    let d = `M ${visiblePoints[0].x.toFixed(1)} ${visiblePoints[0].y.toFixed(1)}`;
+    for (let i = 0; i < visiblePoints.length - 1; i++) {
+      const p0 = visiblePoints[i];
+      const p1 = visiblePoints[i + 1];
       const cpx1 = p0.x + (p1.x - p0.x) * 0.42;
       const cpx2 = p1.x - (p1.x - p0.x) * 0.42;
       d += ` C ${cpx1.toFixed(1)} ${p0.y.toFixed(1)}, ${cpx2.toFixed(1)} ${p1.y.toFixed(1)}, ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
     }
     const strokePath = d;
-    const areaPath = `${d} L ${points[points.length - 1].x.toFixed(1)} ${baseY} L ${points[0].x.toFixed(1)} ${baseY} Z`;
+    const areaPath = `${d} L ${visiblePoints[visiblePoints.length - 1].x.toFixed(1)} ${baseY} L ${visiblePoints[0].x.toFixed(1)} ${baseY} Z`;
     return { strokePath, areaPath };
   };
 
-  const lostSmooth = buildSmoothPath(currentLost);
-  const openSmooth = buildSmoothPath(currentOpen);
-  const wonSmooth = buildSmoothPath(currentWon);
+  const lostSmooth = buildSmoothPath((c) => c.yLost);
+  const openSmooth = buildSmoothPath((c) => c.yOpen);
+  const wonSmooth = buildSmoothPath((c) => c.yWon);
 
   const activeIdx =
     hoveredPointIdx != null && hoveredPointIdx >= 0 && hoveredPointIdx < n
@@ -222,6 +310,8 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
       ? n - 1
       : null;
   const activePt = activeIdx != null ? pts[activeIdx] : null;
+  const activeCoord = activePt ? coordMap.get(activePt.period) : null;
+
   const labelStep = Math.max(1, Math.ceil(n / 12));
   const showValueBadges = n <= 12;
 
@@ -397,7 +487,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
             {/* Horizontal grid lines */}
             {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
               const y = padT + chartH * (1 - ratio);
-              const val = Math.round(currentMaxVal * ratio);
+              const val = Math.round(displayMaxVal * ratio);
               return (
                 <g key={ratio}>
                   <line
@@ -451,11 +541,11 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
             />
 
             {/* Active hover crosshair vertical line */}
-            {activeIdx != null && (
+            {activeCoord && (
               <line
-                x1={xAt(activeIdx)}
+                x1={activeCoord.x}
                 y1={padT}
-                x2={xAt(activeIdx)}
+                x2={activeCoord.x}
                 y2={baseY}
                 stroke="#6366f1"
                 strokeWidth="1.5"
@@ -466,12 +556,16 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
 
             {/* Points, non-overlapping labels & invisible hover columns */}
             {pts.map((p, i) => {
-              const x = xAt(i);
+              const animPt = coordMap.get(p.period);
+              if (!animPt) return null;
+
+              const x = animPt.x;
+              const yWon = animPt.yWon;
+              const yLost = animPt.yLost;
+              const yOpen = animPt.yOpen;
+
               const wVal = getWon(p);
               const lVal = getLost(p);
-              const yWon = yAt(currentWon[i] ?? wVal);
-              const yLost = yAt(currentLost[i] ?? lVal);
-              const yOpen = yAt(currentOpen[i] ?? getOpen(p));
               const isHovered = activeIdx === i;
               const showXLabel = i % labelStep === 0 || i === n - 1 || isHovered;
 
@@ -491,7 +585,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
               const colWidth = n > 1 ? chartW / (n - 1) : chartW;
 
               return (
-                <g key={p.period}>
+                <g key={p.period} style={{ opacity: animPt.opacity }}>
                   {/* Dots with elastic hover transition */}
                   <circle
                     cx={x}
