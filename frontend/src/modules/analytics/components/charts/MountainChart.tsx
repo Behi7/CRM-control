@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { fmtCount, fmtMoney } from '../../types';
 import { useLanguage } from '../../../../i18n/LanguageContext';
 import { TrendingUp } from 'lucide-react';
@@ -16,15 +16,6 @@ interface MountainPoint {
 
 interface MountainChartProps {
   timeseries: MountainPoint[];
-}
-
-interface ScreenCoord {
-  period: string;
-  x: number;
-  yWon: number;
-  yLost: number;
-  yOpen: number;
-  opacity: number;
 }
 
 export default function MountainChart({ timeseries = [] }: MountainChartProps) {
@@ -95,213 +86,36 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
     ...pts.map((p) => Math.max(getWon(p), getLost(p), getOpen(p))),
     1,
   );
-  const targetMaxVal = Math.ceil(rawMax * 1.12);
+  const maxVal = Math.ceil(rawMax * 1.12);
 
-  const targetXAt = (i: number, total: number) =>
-    total <= 1 ? padL + chartW / 2 : padL + (i / (total - 1)) * chartW;
+  const xAt = (i: number) => (n <= 1 ? padL + chartW / 2 : padL + (i / (n - 1)) * chartW);
+  const yAt = (val: number) => padT + chartH - (Math.min(val, maxVal) / maxVal) * chartH;
 
-  const targetYAt = (val: number, maxV: number) =>
-    padT + chartH - (Math.min(val, maxV) / (maxV || 1)) * chartH;
-
-  // ── True Screen-Space (X, Y) Coordinate Animation Engine ──
-  // Interpolates screen pixel coordinates directly, completely eliminating scale traps
-  // and enabling fluid horizontal morphing across zoom changes.
-  const [animCoords, setAnimCoords] = useState<ScreenCoord[]>([]);
-  const [displayMaxVal, setDisplayMaxVal] = useState<number>(targetMaxVal);
-
-  const prevCoordsRef = useRef<ScreenCoord[]>([]);
-  const prevMaxValRef = useRef<number>(targetMaxVal);
-
-  useEffect(() => {
-    if (pts.length === 0) {
-      setAnimCoords([]);
-      prevCoordsRef.current = [];
-      return;
-    }
-
-    // 1. Calculate ideal target coordinates for current points
-    const currentTargets: ScreenCoord[] = pts.map((p, i) => ({
-      period: p.period,
-      x: targetXAt(i, n),
-      yWon: targetYAt(getWon(p), targetMaxVal),
-      yLost: targetYAt(getLost(p), targetMaxVal),
-      yOpen: targetYAt(getOpen(p), targetMaxVal),
-      opacity: 1,
-    }));
-
-    const prevCoords = prevCoordsRef.current;
-    const startMax = prevMaxValRef.current || targetMaxVal;
-
-    // 2. Pair every point with its start coordinate
-    type TransitionItem = {
-      period: string;
-      startX: number;
-      startYWon: number;
-      startYLost: number;
-      startYOpen: number;
-      startOpacity: number;
-      targetX: number;
-      targetYWon: number;
-      targetYLost: number;
-      targetYOpen: number;
-      targetOpacity: number;
-    };
-
-    const transitions: TransitionItem[] = [];
-
-    if (prevCoords.length === 0) {
-      // First mount: animate from zero baseline
-      currentTargets.forEach((tgt) => {
-        transitions.push({
-          period: tgt.period,
-          startX: tgt.x,
-          startYWon: baseY,
-          startYLost: baseY,
-          startYOpen: baseY,
-          startOpacity: 0,
-          targetX: tgt.x,
-          targetYWon: tgt.yWon,
-          targetYLost: tgt.yLost,
-          targetYOpen: tgt.yOpen,
-          targetOpacity: 1,
-        });
-      });
-    } else {
-      const prevMap = new Map<string, ScreenCoord>(prevCoords.map((c) => [c.period, c]));
-
-      // Existing points and new incoming points
-      currentTargets.forEach((tgt, i) => {
-        const prev = prevMap.get(tgt.period);
-        if (prev) {
-          transitions.push({
-            period: tgt.period,
-            startX: prev.x,
-            startYWon: prev.yWon,
-            startYLost: prev.yLost,
-            startYOpen: prev.yOpen,
-            startOpacity: prev.opacity,
-            targetX: tgt.x,
-            targetYWon: tgt.yWon,
-            targetYLost: tgt.yLost,
-            targetYOpen: tgt.yOpen,
-            targetOpacity: 1,
-          });
-          prevMap.delete(tgt.period);
-        } else {
-          // New point entering (e.g. earlier month revealed when zooming out)
-          const neighborPrev = i > 0 ? prevCoords[0] : null;
-          const enterX = neighborPrev ? Math.max(padL, neighborPrev.x - 40) : tgt.x;
-          transitions.push({
-            period: tgt.period,
-            startX: enterX,
-            startYWon: baseY,
-            startYLost: baseY,
-            startYOpen: baseY,
-            startOpacity: 0,
-            targetX: tgt.x,
-            targetYWon: tgt.yWon,
-            targetYLost: tgt.yLost,
-            targetYOpen: tgt.yOpen,
-            targetOpacity: 1,
-          });
-        }
-      });
-
-      // Outgoing points that are removed (e.g. zooming in from 12 to 6 months)
-      prevMap.forEach((oldCoord) => {
-        transitions.push({
-          period: oldCoord.period,
-          startX: oldCoord.x,
-          startYWon: oldCoord.yWon,
-          startYLost: oldCoord.yLost,
-          startYOpen: oldCoord.yOpen,
-          startOpacity: oldCoord.opacity,
-          targetX: Math.max(padL - 60, oldCoord.x - chartW / 2),
-          targetYWon: baseY,
-          targetYLost: baseY,
-          targetYOpen: baseY,
-          targetOpacity: 0,
-        });
-      });
-    }
-
-    let rafId: number;
-    const startTime = performance.now();
-    const duration = 460; // 460ms for silky-smooth fluid animation
-
-    const tick = (now: number) => {
-      const elapsed = now - startTime;
-      const t = Math.min(1, elapsed / duration);
-      // easeOutCubic: fast responsive start with silky deceleration
-      const eased = 1 - Math.pow(1 - t, 3);
-
-      const frameCoords: ScreenCoord[] = transitions.map((tr) => ({
-        period: tr.period,
-        x: tr.startX + (tr.targetX - tr.startX) * eased,
-        yWon: tr.startYWon + (tr.targetYWon - tr.startYWon) * eased,
-        yLost: tr.startYLost + (tr.targetYLost - tr.startYLost) * eased,
-        yOpen: tr.startYOpen + (tr.targetYOpen - tr.startYOpen) * eased,
-        opacity: tr.startOpacity + (tr.targetOpacity - tr.startOpacity) * eased,
-      }));
-
-      const curMax = startMax + (targetMaxVal - startMax) * eased;
-
-      setAnimCoords(frameCoords);
-      setDisplayMaxVal(curMax);
-      prevCoordsRef.current = frameCoords;
-      prevMaxValRef.current = curMax;
-
-      if (t < 1) {
-        rafId = requestAnimationFrame(tick);
-      } else {
-        // Final frame: lock exact target coordinates for stability
-        setAnimCoords(currentTargets);
-        setDisplayMaxVal(targetMaxVal);
-        prevCoordsRef.current = currentTargets;
-        prevMaxValRef.current = targetMaxVal;
-      }
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [mountainMode, mountainZoom, timeseries]);
-
-  // Current coordinate lookup map
-  const coordMap = new Map<string, ScreenCoord>(animCoords.map((c) => [c.period, c]));
-
-  // Curve builder from animated screen coordinates
-  const buildSmoothPath = (selector: (c: ScreenCoord) => number) => {
-    // Only include visible points, sorted horizontally by x
-    const visiblePoints = pts
-      .map((p) => coordMap.get(p.period))
-      .filter((c): c is ScreenCoord => c !== undefined && c.opacity > 0.02)
-      .map((c) => ({ x: c.x, y: selector(c) }))
-      .sort((a, b) => a.x - b.x);
-
-    if (visiblePoints.length === 0) return { strokePath: '', areaPath: '' };
-    if (visiblePoints.length === 1) {
-      const pt = visiblePoints[0];
+  const buildSmoothPath = (getter: (p: MountainPoint) => number) => {
+    if (n === 0) return { strokePath: '', areaPath: '' };
+    const points = pts.map((p, i) => ({ x: xAt(i), y: yAt(getter(p)) }));
+    if (points.length === 1) {
+      const pt = points[0];
       const strokePath = `M ${padL} ${pt.y.toFixed(1)} L ${W - padR} ${pt.y.toFixed(1)}`;
       const areaPath = `${strokePath} L ${W - padR} ${baseY} L ${padL} ${baseY} Z`;
       return { strokePath, areaPath };
     }
-
-    let d = `M ${visiblePoints[0].x.toFixed(1)} ${visiblePoints[0].y.toFixed(1)}`;
-    for (let i = 0; i < visiblePoints.length - 1; i++) {
-      const p0 = visiblePoints[i];
-      const p1 = visiblePoints[i + 1];
+    let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[i];
+      const p1 = points[i + 1];
       const cpx1 = p0.x + (p1.x - p0.x) * 0.42;
       const cpx2 = p1.x - (p1.x - p0.x) * 0.42;
       d += ` C ${cpx1.toFixed(1)} ${p0.y.toFixed(1)}, ${cpx2.toFixed(1)} ${p1.y.toFixed(1)}, ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
     }
     const strokePath = d;
-    const areaPath = `${d} L ${visiblePoints[visiblePoints.length - 1].x.toFixed(1)} ${baseY} L ${visiblePoints[0].x.toFixed(1)} ${baseY} Z`;
+    const areaPath = `${d} L ${points[points.length - 1].x.toFixed(1)} ${baseY} L ${points[0].x.toFixed(1)} ${baseY} Z`;
     return { strokePath, areaPath };
   };
 
-  const lostSmooth = buildSmoothPath((c) => c.yLost);
-  const openSmooth = buildSmoothPath((c) => c.yOpen);
-  const wonSmooth = buildSmoothPath((c) => c.yWon);
+  const lostSmooth = buildSmoothPath(getLost);
+  const openSmooth = buildSmoothPath(getOpen);
+  const wonSmooth = buildSmoothPath(getWon);
 
   const activeIdx =
     hoveredPointIdx != null && hoveredPointIdx >= 0 && hoveredPointIdx < n
@@ -310,7 +124,6 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
       ? n - 1
       : null;
   const activePt = activeIdx != null ? pts[activeIdx] : null;
-  const activeCoord = activePt ? coordMap.get(activePt.period) : null;
 
   const labelStep = Math.max(1, Math.ceil(n / 12));
   const showValueBadges = n <= 12;
@@ -325,7 +138,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4 transition-all">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
       {/* Header & Instant Zoom Controls */}
       <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-center gap-2.5">
@@ -358,7 +171,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
                   { id: 'last12', label: lang === 'uz' ? '12 oy' : '12 мес.' },
                   { id: 'all', label: `${lang === 'uz' ? 'Barchasi' : 'Все'} (${rawPts.length})` },
                   ...(availableYears.length > 1
-                    ? [{ id: 'by_year', label: lang === 'uz' ? 'Yillar bo\'yicha' : 'По годам' }]
+                    ? [{ id: 'by_year', label: lang === 'uz' ? 'Yillar bo‘yicha' : 'По годам' }]
                     : []),
                   ...availableYears.map((y) => ({ id: y, label: `${y} ${lang === 'uz' ? 'y.' : 'г.'}` })),
                 ]
@@ -370,7 +183,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
                   setMountainZoom(z.id);
                   setHoveredPointIdx(null);
                 }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-200 active:scale-95 cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   mountainZoom === z.id
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
@@ -386,24 +199,24 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
             <button
               type="button"
               onClick={() => setMountainMode('count')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 active:scale-95 cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 mountainMode === 'count'
                   ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  : 'text-slate-600 dark:text-slate-400'
               }`}
             >
-              {lang === 'uz' ? 'Bitimlar (dona)' : 'Сделки (шт.)'}
+              {lang === 'uz' ? 'Bitimlar (ta)' : 'Сделки (шт.)'}
             </button>
             <button
               type="button"
               onClick={() => setMountainMode('money')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 active:scale-95 cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 mountainMode === 'money'
                   ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  : 'text-slate-600 dark:text-slate-400'
               }`}
             >
-              {lang === 'uz' ? 'Byudjet (so\'m)' : 'Бюджет (сум)'}
+              {lang === 'uz' ? 'Byudjet (so‘m)' : 'Бюджет (сум)'}
             </button>
           </div>
         </div>
@@ -411,37 +224,34 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
 
       {/* Interactive Live Readout Bar for Hovered / Selected Period */}
       {activePt && (
-        <div
-          key={activePt.period}
-          className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/70 text-xs animate-in fade-in-50 duration-200"
-        >
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/70 text-xs">
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-bold transition-all">
+            <span className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-bold">
               {lang === 'uz' ? 'Davr:' : 'Период:'} {activePt.period}
             </span>
             <span className="text-slate-500">
               {lang === 'uz' ? 'Jami bitimlar:' : 'Всего сделок:'}{' '}
-              <strong className="text-slate-900 dark:text-white font-extrabold">{fmtCount(activePt.totalLeads)}</strong>
+              <strong className="text-slate-900 dark:text-white">{fmtCount(activePt.totalLeads)}</strong>
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-5">
             <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
               <span className="text-slate-500">{lang === 'uz' ? 'Muvaffaqiyatli (Won):' : 'Успешно (Won):'}</span>
-              <strong className="text-emerald-600 dark:text-emerald-400 text-sm font-extrabold transition-all">
+              <strong className="text-emerald-600 dark:text-emerald-400 text-sm">
                 {fmtCount(activePt.wonLeads)} {lang === 'uz' ? 'ta' : 'шт.'}
               </strong>
-              <span className="text-slate-400">({fmtMoney(activePt.revenue)} {lang === 'uz' ? 'so\'m' : 'сум'})</span>
+              <span className="text-slate-400">({fmtMoney(activePt.revenue)} {lang === 'uz' ? 'so‘m' : 'сум'})</span>
             </div>
 
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-              <span className="text-slate-500">{lang === 'uz' ? 'Rad etilgan (Lost):' : 'Нереализовано (Отказ):'}</span>
-              <strong className="text-rose-600 dark:text-rose-400 text-sm font-extrabold transition-all">
+              <span className="text-slate-500">{lang === 'uz' ? 'Rad etilgan (Bekor):' : 'Нереализовано (Отказ):'}</span>
+              <strong className="text-rose-600 dark:text-rose-400 text-sm">
                 {fmtCount(activePt.lostLeads)} {lang === 'uz' ? 'ta' : 'шт.'}
               </strong>
-              <span className="text-slate-400">({fmtMoney(activePt.lostValue)} {lang === 'uz' ? 'so\'m' : 'сум'})</span>
+              <span className="text-slate-400">({fmtMoney(activePt.lostValue)} {lang === 'uz' ? 'so‘m' : 'сум'})</span>
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -451,10 +261,6 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
                 {fmtCount(activePt.openLeads)} {lang === 'uz' ? 'ta' : 'шт.'}
               </strong>
             </div>
-
-            <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">
-              Win Rate: {activePt.totalLeads > 0 ? Math.round((activePt.wonLeads / activePt.totalLeads) * 100) : 0}%
-            </span>
           </div>
         </div>
       )}
@@ -487,7 +293,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
             {/* Horizontal grid lines */}
             {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
               const y = padT + chartH * (1 - ratio);
-              const val = Math.round(displayMaxVal * ratio);
+              const val = Math.round(maxVal * ratio);
               return (
                 <g key={ratio}>
                   <line
@@ -496,14 +302,14 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
                     x2={W - padR}
                     y2={y}
                     stroke="currentColor"
-                    className="text-slate-100 dark:text-slate-800 transition-all duration-300"
+                    className="text-slate-100 dark:text-slate-800"
                     strokeDasharray="4 4"
                   />
                   <text
                     x={padL - 10}
                     y={y + 4}
                     textAnchor="end"
-                    className="fill-slate-400 text-[11px] font-medium transition-all duration-200"
+                    className="fill-slate-400 text-[11px] font-medium"
                   >
                     {fmtCompact(val)}
                   </text>
@@ -541,31 +347,27 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
             />
 
             {/* Active hover crosshair vertical line */}
-            {activeCoord && (
+            {activeIdx != null && (
               <line
-                x1={activeCoord.x}
+                x1={xAt(activeIdx)}
                 y1={padT}
-                x2={activeCoord.x}
+                x2={xAt(activeIdx)}
                 y2={baseY}
                 stroke="#6366f1"
                 strokeWidth="1.5"
                 strokeDasharray="3 3"
-                className="transition-all duration-150 ease-out"
               />
             )}
 
             {/* Points, non-overlapping labels & invisible hover columns */}
             {pts.map((p, i) => {
-              const animPt = coordMap.get(p.period);
-              if (!animPt) return null;
-
-              const x = animPt.x;
-              const yWon = animPt.yWon;
-              const yLost = animPt.yLost;
-              const yOpen = animPt.yOpen;
-
+              const x = xAt(i);
               const wVal = getWon(p);
               const lVal = getLost(p);
+              const oVal = getOpen(p);
+              const yWon = yAt(wVal);
+              const yLost = yAt(lVal);
+              const yOpen = yAt(oVal);
               const isHovered = activeIdx === i;
               const showXLabel = i % labelStep === 0 || i === n - 1 || isHovered;
 
@@ -585,49 +387,32 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
               const colWidth = n > 1 ? chartW / (n - 1) : chartW;
 
               return (
-                <g key={p.period} style={{ opacity: animPt.opacity }}>
-                  {/* Dots with elastic hover transition */}
+                <g key={p.period}>
+                  {/* Dots */}
                   <circle
                     cx={x}
                     cy={yLost}
-                    r={isHovered ? 6.5 : 3.5}
+                    r={isHovered ? 6 : 3.5}
                     fill="#f43f5e"
                     stroke="#ffffff"
                     strokeWidth={isHovered ? 2 : 1.2}
-                    className="transition-all duration-200 ease-out"
                   />
                   <circle
                     cx={x}
                     cy={yOpen}
-                    r={isHovered ? 5.5 : 2.5}
+                    r={isHovered ? 5 : 2.5}
                     fill="#3b82f6"
                     stroke="#ffffff"
                     strokeWidth="1.2"
-                    className="transition-all duration-200 ease-out"
                   />
                   <circle
                     cx={x}
                     cy={yWon}
-                    r={isHovered ? 7 : 4}
+                    r={isHovered ? 6.5 : 4}
                     fill="#10b981"
                     stroke="#ffffff"
-                    strokeWidth={isHovered ? 2.5 : 1.5}
-                    className="transition-all duration-200 ease-out"
+                    strokeWidth={isHovered ? 2.2 : 1.5}
                   />
-
-                  {/* Pulsing ring on active hovered Won point */}
-                  {isHovered && (
-                    <circle
-                      cx={x}
-                      cy={yWon}
-                      r={12}
-                      fill="none"
-                      stroke="#10b981"
-                      strokeWidth="2"
-                      strokeOpacity="0.45"
-                      className="animate-ping"
-                    />
-                  )}
 
                   {/* Non-overlapping pill badges */}
                   {shouldShowPointText && lVal > 0 && (
@@ -635,7 +420,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
                       x={x}
                       y={lostLabelY}
                       textAnchor="middle"
-                      className={`fill-rose-600 dark:fill-rose-400 font-bold transition-all duration-150 ${
+                      className={`fill-rose-600 dark:fill-rose-400 font-bold ${
                         isHovered ? 'text-[11px]' : 'text-[10px]'
                       }`}
                     >
@@ -648,7 +433,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
                       x={x}
                       y={wonLabelY}
                       textAnchor="middle"
-                      className={`fill-emerald-600 dark:fill-emerald-400 font-extrabold transition-all duration-150 ${
+                      className={`fill-emerald-600 dark:fill-emerald-400 font-extrabold ${
                         isHovered ? 'text-[11px]' : 'text-[10px]'
                       }`}
                     >
@@ -662,7 +447,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
                       x={x}
                       y={baseY + 22}
                       textAnchor="middle"
-                      className={`transition-all duration-150 ${
+                      className={`${
                         isHovered
                           ? 'fill-indigo-600 dark:fill-indigo-400 font-extrabold text-[11px]'
                           : 'fill-slate-500 dark:fill-slate-400 font-semibold text-[10px]'
@@ -672,7 +457,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
                     </text>
                   )}
 
-                  {/* Invisible hover & click target */}
+                  {/* Invisible hover target */}
                   <rect
                     x={x - colWidth / 2}
                     y={padT}

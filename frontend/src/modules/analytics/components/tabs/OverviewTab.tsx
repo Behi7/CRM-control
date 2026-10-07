@@ -179,9 +179,9 @@ export default function OverviewTab({ kpis, timeseries = [], lossesAndLtv }: Ove
             <div className="relative w-28 h-28 shrink-0 flex items-center justify-center">
               <svg viewBox="0 0 120 120" className="w-28 h-28 -rotate-90">
                 <circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeWidth="14" />
-                <circle cx="60" cy="60" r="50" fill="none" stroke="#10b981" strokeWidth="14" strokeDasharray={`${wonDash} ${C}`} strokeDashoffset={0} className="transition-all duration-700 ease-out" />
-                <circle cx="60" cy="60" r="50" fill="none" stroke="#3b82f6" strokeWidth="14" strokeDasharray={`${openDash} ${C}`} strokeDashoffset={-wonDash} className="transition-all duration-700 ease-out" />
-                <circle cx="60" cy="60" r="50" fill="none" stroke="#f43f5e" strokeWidth="14" strokeDasharray={`${lostDash} ${C}`} strokeDashoffset={-(wonDash + openDash)} className="transition-all duration-700 ease-out" />
+                <circle cx="60" cy="60" r="50" fill="none" stroke="#10b981" strokeWidth="14" strokeDasharray={`${wonDash} ${C}`} strokeDashoffset={0} />
+                <circle cx="60" cy="60" r="50" fill="none" stroke="#3b82f6" strokeWidth="14" strokeDasharray={`${openDash} ${C}`} strokeDashoffset={-wonDash} />
+                <circle cx="60" cy="60" r="50" fill="none" stroke="#f43f5e" strokeWidth="14" strokeDasharray={`${lostDash} ${C}`} strokeDashoffset={-(wonDash + openDash)} />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                 <span className="text-[9px] uppercase text-slate-400 font-semibold">Win Rate</span>
@@ -225,9 +225,9 @@ export default function OverviewTab({ kpis, timeseries = [], lossesAndLtv }: Ove
               <span>{wonCountPct}% / {openCountPct}% / {lostCountPct}%</span>
             </div>
             <div className="w-full h-3.5 rounded-full overflow-hidden flex bg-slate-100 dark:bg-slate-800">
-              <div style={{ width: `${wonCountPct}%` }} className="bg-emerald-500 h-full transition-all duration-700 ease-out" />
-              <div style={{ width: `${openCountPct}%` }} className="bg-blue-500 h-full transition-all duration-700 ease-out" />
-              <div style={{ width: `${lostCountPct}%` }} className="bg-rose-500 h-full transition-all duration-700 ease-out" />
+              <div style={{ width: `${wonCountPct}%` }} className="bg-emerald-500 h-full" />
+              <div style={{ width: `${openCountPct}%` }} className="bg-blue-500 h-full" />
+              <div style={{ width: `${lostCountPct}%` }} className="bg-rose-500 h-full" />
             </div>
           </div>
         </div>
