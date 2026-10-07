@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { adminApi } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { Bell, Play, Square, Eye, Settings, Trash2, Bot, RefreshCw } from 'lucide-react';
+import { Bell, Play, Square, Eye, Settings, Trash2, Bot, RefreshCw, X } from 'lucide-react';
 import AiSettingsModal from '@/components/AiSettingsModal';
 
 export default function AdminClientsPage() {
@@ -295,15 +295,27 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
   const [tokenExpiresAt, setTokenExpiresAt] = useState(initial?.tokenExpiresAt?.split('T')[0] || '');
   const [baseDomain, setBaseDomain] = useState(initial?.baseDomain || 'amocrm.ru');
   const [err, setErr] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
 
   const submit = async (e: any) => {
     e.preventDefault();
     setErr('');
+    setIsSubmitting(true);
     try {
       const data: any = {};
       if (!initial) {
         if (!email || !password || !subdomain || !token) {
           setErr(lang === 'uz' ? 'Barcha maydonlarni to‘ldirish majburiy' : 'Все поля обязательны');
+          setIsSubmitting(false);
           return;
         }
         data.email = email;
@@ -321,108 +333,157 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
       await onSubmit(data);
     } catch (e: any) {
       setErr(e.message || t('error'));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <form
-      onSubmit={submit}
-      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-lg shadow-sm mb-6 grid grid-cols-2 gap-4"
+    <div
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150"
+      onClick={onCancel}
     >
-      <h3 className="col-span-2 font-bold text-slate-900 dark:text-slate-100 text-lg">
-        {initial
-          ? (lang === 'uz' ? 'Mijozni tahrirlash' : 'Редактирование клиента')
-          : (lang === 'uz' ? 'Yangi mijoz' : 'Новый клиент')}
-      </h3>
-      {err && (
-        <div className="col-span-2 p-2.5 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 text-sm rounded-lg">
-          {err}
+      <div
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden my-auto animate-in zoom-in-95 duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/40">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+              <Settings size={18} />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                {initial
+                  ? (lang === 'uz' ? `Mijozni sozlash (${initial.subdomain})` : `Редактирование клиента (${initial.subdomain})`)
+                  : (lang === 'uz' ? 'Yangi AmoCRM mijozini ulash' : 'Подключение нового клиента AmoCRM')}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {initial
+                  ? (lang === 'uz' ? 'Kirish ma‘lumotlari va API tokenini yangilash' : 'Обновление учетных данных и токена авторизации')
+                  : (lang === 'uz' ? 'AmoCRM integratsiyasi parametrlarini kiriting' : 'Параметры интеграции и доступа к AmoCRM')}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            <X size={18} />
+          </button>
         </div>
-      )}
-      <div>
-        <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">
-          {t('client_form_email')}
-        </label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-        />
+
+        {/* Modal Form Body */}
+        <form onSubmit={submit} className="p-6 space-y-4">
+          {err && (
+            <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 text-xs rounded-xl font-medium">
+              {err}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                {t('client_form_email')}
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="client@company.com"
+                className="w-full p-2.5 text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                {t('client_form_password')} {initial ? `(${t('client_form_password_hint')})` : '(min 12)'}
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={initial ? '••••••••••••' : 'Пароль для входа'}
+                className="w-full p-2.5 text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                {t('client_form_subdomain')} {initial && (lang === 'uz' ? '(o‘zgarmaydi)' : '(не изменяется)')}
+              </label>
+              <input
+                type="text"
+                value={subdomain}
+                onChange={(e) => setSubdomain(e.target.value)}
+                disabled={!!initial}
+                placeholder="mycompany"
+                className="w-full p-2.5 text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                Base Domain
+              </label>
+              <select
+                value={baseDomain}
+                onChange={(e) => setBaseDomain(e.target.value)}
+                disabled={!!initial}
+                className="w-full p-2.5 text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              >
+                <option value="amocrm.ru">amocrm.ru</option>
+                <option value="kommo.com">kommo.com</option>
+              </select>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                {t('client_form_token')}
+              </label>
+              <input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={initial ? (lang === 'uz' ? 'O‘zgartirish uchun yangi tokenni kiriting (ixtiyoriy)' : 'Введите новый токен для замены (необязательно)') : 'eyJhbGciOi...'}
+                className="w-full p-2.5 text-xs font-mono border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                {lang === 'uz' ? 'Token muddati tugashi' : 'Истечение токена (срок действия)'}
+              </label>
+              <input
+                type="date"
+                value={tokenExpiresAt}
+                onChange={(e) => setTokenExpiresAt(e.target.value)}
+                className="w-full p-2.5 text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Modal Footer Buttons */}
+          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-200 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors cursor-pointer shadow-xs"
+            >
+              {isSubmitting ? (lang === 'uz' ? 'Saqlanmoqda...' : 'Сохранение...') : t('save')}
+            </button>
+          </div>
+        </form>
       </div>
-      <div>
-        <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">
-          {t('client_form_password')} {initial ? `(${t('client_form_password_hint')})` : '(min 12)'}
-        </label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">
-          {t('client_form_subdomain')} {initial && (lang === 'uz' ? '(o‘zgarmaydi)' : '(не изменяется)')}
-        </label>
-        <input
-          type="text"
-          value={subdomain}
-          onChange={(e) => setSubdomain(e.target.value)}
-          disabled={!!initial}
-          className="w-full p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-400"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">Base Domain</label>
-        <select
-          value={baseDomain}
-          onChange={(e) => setBaseDomain(e.target.value)}
-          disabled={!!initial}
-          className="w-full p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-400"
-        >
-          <option value="amocrm.ru">amocrm.ru</option>
-          <option value="kommo.com">kommo.com</option>
-        </select>
-      </div>
-      <div className="col-span-2">
-        <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">
-          {t('client_form_token')}
-        </label>
-        <input
-          type="password"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          placeholder={initial ? t('client_form_password_hint') : ''}
-          className="w-full p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">
-          {lang === 'uz' ? 'Token muddati tugashi' : 'Истечение токена'}
-        </label>
-        <input
-          type="date"
-          value={tokenExpiresAt}
-          onChange={(e) => setTokenExpiresAt(e.target.value)}
-          className="w-full p-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-        />
-      </div>
-      <div className="col-span-2 flex gap-2 pt-2">
-        <button
-          type="submit"
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium transition-colors cursor-pointer"
-        >
-          {t('save')}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-        >
-          {t('cancel')}
-        </button>
-      </div>
-    </form>
+    </div>
   );
 }
