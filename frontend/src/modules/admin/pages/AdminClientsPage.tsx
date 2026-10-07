@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { adminApi } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { Bell, Play, Square, Eye, Settings, Trash2, Bot, RefreshCw } from 'lucide-react';
+import { Bell, Play, Square, Eye, Settings, Trash2, Bot, RefreshCw, PauseCircle, Activity } from 'lucide-react';
 import AiSettingsModal from '@/components/AiSettingsModal';
 
 export default function AdminClientsPage() {
@@ -80,15 +80,33 @@ export default function AdminClientsPage() {
       </header>
 
       <main className="p-6 max-w-7xl mx-auto">
-        <button
-          onClick={() => {
-            setEditId(null);
-            setShowForm(true);
-          }}
-          className="mb-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium transition-colors cursor-pointer"
-        >
-          {t('add_client')}
-        </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <button
+            onClick={() => {
+              setEditId(null);
+              setShowForm(true);
+            }}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium transition-colors cursor-pointer shadow-xs"
+          >
+            {t('add_client')}
+          </button>
+
+          {accounts.data && accounts.data.length > 0 && (
+            <div className="flex items-center gap-2.5 text-xs font-semibold">
+              <span className="px-3 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800 flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                {lang === 'uz' ? 'Faol:' : 'Активно:'} {accounts.data.filter((a: any) => a.syncStatus !== 'stopped' && a.status !== 'disconnected').length}
+              </span>
+              <span className="px-3 py-1 rounded-lg bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300 border border-rose-300/80 dark:border-rose-800 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-500" />
+                {lang === 'uz' ? 'To‘xtatilgan (Стоп):' : 'В стопе:'} {accounts.data.filter((a: any) => a.syncStatus === 'stopped' || a.status === 'disconnected').length}
+              </span>
+            </div>
+          )}
+        </div>
 
         {(showForm || editId) && (
           <AccountForm
@@ -118,81 +136,115 @@ export default function AdminClientsPage() {
               </tr>
             </thead>
             <tbody>
-              {accounts.data?.map((a) => (
-                <tr
-                  key={a.id}
-                  className="border-t border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
-                >
-                  <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{a.users?.[0]?.email}</td>
-                  <td className="p-3 text-slate-700 dark:text-slate-300">{a.subdomain}</td>
-                  <td className="p-3 text-slate-600 dark:text-slate-400 font-mono text-xs">
-                    {a.externalAccountId?.toString()}
-                  </td>
-                  <td className="p-3">
-                    <span
-                      className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        a.tokenStatus === 'active'
-                          ? 'bg-green-100 dark:bg-green-950/70 text-green-800 dark:text-green-300 border border-transparent dark:border-green-800/50'
-                          : 'bg-red-100 dark:bg-red-950/70 text-red-800 dark:text-red-300 border border-transparent dark:border-red-800/50'
-                      }`}
-                    >
-                      {a.tokenStatus}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <span
-                      className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        a.backfillStatus === 'done'
-                          ? 'bg-green-100 dark:bg-green-950/70 text-green-800 dark:text-green-300 border border-transparent dark:border-green-800/50'
-                          : a.backfillStatus === 'failed'
-                          ? 'bg-red-100 dark:bg-red-950/70 text-red-800 dark:text-red-300 border border-transparent dark:border-red-800/50'
-                          : 'bg-yellow-100 dark:bg-yellow-950/70 text-yellow-800 dark:text-yellow-300 border border-transparent dark:border-yellow-800/50'
-                      }`}
-                    >
-                      {a.backfillStatus === 'done'
-                        ? t('backfill_completed')
-                        : a.backfillStatus === 'failed'
-                        ? t('backfill_failed')
-                        : t('backfill_running')}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          if (a.syncStatus === 'stopped') {
-                            startSyncMut.mutate(a.id);
-                          } else {
-                            stopSyncMut.mutate(a.id);
-                          }
-                        }}
-                        disabled={stopSyncMut.isPending || startSyncMut.isPending}
-                        title={a.syncStatus === 'stopped' ? t('start_sync') : t('stop_sync')}
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold shadow-sm transition-colors cursor-pointer ${
-                          a.syncStatus === 'stopped'
-                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                            : 'bg-rose-600 text-white hover:bg-rose-700'
-                        }`}
-                      >
-                        {a.syncStatus === 'stopped' ? (
+              {accounts.data?.map((a) => {
+                const isStopped = a.syncStatus === 'stopped' || a.status === 'disconnected';
+                return (
+                  <tr
+                    key={a.id}
+                    className={`border-t transition-colors ${
+                      isStopped
+                        ? 'bg-rose-50/75 dark:bg-rose-950/30 hover:bg-rose-100/70 dark:hover:bg-rose-950/50 border-rose-200/90 dark:border-rose-900/60'
+                        : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                    }`}
+                  >
+                    <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{a.users?.[0]?.email}</td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-2">
+                        {isStopped ? (
                           <>
-                            <Play size={12} className="fill-current" />
-                            <span>{lang === 'uz' ? 'Boshlash' : 'Старт'}</span>
+                            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-xs shrink-0" />
+                            <span className="font-bold text-rose-700 dark:text-rose-400">{a.subdomain}</span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300/80 dark:border-rose-800 shrink-0">
+                              {lang === 'uz' ? 'To‘xtatilgan' : 'В стопе'}
+                            </span>
                           </>
                         ) : (
                           <>
-                            <Square size={12} className="fill-current" />
-                            <span>{lang === 'uz' ? 'To‘xtatish' : 'Стоп'}</span>
+                            <span className="relative flex h-2.5 w-2.5 shrink-0">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                            </span>
+                            <span className="font-bold text-slate-900 dark:text-slate-100">{a.subdomain}</span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800 shrink-0">
+                              {lang === 'uz' ? 'Faol' : 'Активен'}
+                            </span>
                           </>
                         )}
-                      </button>
-                      <span className="text-xs text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {a.lastSyncedAt
-                          ? new Date(a.lastSyncedAt).toLocaleString(lang === 'uz' ? 'uz-UZ' : 'ru-RU')
-                          : '—'}
+                      </div>
+                    </td>
+                    <td className="p-3 text-slate-600 dark:text-slate-400 font-mono text-xs">
+                      {a.externalAccountId?.toString()}
+                    </td>
+                    <td className="p-3">
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          a.tokenStatus === 'active'
+                            ? 'bg-green-100 dark:bg-green-950/70 text-green-800 dark:text-green-300 border border-transparent dark:border-green-800/50'
+                            : 'bg-red-100 dark:bg-red-950/70 text-red-800 dark:text-red-300 border border-transparent dark:border-red-800/50'
+                        }`}
+                      >
+                        {a.tokenStatus}
                       </span>
-                    </div>
-                  </td>
+                    </td>
+                    <td className="p-3">
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          a.backfillStatus === 'done'
+                            ? 'bg-green-100 dark:bg-green-950/70 text-green-800 dark:text-green-300 border border-transparent dark:border-green-800/50'
+                            : a.backfillStatus === 'failed'
+                            ? 'bg-red-100 dark:bg-red-950/70 text-red-800 dark:text-red-300 border border-transparent dark:border-red-800/50'
+                            : 'bg-yellow-100 dark:bg-yellow-950/70 text-yellow-800 dark:text-yellow-300 border border-transparent dark:border-yellow-800/50'
+                        }`}
+                      >
+                        {a.backfillStatus === 'done'
+                          ? t('backfill_completed')
+                          : a.backfillStatus === 'failed'
+                          ? t('backfill_failed')
+                          : t('backfill_running')}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isStopped ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                              <PauseCircle size={13} />
+                              <span>{lang === 'uz' ? 'To‘xtatilgan' : 'В стопе'}</span>
+                            </span>
+                            <button
+                              onClick={() => startSyncMut.mutate(a.id)}
+                              disabled={startSyncMut.isPending || stopSyncMut.isPending}
+                              title={t('start_sync')}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold shadow-xs transition-colors cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                              <Play size={12} className="fill-current" />
+                              <span>{lang === 'uz' ? 'Boshlash' : 'Старт'}</span>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                              <Activity size={13} className="text-emerald-600 animate-pulse" />
+                              <span>{lang === 'uz' ? 'Faol' : 'Активен'}</span>
+                            </span>
+                            <button
+                              onClick={() => stopSyncMut.mutate(a.id)}
+                              disabled={stopSyncMut.isPending || startSyncMut.isPending}
+                              title={t('stop_sync')}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold shadow-xs transition-colors cursor-pointer bg-rose-600 hover:bg-rose-700 text-white"
+                            >
+                              <Square size={12} className="fill-current" />
+                              <span>{lang === 'uz' ? 'To‘xtatish' : 'Стоп'}</span>
+                            </button>
+                          </>
+                        )}
+                        <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                          {a.lastSyncedAt
+                            ? new Date(a.lastSyncedAt).toLocaleString(lang === 'uz' ? 'uz-UZ' : 'ru-RU')
+                            : '—'}
+                        </span>
+                      </div>
+                    </td>
                   <td className="p-3 flex items-center gap-2 flex-wrap">
                     {/* Кнопка Стат. -> Полуквадрат с иконкой Глаз */}
                     <button
@@ -265,8 +317,9 @@ export default function AdminClientsPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
+              );
+            })}
+          </tbody>
           </table>
         </div>
 

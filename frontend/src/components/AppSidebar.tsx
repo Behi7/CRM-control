@@ -189,14 +189,20 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                 onChange={(e) => handleAccountChange(Number(e.target.value))}
                 className="w-full bg-slate-800/90 hover:bg-slate-800 text-slate-100 text-xs font-medium rounded-lg px-2.5 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer truncate"
               >
-                {accounts.map((acc: any) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.subdomain ? `${acc.subdomain}.${acc.baseDomain || 'amocrm.ru'}` : (acc.name || 'Аккаунт')}
-                  </option>
-                ))}
+                {accounts.map((acc: any) => {
+                  const isStopped = acc.syncStatus === 'stopped' || acc.status === 'disconnected';
+                  const baseName = acc.subdomain ? `${acc.subdomain}.${acc.baseDomain || 'amocrm.ru'}` : (acc.name || 'Аккаунт');
+                  const tag = isStopped ? (lang === 'uz' ? ' ⏸ [To‘xtatilgan]' : ' ⏸ [В стопе]') : '';
+                  return (
+                    <option key={acc.id} value={acc.id}>
+                      {baseName}{tag}
+                    </option>
+                  );
+                })}
               </select>
 
               {currentAccObj && (() => {
+                const isAccStopped = currentAccObj.syncStatus === 'stopped' || currentAccObj.status === 'disconnected';
                 const lastSync = currentAccObj.lastSyncedAt;
                 const isStale = !lastSync || (Date.now() - new Date(lastSync).getTime() > 30 * 60 * 1000);
                 const syncDateStr = lastSync
@@ -205,15 +211,28 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                 return (
                   <div
                     className={`mt-2.5 p-2.5 rounded-xl text-[11px] leading-snug border ${
-                      isStale
+                      isAccStopped
+                        ? 'bg-rose-500/10 text-rose-200 border-rose-500/30'
+                        : isStale
                         ? 'bg-yellow-500/10 text-yellow-200 border-yellow-500/30'
                         : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/30'
                     }`}
                   >
-                    <div className="font-semibold">
-                      {isStale
-                        ? (lang === 'uz' ? "⚠️ Ma'lumotlar eskirgan." : '⚠️ Данные устарели.')
-                        : (lang === 'uz' ? '✓ Maʼlumotlar yangi' : '✓ Данные актуальны')}
+                    <div className="font-semibold flex items-center gap-1.5">
+                      {isAccStopped ? (
+                        <>
+                          <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                          <span>{lang === 'uz' ? '⚠️ Sinxronizatsiya to‘xtatilgan' : '⚠️ Синхронизация в стопе'}</span>
+                        </>
+                      ) : isStale ? (
+                        <>
+                          <span>{lang === 'uz' ? "⚠️ Ma'lumotlar eskirgan." : '⚠️ Данные устарели.'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>{lang === 'uz' ? '✓ Maʼlumotlar yangi' : '✓ Данные актуальны'}</span>
+                        </>
+                      )}
                     </div>
                     <div className="mt-0.5 text-[10px] opacity-90">
                       {lang === 'uz' ? 'Oxirgi sinxronizatsiya: ' : 'Последняя синхронизация: '}
