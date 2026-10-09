@@ -53,10 +53,11 @@ def decrypt_token(encrypted_json: str) -> str:
         aesgcm = AESGCM(_AES_KEY)
         dec = aesgcm.decrypt(nonce, ciphertext + auth_tag, None)
         return dec.decode('utf-8')
-    except Exception as e:
+    except Exception:
+        # Prevent leaking sensitive internal exception details to clients
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Token decryption failed: {str(e)}"
+            detail="Token decryption failed"
         )
 
 def hash_password(password: str) -> str:
