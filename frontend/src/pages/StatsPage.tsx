@@ -127,6 +127,7 @@ export default function StatsPage() {
             filters={filters}
             modelName={aiStatus.data?.model}
             isAiEnabled={aiStatus.data?.enabled}
+            pipelines={pipelines}
           />
         )}
       </div>

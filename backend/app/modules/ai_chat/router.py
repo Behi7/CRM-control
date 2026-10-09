@@ -5,7 +5,7 @@ from sqlalchemy import text
 import httpx
 from app.core.database import sync_engine
 from app.core.security import get_current_user, decrypt_token
-from app.modules.analytics.stages import get_stages_stats
+from app.modules.analytics.stages import get_stages_stats, get_all_pipelines_stages_stats
 from app.modules.analytics.common import format_duration
 
 router = APIRouter(tags=["AI Chat & Predictions"])
@@ -16,6 +16,7 @@ class AiChatBody(BaseModel):
     filters: Optional[dict] = None
     biData: Optional[dict] = None
     biSelectedBlocks: Optional[list[str]] = None
+    stagePipelineChoice: Optional[Any] = None
     history: Optional[list[dict]] = None
     lang: Optional[str] = "ru"
 
@@ -88,21 +89,137 @@ async def chat_ai(account_id: int, body: AiChatBody, user: dict = Depends(get_cu
                     f"- Средний чек: {k.get('avgCheck')}, Конверсия: {k.get('winRateClosed')}%\n"
                 )
 
+            if "time_stages" in selected:
+                filters_dict = body.filters or {}
+                choice = body.stagePipelineChoice
+                if str(choice) == "all":
+                    all_stats = get_all_pipelines_stages_stats(
+                        account_id=account_id,
+                        tag_ids=filters_dict.get("tagIds", []),
+                        status=filters_dict.get("status"),
+                        manager_ids=filters_dict.get("managerIds", []),
+                        date_from=filters_dict.get("dateFrom"),
+                        date_to=filters_dict.get("dateTo"),
+                        user=user,
+                    )
+                    bi_context += "\n[BOSQICHLAR VAQTI (BARCHA VORONKALAR)]:\n" if is_uz else "\n[ВРЕМЯ НА ЭТАПАХ (ВСЕ ВОРОНКИ)]:\n"
+                    for p in all_stats.get("pipelines", []):
+                        bi_context += (
+                            f"\nVoronka: \"{p.get('pipelineName')}\" (O'tgan: {p.get('totalPassedLeads')}, Ishda: {p.get('totalActiveLeads')}):\n"
+                            if is_uz
+                            else f"\nВоронка: \"{p.get('pipelineName')}\" (Пройдено: {p.get('totalPassedLeads')}, В работе: {p.get('totalActiveLeads')}):\n"
+                        )
+                        for s in p.get("items", []):
+                            if s.get("externalId") in ("142", "143"):
+                                continue
+                            dur = format_duration(s.get("avgSecondsActual"), body.lang or "ru")
+                            bi_context += (
+                                f"  - {s.get('name')}: {dur} (Ishda: {s.get('activeLeadsCount')}, O'tdi: {s.get('leadsCount')}, Sakrashlar: {s.get('skipsCount')})\n"
+                                if is_uz
+                                else f"  - {s.get('name')}: {dur} (В работе: {s.get('activeLeadsCount')}, Прошло: {s.get('leadsCount')}, Пропусков: {s.get('skipsCount')})\n"
+                            )
+                else:
+                    target_pipe_id = None
+                    try:
+                        if choice is not None and str(choice).isdigit():
+                            target_pipe_id = int(choice)
+                    except (ValueError, TypeError):
+                        pass
+
+                    if not target_pipe_id and body.pipelineId:
+                        target_pipe_id = body.pipelineId
+
+                    if not target_pipe_id:
+                        first_p = conn.execute(
+                            text("SELECT id FROM pipelines WHERE account_id = :acc_id AND is_archived = false ORDER BY id ASC"),
+                            {"acc_id": account_id}
+                        ).mappings().first()
+                        target_pipe_id = first_p["id"] if first_p else None
+
+                    if target_pipe_id:
+                        p_row = conn.execute(
+                            text("SELECT name FROM pipelines WHERE id = :id AND account_id = :acc_id"),
+                            {"id": target_pipe_id, "acc_id": account_id}
+                        ).mappings().first()
+                        pipe_name = p_row["name"] if p_row else f"ID {target_pipe_id}"
+
+                        stats_res = get_stages_stats(
+                            pipeline_id=target_pipe_id,
+                            tag_ids=filters_dict.get("tagIds", []),
+                            status=filters_dict.get("status"),
+                            manager_ids=filters_dict.get("managerIds", []),
+                            date_from=filters_dict.get("dateFrom"),
+                            date_to=filters_dict.get("dateTo"),
+                            user=user,
+                        )
+                        bi_context += (
+                            f"\n[BOSQICHLAR VAQTI (VORONKA: \"{pipe_name}\")]:\n"
+                            if is_uz
+                            else f"\n[ВРЕМЯ НА ЭТАПАХ (ВОРОНКА: \"{pipe_name}\")]:\n"
+                        )
+                        won_st = stats_res.get("wonStats") or {}
+                        lost_st = stats_res.get("lostStats") or {}
+                        if won_st.get("total", 0) > 0:
+                            bi_context += (
+                                f"  * Yutilgan bitimlar o'rtacha sikli: {won_st.get('avgDays', 0):.1f} kun (Mediana: {won_st.get('medianDays', 0):.1f} kun)\n"
+                                if is_uz
+                                else f"  * Средний цикл успешных сделок: {won_st.get('avgDays', 0):.1f} дн. (Медиана: {won_st.get('medianDays', 0):.1f} дн.)\n"
+                            )
+                        if lost_st.get("total", 0) > 0:
+                            bi_context += (
+                                f"  * Rad etilguncha yashash muddati: {lost_st.get('avgDays', 0):.1f} kun\n"
+                                if is_uz
+                                else f"  * Средний срок жизни до отказа: {lost_st.get('avgDays', 0):.1f} дн.\n"
+                            )
+
+                        bi_context += "  * Bosqichlar vaqti va yuklama:\n" if is_uz else "  * Время и нагрузка по этапам:\n"
+                        for s in stats_res.get("items", []):
+                            if s.get("externalId") in ("142", "143"):
+                                continue
+                            dur = format_duration(s.get("avgSecondsActual"), body.lang or "ru")
+                            bi_context += (
+                                f"    - {s.get('name')}: {dur} (Ishda: {s.get('activeLeadsCount')}, O'tdi: {s.get('leadsCount')}, Sakrashlar: {s.get('skipsCount')})\n"
+                                if is_uz
+                                else f"    - {s.get('name')}: {dur} (В работе: {s.get('activeLeadsCount')}, Прошло: {s.get('leadsCount')}, Пропусков: {s.get('skipsCount')})\n"
+                            )
+
             if "managers" in selected and isinstance(bi.get("managers"), list):
-                bi_context += "\n[2. MENEJERLAR]:\n" if is_uz else "\n[2. РЕЙТИНГ МЕНЕДЖЕРОВ]:\n"
+                bi_context += "\n[MENEJERLAR REYTINGI]:\n" if is_uz else "\n[РЕЙТИНГ МЕНЕДЖЕРОВ]:\n"
                 for m in bi["managers"][:10]:
                     bi_context += f"  * {m.get('managerName')}: Won={m.get('wonLeads')}, WinRate={m.get('winRate')}%, Tushum={m.get('revenue')}\n"
+
+            if "marketing" in selected and isinstance(bi.get("marketing"), dict):
+                mkt = bi["marketing"]
+                utm_list = mkt.get("utmSources") or []
+                if utm_list:
+                    bi_context += "\n[MANBALAR VA MARKETING]:\n" if is_uz else "\n[ИСТОЧНИКИ И МАРКЕТИНГ]:\n"
+                    for u in utm_list[:8]:
+                        bi_context += f"  * {u.get('source')}: Won={u.get('wonLeads')}, Jami={u.get('totalLeads')}, Tushum={u.get('revenue')}\n" if is_uz else f"  * {u.get('source')}: Won={u.get('wonLeads')}, Всего={u.get('totalLeads')}, Выручка={u.get('revenue')}\n"
+
+            if "losses" in selected and isinstance(bi.get("lossesAndLtv"), dict):
+                loss_reasons = bi["lossesAndLtv"].get("lossReasons") or []
+                if loss_reasons:
+                    bi_context += "\n[RAD ETILISH SABABLARI]:\n" if is_uz else "\n[ПРИЧИНЫ ОТКАЗА]:\n"
+                    for lr in loss_reasons[:8]:
+                        bi_context += f"  * {lr.get('reason')}: {lr.get('count')} ta ({lr.get('share')}%), Yo'qotildi={lr.get('droppedValue')}\n" if is_uz else f"  * {lr.get('reason')}: {lr.get('count')} сд. ({lr.get('share')}%), Потери={lr.get('droppedValue')}\n"
+
+            if "risk_deals" in selected and isinstance(bi.get("lossesAndLtv"), dict):
+                risk_list = bi["lossesAndLtv"].get("riskDeals") or []
+                if risk_list:
+                    bi_context += "\n[XAVF ZONASIDAGI BITIMLAR (TOP-10)]:\n" if is_uz else "\n[СДЕЛКИ В ЗОНЕ РИСКА (ТОП-10)]:\n"
+                    for rd in risk_list[:10]:
+                        bi_context += f"  * {rd.get('name')}: Byudjet={rd.get('price')}, Bosqich={rd.get('stageName')}, Mas'ul={rd.get('managerName')}, Harakatsiz={rd.get('idleDays')} kun, Xavf={rd.get('riskType')}\n" if is_uz else f"  * {rd.get('name')}: Бюджет={rd.get('price')}, Этап={rd.get('stageName')}, Ответственный={rd.get('managerName')}, Без движения={rd.get('idleDays')} дн., Риск={rd.get('riskType')}\n"
 
             sys_instruction = (
                 f"Sen — amoCRM bo'yicha yetakchi Biznes-Tahlilchi (BI Analyst)san.\n"
                 f"{f'=== KOMPANIYA ===\n{ai_context}\n\n' if ai_context else ''}"
                 f"{bi_context}\n\n"
-                "Qoidalar:\n1. O'zbek tilida (lotin) javob ber.\n2. Ma'lumot so'rama, barcha raqamlar yuqorida keltirilgan.\n3. ROP uchun 3-4 ta aniq tavsiya ber.\n4. Raqamlarni **qalin** qilib ko'rsat."
+                "Qoidalar:\n1. O'zbek tilida (lotin) javob ber.\n2. Ma'lumot so'rama, barcha raqamlar yuqorida keltirilgan.\n3. ROP uchun 3-4 ta aniq tavsiya ber.\n4. Raqamlarni va bosqichlarni **qalin** qilib ko'rsat."
             ) if is_uz else (
                 f"Ты — ведущий Бизнес-Аналитик (BI Analyst) и эксперт amoCRM.\n"
                 f"{f'=== О КОМПАНИИ ===\n{ai_context}\n\n' if ai_context else ''}"
                 f"{bi_context}\n\n"
-                "Правила:\n1. Отвечай на русском языке.\n2. Не проси данных — все цифры перед тобой.\n3. Дай 3-4 конкретные рекомендации РОПу.\n4. Выделяй важные цифры **жирным**."
+                "Правила:\n1. Отвечай на русском языке.\n2. Не проси данных — все цифры перед тобой.\n3. Дай 3-4 конкретные рекомендации РОПу.\n4. Выделяй важные цифры и этапы **жирным**."
             )
 
             return await execute_gemini_call(clean_model, api_key, sys_instruction, body.history, body.message, is_uz)

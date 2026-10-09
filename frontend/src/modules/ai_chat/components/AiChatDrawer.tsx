@@ -11,6 +11,7 @@ import {
   TrendingDown,
   AlertTriangle,
   Lightbulb,
+  Clock,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -32,10 +33,12 @@ interface AiChatDrawerProps {
   biData?: any;
   activeBiTab?: string;
   variant?: 'overlay' | 'docked';
+  pipelines?: Array<{ id: number; name: string }>;
 }
 
 const BI_AVAILABLE_BLOCKS = [
   { id: 'overview', label: 'Обзор', labelUz: 'Umumiy' },
+  { id: 'time_stages', label: 'Время на этапах', labelUz: 'Bosqichlar vaqti' },
   { id: 'managers', label: 'Менеджеры', labelUz: 'Menejerlar' },
   { id: 'marketing', label: 'Источники', labelUz: 'Manbalar' },
   { id: 'losses', label: 'Отказы', labelUz: 'Rad etishlar' },
@@ -44,6 +47,7 @@ const BI_AVAILABLE_BLOCKS = [
 ];
 
 function tabToBlockId(tab?: string): string {
+  if (tab === 'time_stages') return 'time_stages';
   if (tab === 'managers') return 'managers';
   if (tab === 'marketing') return 'marketing';
   if (tab === 'losses_ltv') return 'losses';
@@ -142,9 +146,20 @@ export default function AiChatDrawer({
   biData,
   activeBiTab,
   variant = 'overlay',
+  pipelines = [],
 }: AiChatDrawerProps) {
   const { lang, t } = useLanguage();
   const [input, setInput] = useState('');
+
+  const [selectedPipelineForStages, setSelectedPipelineForStages] = useState<number | 'all'>(() => {
+    return pipelineId || 'all';
+  });
+
+  useEffect(() => {
+    if (pipelineId) {
+      setSelectedPipelineForStages(pipelineId);
+    }
+  }, [pipelineId]);
 
   const storageKey = biData
     ? `amocrm_ai_chat_bi_${accountId}`
@@ -234,10 +249,12 @@ export default function AiChatDrawer({
         .filter((m) => m.id !== 'welcome')
         .map((m) => ({ role: m.role, text: m.text }));
 
+      const targetPipeId = selectedPipelineForStages !== 'all' ? selectedPipelineForStages : (pipelineId || undefined);
       return userApi.sendAiChat(accountId, {
         message: userText,
         history,
-        pipelineId: pipelineId || undefined,
+        pipelineId: targetPipeId,
+        stagePipelineChoice: selectedPipelineForStages,
         filters: filters,
         lang,
         biData: biData || undefined,
@@ -289,6 +306,11 @@ export default function AiChatDrawer({
 
   const quickPrompts = biData
     ? [
+        {
+          icon: Clock,
+          label: lang === 'uz' ? 'Tor joylar va bosqichlar' : 'Узкие места на этапах',
+          query: lang === 'uz' ? 'Bosqichlar vaqtini tahlil qil va eng katta tor joylar (затык) qayerdaligini ko‘rsat' : 'Проанализируй время на этапах и покажи, где самые сильные узкие места (затыки) и почему сделки тормозят',
+        },
         {
           icon: Lightbulb,
           label: lang === 'uz' ? 'Ko‘rsatkichlar auditi' : 'Аудит показателей',
@@ -439,6 +461,28 @@ export default function AiChatDrawer({
                   );
                 })}
               </div>
+
+              {/* Option A: Pipeline Selector when 'time_stages' is selected */}
+              {selectedBiBlocks.includes('time_stages') && pipelines && pipelines.length > 0 && (
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 font-medium">
+                    <Clock size={13} className="text-indigo-500 shrink-0" />
+                    <span>{lang === 'uz' ? 'Voronkani tanlang:' : 'Воронка:'}</span>
+                  </div>
+                  <select
+                    value={selectedPipelineForStages}
+                    onChange={(e) => setSelectedPipelineForStages(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-w-[230px] truncate cursor-pointer shadow-2xs"
+                  >
+                    <option value="all">{lang === 'uz' ? 'Barcha voronkalar' : 'Все воронки'}</option>
+                    {pipelines.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           )}
 

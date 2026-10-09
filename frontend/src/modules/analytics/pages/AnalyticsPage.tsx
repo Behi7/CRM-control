@@ -461,6 +461,7 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
               biData={biQuery.data}
               activeBiTab={activeTab}
               variant="docked"
+              pipelines={pipelines}
             />
           </aside>
         )}
@@ -500,6 +501,7 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
             biData={biQuery.data}
             activeBiTab={activeTab}
             variant="overlay"
+            pipelines={pipelines}
           />
         )}
       </div>

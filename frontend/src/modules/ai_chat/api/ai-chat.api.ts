@@ -9,6 +9,7 @@ export interface SendAiChatPayload {
   lang?: 'ru' | 'uz';
   biData?: any;
   biSelectedBlocks?: string[];
+  stagePipelineChoice?: number | 'all';
 }
 
 export const aiChatApi = {
