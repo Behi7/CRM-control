@@ -1,10 +1,12 @@
 import { fmtMoney } from '../../types';
+import { useLanguage } from '../../../../i18n/LanguageContext';
 
 interface ManagersTabProps {
   managers: any[];
 }
 
 export default function ManagersTab({ managers = [] }: ManagersTabProps) {
+  const { lang } = useLanguage();
   const totalDeptRev = Math.max(
     managers.reduce((acc: number, m: any) => acc + (m.revenue || 0), 0),
     1,
@@ -23,10 +25,14 @@ export default function ManagersTab({ managers = [] }: ManagersTabProps) {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Выручка, потенциал в работе и доля в отделе (%)
+                {lang === 'uz'
+                  ? 'Tushum, ishdagi potensial va bo‘limdagi ulush (%)'
+                  : 'Выручка, потенциал в работе и доля в отделе (%)'}
               </h3>
               <p className="text-[11px] text-slate-500">
-                Зелёный — принесённая выручка (Won) • Синий — активный пайплайн в работе
+                {lang === 'uz'
+                  ? 'Yashil — keltirilgan tushum (Won) • Ko‘k — ishdagi faol payplayn'
+                  : 'Зелёный — принесённая выручка (Won) • Синий — активный пайплайн в работе'}
               </p>
             </div>
           </div>
@@ -46,7 +52,7 @@ export default function ManagersTab({ managers = [] }: ManagersTabProps) {
                         {fmtMoney(m.revenue)}
                       </span>
                       <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
-                        {revShare}% отдела
+                        {revShare}% {lang === 'uz' ? 'bo‘limdan' : 'отдела'}
                       </span>
                     </div>
                   </div>
@@ -54,12 +60,12 @@ export default function ManagersTab({ managers = [] }: ManagersTabProps) {
                     <div
                       style={{ width: `${wonW}%` }}
                       className="bg-emerald-500 h-full"
-                      title={`Выручка: ${fmtMoney(m.revenue)}`}
+                      title={`${lang === 'uz' ? 'Tushum' : 'Выручка'}: ${fmtMoney(m.revenue)}`}
                     />
                     <div
                       style={{ width: `${openW}%` }}
                       className="bg-blue-500 h-full"
-                      title={`В работе: ${fmtMoney(m.openValue)}`}
+                      title={`${lang === 'uz' ? 'Ishda' : 'В работе'}: ${fmtMoney(m.openValue)}`}
                     />
                   </div>
                 </div>
@@ -72,10 +78,14 @@ export default function ManagersTab({ managers = [] }: ManagersTabProps) {
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              Индикатор дисциплины открытых сделок (100% шкала здоровья)
+              {lang === 'uz'
+                ? 'Ochiq bitimlar intizomi indikatori (100% salomatlik shkalasi)'
+                : 'Индикатор дисциплины открытых сделок (100% шкала здоровья)'}
             </h3>
             <p className="text-[11px] text-slate-500">
-              Зелёный: задача поставлена вовремя • Оранжевый: без задач • Красный: задача просрочена
+              {lang === 'uz'
+                ? 'Yashil: vazifa o‘z vaqtida • To‘q sariq: vazifasiz • Qizil: muddati o‘tgan'
+                : 'Зелёный: задача поставлена вовремя • Оранжевый: без задач • Красный: задача просрочена'}
             </p>
           </div>
           <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
@@ -96,12 +106,22 @@ export default function ManagersTab({ managers = [] }: ManagersTabProps) {
                   <div key={`disc-${m.managerId}`} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[180px]">
-                        {m.managerName} <span className="text-slate-400 font-normal">({m.openLeads} откр.)</span>
+                        {m.managerName} <span className="text-slate-400 font-normal">({m.openLeads} {lang === 'uz' ? 'ochiq' : 'откр.'})</span>
                       </span>
                       <div className="flex items-center gap-2 text-[11px]">
-                        <span className="text-emerald-600 font-semibold">Норма: {healthyPct}%</span>
-                        {noTask > 0 && <span className="text-orange-500 font-semibold">Без задач: {noTaskPct}%</span>}
-                        {overdue > 0 && <span className="text-rose-500 font-semibold">Просроч.: {overduePct}%</span>}
+                        <span className="text-emerald-600 font-semibold">
+                          {lang === 'uz' ? 'Me’yor' : 'Норма'}: {healthyPct}%
+                        </span>
+                        {noTask > 0 && (
+                          <span className="text-orange-500 font-semibold">
+                            {lang === 'uz' ? 'Vazifasiz' : 'Без задач'}: {noTaskPct}%
+                          </span>
+                        )}
+                        {overdue > 0 && (
+                          <span className="text-rose-500 font-semibold">
+                            {lang === 'uz' ? 'Muddati o‘tgan' : 'Просроч.'}: {overduePct}%
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
@@ -119,10 +139,14 @@ export default function ManagersTab({ managers = [] }: ManagersTabProps) {
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
         <div>
           <h2 className="text-base font-bold text-slate-900 dark:text-white">
-            Рейтинг эффективности и CRM-дисциплины менеджеров отдела продаж
+            {lang === 'uz'
+              ? 'Savdo bo‘limi menejerlarining samaradorlik va CRM-intizom reytingi'
+              : 'Рейтинг эффективности и CRM-дисциплины менеджеров отдела продаж'}
           </h2>
           <p className="text-xs text-slate-500">
-            Сравнение менеджеров по выручке, конверсии, среднему чеку, скорости закрытия сделок и наличию забытых клиентов без задач
+            {lang === 'uz'
+              ? 'Menejerlarni tushum, konversiya, o‘rtacha chek, bitimlarni yopish tezligi va vazifasiz unutilgan mijozlar bo‘yicha taqqoslash'
+              : 'Сравнение менеджеров по выручке, конверсии, среднему чеку, скорости закрытия сделок и наличию забытых клиентов без задач'}
           </p>
         </div>
 
@@ -130,18 +154,18 @@ export default function ManagersTab({ managers = [] }: ManagersTabProps) {
           <table className="w-full text-xs">
             <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
               <tr>
-                <th className="p-3 text-left">Менеджер</th>
-                <th className="p-3 text-right">Всего сделок</th>
-                <th className="p-3 text-right">Успешно (Won)</th>
-                <th className="p-3 text-right">Отказ (Lost)</th>
-                <th className="p-3 text-right">В работе</th>
+                <th className="p-3 text-left">{lang === 'uz' ? 'Menejer' : 'Менеджер'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Jami bitimlar' : 'Всего сделок'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Yutilgan (Won)' : 'Успешно (Won)'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Rad (Lost)' : 'Отказ (Lost)'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Ishda' : 'В работе'}</th>
                 <th className="p-3 text-right">Win Rate</th>
-                <th className="p-3 text-right">Выручка (Won)</th>
-                <th className="p-3 text-right">Средний чек</th>
-                <th className="p-3 text-right">Цикл (дн.)</th>
-                <th className="p-3 text-right text-orange-600 dark:text-orange-400">Без задач</th>
-                <th className="p-3 text-right text-rose-600 dark:text-rose-400">Просрочено</th>
-                <th className="p-3 text-right">Пропуски этапов</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Tushum (Won)' : 'Выручка (Won)'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'O‘rtacha chek' : 'Средний чек'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Sikl (kun)' : 'Цикл (дн.)'}</th>
+                <th className="p-3 text-right text-orange-600 dark:text-orange-400">{lang === 'uz' ? 'Vazifasiz' : 'Без задач'}</th>
+                <th className="p-3 text-right text-rose-600 dark:text-rose-400">{lang === 'uz' ? 'Muddati o‘tgan' : 'Просрочено'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Bosqich sakrashlari' : 'Пропуски этапов'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -166,7 +190,7 @@ export default function ManagersTab({ managers = [] }: ManagersTabProps) {
                     {fmtMoney(m.revenue)}
                   </td>
                   <td className="p-3 text-right">{fmtMoney(m.avgCheck)}</td>
-                  <td className="p-3 text-right">{m.avgCycleDays} дн.</td>
+                  <td className="p-3 text-right">{m.avgCycleDays} {lang === 'uz' ? 'kun' : 'дн.'}</td>
                   <td className="p-3 text-right font-semibold text-orange-600 dark:text-orange-400">
                     {m.noTaskLeads}
                   </td>

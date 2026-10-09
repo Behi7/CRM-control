@@ -36,7 +36,7 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
       const y = String(p.period || '').slice(0, 4);
       if (!y) continue;
       const prev = byYearMap.get(y) || {
-        period: `${y} г.`,
+        period: `${y} ${lang === 'uz' ? 'y.' : 'г.'}`,
         totalLeads: 0,
         wonLeads: 0,
         lostLeads: 0,
@@ -130,9 +130,9 @@ export default function MountainChart({ timeseries = [] }: MountainChartProps) {
 
   const fmtCompact = (v: number) => {
     if (mountainMode === 'money') {
-      if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)} млрд`;
-      if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)} млн`;
-      if (v >= 1_000) return `${Math.round(v / 1_000)} тыс`;
+      if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)} ${lang === 'uz' ? 'mlrd' : 'млрд'}`;
+      if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)} ${lang === 'uz' ? 'mln' : 'млн'}`;
+      if (v >= 1_000) return `${Math.round(v / 1_000)} ${lang === 'uz' ? 'ming' : 'тыс'}`;
     }
     return fmtCount(v);
   };

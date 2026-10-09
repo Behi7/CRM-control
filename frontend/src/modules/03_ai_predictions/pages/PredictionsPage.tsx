@@ -1,6 +1,9 @@
 import { Sparkles, BrainCircuit, TrendingUp, ShieldAlert } from 'lucide-react';
+import { useLanguage } from '@/i18n/LanguageContext';
 
 export default function PredictionsPage() {
+  const { lang } = useLanguage();
+
   return (
     <div className="p-4 lg:p-6 mx-auto max-w-[1920px] space-y-6">
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs">
@@ -10,10 +13,14 @@ export default function PredictionsPage() {
           </div>
           <div>
             <h1 className="text-xl lg:text-2xl font-bold text-slate-900 dark:text-white">
-              AI-Прогнозы и Предиктивная аналитика (Модуль 03)
+              {lang === 'uz'
+                ? 'AI-Prognozlar va Prediktiv tahlil (Modul 03)'
+                : 'AI-Прогнозы и Предиктивная аналитика (Модуль 03)'}
             </h1>
             <p className="text-xs text-slate-500 mt-1">
-              Машинное обучение для прогнозирования закрытия сделок, оттока клиентов и выполнения плана продаж
+              {lang === 'uz'
+                ? 'Bitimlarni yopish, mijozlar ketishi va sotuv rejasini bajarishni bashorat qilish uchun mashinali o‘rganish'
+                : 'Машинное обучение для прогнозирования закрытия сделок, оттока клиентов и выполнения плана продаж'}
             </p>
           </div>
         </div>
@@ -22,31 +29,43 @@ export default function PredictionsPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span className="font-semibold">Прогноз выручки (ML)</span>
+            <span className="font-semibold">
+              {lang === 'uz' ? 'Tushum prognozi (ML)' : 'Прогноз выручки (ML)'}
+            </span>
             <TrendingUp size={18} className="text-indigo-500" />
           </div>
           <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
-            Предиктивная модель вероятности закрытия открытых сделок на основе исторических циклов и динамики этапов.
+            {lang === 'uz'
+              ? 'Tarixiy sikllar va bosqichlar dinamikasi asosida ochiq bitimlarning yopilish ehtimoli prediktiv modeli.'
+              : 'Предиктивная модель вероятности закрытия открытых сделок на основе исторических циклов и динамики этапов.'}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span className="font-semibold">Скоринг оттока и рисков</span>
+            <span className="font-semibold">
+              {lang === 'uz' ? 'Chiqib ketish va xavflar skoringi' : 'Скоринг оттока и рисков'}
+            </span>
             <ShieldAlert size={18} className="text-rose-500" />
           </div>
           <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
-            Автоматическое выявление сделок с высоким риском срыва и рекомендации менеджерам.
+            {lang === 'uz'
+              ? 'Bitimlarning barbod bo‘lish xavfini avtomatik aniqlash va menejerlar uchun tavsiyalar.'
+              : 'Автоматическое выявление сделок с высоким риском срыва и рекомендации менеджерам.'}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span className="font-semibold">ИИ Рекомендации</span>
+            <span className="font-semibold">
+              {lang === 'uz' ? 'AI Tavsiyalari' : 'ИИ Рекомендации'}
+            </span>
             <Sparkles size={18} className="text-amber-500" />
           </div>
           <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
-            Интеллектуальные подсказки по следующим шагам для ускорения закрытия сделок.
+            {lang === 'uz'
+              ? 'Bitimlarni yopishni tezlashtirish uchun keyingi qadamlar bo‘yicha intellektual maslahatlar.'
+              : 'Интеллектуальные подсказки по следующим шагам для ускорения закрытия сделок.'}
           </div>
         </div>
       </div>

@@ -35,12 +35,12 @@ interface AiChatDrawerProps {
 }
 
 const BI_AVAILABLE_BLOCKS = [
-  { id: 'overview', label: 'Обзор' },
-  { id: 'managers', label: 'Менеджеры' },
-  { id: 'marketing', label: 'Источники' },
-  { id: 'losses', label: 'Отказы' },
-  { id: 'custom_fields', label: 'Списки' },
-  { id: 'risk_deals', label: 'Зона риска' },
+  { id: 'overview', label: 'Обзор', labelUz: 'Umumiy' },
+  { id: 'managers', label: 'Менеджеры', labelUz: 'Menejerlar' },
+  { id: 'marketing', label: 'Источники', labelUz: 'Manbalar' },
+  { id: 'losses', label: 'Отказы', labelUz: 'Rad etishlar' },
+  { id: 'custom_fields', label: 'Списки', labelUz: 'Maydonlar' },
+  { id: 'risk_deals', label: 'Зона риска', labelUz: 'Xavf zonasi' },
 ];
 
 function tabToBlockId(tab?: string): string {
@@ -291,18 +291,18 @@ export default function AiChatDrawer({
     ? [
         {
           icon: Lightbulb,
-          label: 'Аудит показателей',
-          query: 'Проведи аудит текущих показателей и воронки продаж',
+          label: lang === 'uz' ? 'Ko‘rsatkichlar auditi' : 'Аудит показателей',
+          query: lang === 'uz' ? 'Joriy ko‘rsatkichlar va savdo voronkasini audit qil' : 'Проведи аудит текущих показателей и воронки продаж',
         },
         {
           icon: AlertTriangle,
-          label: 'Утечки бюджета',
-          query: 'Где мы теряем больше всего денег и почему?',
+          label: lang === 'uz' ? 'Byudjet yo‘qotishlari' : 'Утечки бюджета',
+          query: lang === 'uz' ? 'Qayerda eng ko‘p pul yo‘qotyapmiz va nima sababdan?' : 'Где мы теряем больше всего денег и почему?',
         },
         {
           icon: TrendingDown,
-          label: 'Менеджеры и дисциплина',
-          query: 'Оцени работу менеджеров и соблюдение CRM-дисциплины',
+          label: lang === 'uz' ? 'Menejerlar va intizom' : 'Менеджеры и дисциплина',
+          query: lang === 'uz' ? 'Menejerlar ishi va CRM intizomini tahlil qil' : 'Оцени работу менеджеров и соблюдение CRM-дисциплины',
         },
       ]
     : [
@@ -373,7 +373,7 @@ export default function AiChatDrawer({
           </button>
           <button
             onClick={onClose}
-            title={variant === 'docked' ? 'Свернуть панель ИИ' : undefined}
+            title={variant === 'docked' ? (lang === 'uz' ? 'AI panelini yopish' : 'Свернуть панель ИИ') : undefined}
             className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
           >
             <X size={20} />
@@ -394,7 +394,7 @@ export default function AiChatDrawer({
             <div className="bg-white dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 p-3 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-slate-700 dark:text-slate-200">
-                  Контекст экрана для ИИ:
+                  {lang === 'uz' ? 'AI uchun ekran konteksti:' : 'Контекст экрана для ИИ:'}
                 </span>
                 <button
                   type="button"
@@ -407,7 +407,9 @@ export default function AiChatDrawer({
                   }}
                   className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
                 >
-                  {selectedBiBlocks.length === BI_AVAILABLE_BLOCKS.length ? 'Сбросить к текущей' : '⚡ Выбрать всё'}
+                  {selectedBiBlocks.length === BI_AVAILABLE_BLOCKS.length
+                    ? (lang === 'uz' ? 'Joriyga qaytarish' : 'Сбросить к текущей')
+                    : (lang === 'uz' ? '⚡ Hammasini tanlash' : '⚡ Выбрать всё')}
                 </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -432,7 +434,7 @@ export default function AiChatDrawer({
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
                       }`}
                     >
-                      {active ? '✓ ' : '+ '} {block.label}
+                      {active ? '✓ ' : '+ '} {lang === 'uz' ? block.labelUz : block.label}
                     </button>
                   );
                 })}

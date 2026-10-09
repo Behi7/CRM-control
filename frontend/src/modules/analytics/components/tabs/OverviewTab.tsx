@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import MountainChart from '../charts/MountainChart';
 import { fmtCount, fmtMoney } from '../../types';
+import { useLanguage } from '../../../../i18n/LanguageContext';
 
 interface OverviewTabProps {
   kpis: {
@@ -43,6 +44,7 @@ interface OverviewTabProps {
 }
 
 export default function OverviewTab({ kpis, timeseries = [], lossesAndLtv }: OverviewTabProps) {
+  const { lang } = useLanguage();
   if (!kpis) return null;
 
   const totalPortfolio = (kpis.totalRevenue || 0) + (kpis.openPipelineValue || 0) + (kpis.lostRevenue || 0);
@@ -66,105 +68,137 @@ export default function OverviewTab({ kpis, timeseries = [], lossesAndLtv }: Ove
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
-            <span>Выручка (Успешно реализовано)</span>
+            <span>{lang === 'uz' ? 'Tushum (Muvaffaqiyatli yutilgan)' : 'Выручка (Успешно реализовано)'}</span>
             <CheckCircle2 size={18} className="text-emerald-500" />
           </div>
           <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
             {fmtMoney(kpis.totalRevenue)}
           </div>
           <div className="text-xs text-slate-500 mt-1.5">
-            Продаж: <strong>{kpis.wonLeads}</strong> из {kpis.totalLeads} сделок
+            {lang === 'uz' ? (
+              <>Sotuv: <strong>{kpis.wonLeads}</strong> / {kpis.totalLeads} bitim</>
+            ) : (
+              <>Продаж: <strong>{kpis.wonLeads}</strong> из {kpis.totalLeads} сделок</>
+            )}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
-            <span>Потенциал в работе (Open Pipeline)</span>
+            <span>{lang === 'uz' ? 'Ishdagi potensial (Open Pipeline)' : 'Потенциал в работе (Open Pipeline)'}</span>
             <TrendingUp size={18} className="text-blue-500" />
           </div>
           <div className="text-2xl font-extrabold text-blue-600 dark:text-blue-400">
             {fmtMoney(kpis.openPipelineValue)}
           </div>
           <div className="text-xs text-slate-500 mt-1.5">
-            Активных сделок сейчас: <strong>{kpis.openLeads}</strong>
+            {lang === 'uz' ? (
+              <>Hozirgi faol bitimlar: <strong>{kpis.openLeads}</strong></>
+            ) : (
+              <>Активных сделок сейчас: <strong>{kpis.openLeads}</strong></>
+            )}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
-            <span>Упущенная выручка (Закрыто в отказ)</span>
+            <span>{lang === 'uz' ? 'Boy berilgan tushum (Rad etilgan)' : 'Упущенная выручка (Закрыто в отказ)'}</span>
             <XCircle size={18} className="text-rose-500" />
           </div>
           <div className="text-2xl font-extrabold text-rose-600 dark:text-rose-400">
             {fmtMoney(kpis.lostRevenue)}
           </div>
           <div className="text-xs text-slate-500 mt-1.5">
-            Потерянных сделок: <strong>{kpis.lostLeads}</strong>
+            {lang === 'uz' ? (
+              <>Boy berilgan bitimlar: <strong>{kpis.lostLeads}</strong></>
+            ) : (
+              <>Потерянных сделок: <strong>{kpis.lostLeads}</strong></>
+            )}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
-            <span>Средний и Медианный чек (AOV)</span>
+            <span>{lang === 'uz' ? 'O‘rtacha va Mediana cheki (AOV)' : 'Средний и Медианный чек (AOV)'}</span>
             <DollarSign size={18} className="text-indigo-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
             {fmtMoney(kpis.avgCheck)}
           </div>
           <div className="text-xs text-slate-500 mt-1.5">
-            Медианный чек: <strong>{fmtMoney(kpis.medianCheck)}</strong>
+            {lang === 'uz' ? (
+              <>Mediana chek: <strong>{fmtMoney(kpis.medianCheck)}</strong></>
+            ) : (
+              <>Медианный чек: <strong>{fmtMoney(kpis.medianCheck)}</strong></>
+            )}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
-            <span>Конверсия в продажу (Win Rate)</span>
+            <span>{lang === 'uz' ? 'Sotuvga konversiya (Win Rate)' : 'Конверсия в продажу (Win Rate)'}</span>
             <Target size={18} className="text-purple-500" />
           </div>
           <div className="text-2xl font-extrabold text-purple-600 dark:text-purple-400">
             {kpis.winRateClosed}%
           </div>
           <div className="text-xs text-slate-500 mt-1.5">
-            От всех созданных лидов: <strong>{kpis.winRateTotal}%</strong>
+            {lang === 'uz' ? (
+              <>Jami yaratilgan lidlardan: <strong>{kpis.winRateTotal}%</strong></>
+            ) : (
+              <>От всех созданных лидов: <strong>{kpis.winRateTotal}%</strong></>
+            )}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
-            <span>Средний цикл сделки (Скорость)</span>
+            <span>{lang === 'uz' ? 'O‘rtacha bitim sikli (Tezlik)' : 'Средний цикл сделки (Скорость)'}</span>
             <Clock size={18} className="text-amber-500" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            {kpis.avgCycleDays} дн.
+            {kpis.avgCycleDays} {lang === 'uz' ? 'kun' : 'дн.'}
           </div>
           <div className="text-xs text-slate-500 mt-1.5">
-            Среднее время до отказа: <strong>{kpis.avgLossDays} дн.</strong>
+            {lang === 'uz' ? (
+              <>Rad etilishgacha o‘rtacha vaqt: <strong>{kpis.avgLossDays} kun</strong></>
+            ) : (
+              <>Среднее время до отказа: <strong>{kpis.avgLossDays} дн.</strong></>
+            )}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
-            <span>Дисциплина CRM (Открытые сделки)</span>
+            <span>{lang === 'uz' ? 'CRM intizomi (Ochiq bitimlar)' : 'Дисциплина CRM (Открытые сделки)'}</span>
             <AlertTriangle size={18} className="text-orange-500" />
           </div>
           <div className="text-2xl font-extrabold text-orange-600 dark:text-orange-400">
-            {kpis.noTaskLeads} без задач
+            {kpis.noTaskLeads} {lang === 'uz' ? 'vazifasiz' : 'без задач'}
           </div>
           <div className="text-xs text-slate-500 mt-1.5">
-            С просроченной задачей: <strong className="text-rose-500">{kpis.overdueTasksLeads}</strong>
+            {lang === 'uz' ? (
+              <>Muddati o‘tgan vazifa bilan: <strong className="text-rose-500">{kpis.overdueTasksLeads}</strong></>
+            ) : (
+              <>С просроченной задачей: <strong className="text-rose-500">{kpis.overdueTasksLeads}</strong></>
+            )}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
-            <span>Клиентская база и LTV</span>
+            <span>{lang === 'uz' ? 'Mijozlar bazasi va LTV' : 'Клиентская база и LTV'}</span>
             <Repeat size={18} className="text-teal-500" />
           </div>
           <div className="text-2xl font-extrabold text-teal-600 dark:text-teal-400">
-            {fmtCount(lossesAndLtv?.ltv?.repeatContacts || 0)} повторных
+            {fmtCount(lossesAndLtv?.ltv?.repeatContacts || 0)} {lang === 'uz' ? 'takroriy' : 'повторных'}
           </div>
           <div className="text-xs text-slate-500 mt-1.5">
-            Всего контактов: <strong>{fmtCount(lossesAndLtv?.ltv?.uniqueContacts || 0)}</strong> ({lossesAndLtv?.ltv?.repeatRatePercent || 0}% Repeat)
+            {lang === 'uz' ? (
+              <>Jami kontaktlar: <strong>{fmtCount(lossesAndLtv?.ltv?.uniqueContacts || 0)}</strong> ({lossesAndLtv?.ltv?.repeatRatePercent || 0}% Repeat)</>
+            ) : (
+              <>Всего контактов: <strong>{fmtCount(lossesAndLtv?.ltv?.uniqueContacts || 0)}</strong> ({lossesAndLtv?.ltv?.repeatRatePercent || 0}% Repeat)</>
+            )}
           </div>
         </div>
       </div>
@@ -193,35 +227,51 @@ export default function OverviewTab({ kpis, timeseries = [], lossesAndLtv }: Ove
 
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Структура портфеля и сделок (%)
+                {lang === 'uz' ? 'Portfel va bitimlar tarkibi (%)' : 'Структура портфеля и сделок (%)'}
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Соотношение выигранного бюджета, активного пайплайна и отказов
+                {lang === 'uz'
+                  ? 'Yutilgan byudjet, faol payplayn va rad etishlar nisbati'
+                  : 'Соотношение выигранного бюджета, активного пайплайна и отказов'}
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3 text-xs">
             <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
-              <div className="text-emerald-600 dark:text-emerald-400 font-bold">Успешно ({wonMoneyPct}%)</div>
+              <div className="text-emerald-600 dark:text-emerald-400 font-bold">
+                {lang === 'uz' ? 'Muvaffaqiyatli' : 'Успешно'} ({wonMoneyPct}%)
+              </div>
               <div className="text-sm font-extrabold text-slate-900 dark:text-white mt-0.5">{fmtMoney(kpis.totalRevenue)}</div>
-              <div className="text-[11px] text-slate-500">{fmtCount(kpis.wonLeads)} сделок ({wonCountPct}%)</div>
+              <div className="text-[11px] text-slate-500">
+                {fmtCount(kpis.wonLeads)} {lang === 'uz' ? 'bitim' : 'сделок'} ({wonCountPct}%)
+              </div>
             </div>
             <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
-              <div className="text-blue-600 dark:text-blue-400 font-bold">В работе ({openMoneyPct}%)</div>
+              <div className="text-blue-600 dark:text-blue-400 font-bold">
+                {lang === 'uz' ? 'Ish jarayonida' : 'В работе'} ({openMoneyPct}%)
+              </div>
               <div className="text-sm font-extrabold text-slate-900 dark:text-white mt-0.5">{fmtMoney(kpis.openPipelineValue)}</div>
-              <div className="text-[11px] text-slate-500">{fmtCount(kpis.openLeads)} сделок ({openCountPct}%)</div>
+              <div className="text-[11px] text-slate-500">
+                {fmtCount(kpis.openLeads)} {lang === 'uz' ? 'bitim' : 'сделок'} ({openCountPct}%)
+              </div>
             </div>
             <div className="p-3 rounded-xl bg-rose-500/5 border border-rose-500/20">
-              <div className="text-rose-600 dark:text-rose-400 font-bold">В отказе ({lostMoneyPct}%)</div>
+              <div className="text-rose-600 dark:text-rose-400 font-bold">
+                {lang === 'uz' ? 'Rad etilgan' : 'В отказе'} ({lostMoneyPct}%)
+              </div>
               <div className="text-sm font-extrabold text-slate-900 dark:text-white mt-0.5">{fmtMoney(kpis.lostRevenue)}</div>
-              <div className="text-[11px] text-slate-500">{fmtCount(kpis.lostLeads)} сделок ({lostCountPct}%)</div>
+              <div className="text-[11px] text-slate-500">
+                {fmtCount(kpis.lostLeads)} {lang === 'uz' ? 'bitim' : 'сделок'} ({lostCountPct}%)
+              </div>
             </div>
           </div>
 
           <div className="space-y-2">
             <div className="flex justify-between text-xs font-medium text-slate-600 dark:text-slate-300">
-              <span>Распределение всех сделок ({fmtCount(kpis.totalLeads)} шт.):</span>
+              <span>
+                {lang === 'uz' ? 'Barcha bitimlar taqsimoti' : 'Распределение всех сделок'} ({fmtCount(kpis.totalLeads)} {lang === 'uz' ? 'ta' : 'шт.'}):
+              </span>
               <span>{wonCountPct}% / {openCountPct}% / {lostCountPct}%</span>
             </div>
             <div className="w-full h-3.5 rounded-full overflow-hidden flex bg-slate-100 dark:bg-slate-800">
@@ -236,21 +286,25 @@ export default function OverviewTab({ kpis, timeseries = [], lossesAndLtv }: Ove
       {/* Monthly / Daily Timeseries Table */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
         <h2 className="text-base font-bold mb-4 text-slate-900 dark:text-white">
-          Динамика лидов, продаж и выручки {timeseries[0]?.period?.length > 7 ? 'по дням' : 'по месяцам'}
+          {lang === 'uz'
+            ? `Lidlar, sotuvlar va tushum dinamikasi (${timeseries[0]?.period?.length > 7 ? 'kunlar bo‘yicha' : 'oylar bo‘yicha'})`
+            : `Динамика лидов, продаж и выручки ${timeseries[0]?.period?.length > 7 ? 'по дням' : 'по месяцам'}`}
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="p-3 text-left rounded-l-lg">
-                  {timeseries[0]?.period?.length > 7 ? 'Период (День)' : 'Период (Месяц)'}
+                  {lang === 'uz'
+                    ? (timeseries[0]?.period?.length > 7 ? 'Davr (Kun)' : 'Davr (Oy)')
+                    : (timeseries[0]?.period?.length > 7 ? 'Период (День)' : 'Период (Месяц)')}
                 </th>
-                <th className="p-3 text-right">Новых сделок</th>
-                <th className="p-3 text-right">Успешно (Won)</th>
-                <th className="p-3 text-right">Отказ (Lost)</th>
-                <th className="p-3 text-right">В работе (Open)</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Yangi bitimlar' : 'Новых сделок'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Yutilgan (Won)' : 'Успешно (Won)'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Rad (Lost)' : 'Отказ (Lost)'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Ishda (Open)' : 'В работе (Open)'}</th>
                 <th className="p-3 text-right">Win Rate</th>
-                <th className="p-3 text-right rounded-r-lg">Выручка (Won)</th>
+                <th className="p-3 text-right rounded-r-lg">{lang === 'uz' ? 'Tushum (Won)' : 'Выручка (Won)'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">

@@ -1,10 +1,12 @@
 import { fmtCount, fmtMoney } from '../../types';
+import { useLanguage } from '../../../../i18n/LanguageContext';
 
 interface LossesTabProps {
   lossReasons: any[];
 }
 
 export default function LossesTab({ lossReasons = [] }: LossesTabProps) {
+  const { lang } = useLanguage();
   const reasons = lossReasons || [];
   const maxLostCount = Math.max(...reasons.map((r: any) => r.lostLeads || 0), 1);
   let cum = 0;
@@ -21,14 +23,18 @@ export default function LossesTab({ lossReasons = [] }: LossesTabProps) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Диаграмма Парето (80/20) по причинам отказа (Свечи потерь + Накопительный %)
+                {lang === 'uz'
+                  ? 'Rad sabablari bo‘yicha Pareto (80/20) diagrammasi (Yo‘qotishlar + Jamlangan %)'
+                  : 'Диаграмма Парето (80/20) по причинам отказа (Свечи потерь + Накопительный %)'}
               </h3>
               <p className="text-[11px] text-slate-500">
-                Столбцы — количество потерянных сделок • Линия сверху — накопительный процент от всех отказов (зона до 80% выделена красным)
+                {lang === 'uz'
+                  ? 'Ustunlar — boy berilgan bitimlar soni • Tepadagi foiz — barcha rad etishlarning jamlangan foizi (80% gacha zona qizil bilan ajratilgan)'
+                  : 'Столбцы — количество потерянных сделок • Линия сверху — накопительный процент от всех отказов (зона до 80% выделена красным)'}
               </p>
             </div>
             <span className="text-xs px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">
-              Зона Парето 80% потерь
+              {lang === 'uz' ? 'Pareto 80% yo‘qotishlar zonasi' : 'Зона Парето 80% потерь'}
             </span>
           </div>
 
@@ -54,7 +60,7 @@ export default function LossesTab({ lossReasons = [] }: LossesTabProps) {
                         ? 'bg-gradient-to-t from-rose-600 to-rose-400 shadow-xs'
                         : 'bg-slate-300 dark:bg-slate-700'
                     }`}
-                    title={`${item.reason}: ${item.lostLeads} сделок (${item.sharePercent}%) | Накопительно: ${item.cumulativePercent}%`}
+                    title={`${item.reason}: ${item.lostLeads} ${lang === 'uz' ? 'bitim' : 'сделок'} (${item.sharePercent}%) | ${lang === 'uz' ? 'Jamlangan' : 'Накопительно'}: ${item.cumulativePercent}%`}
                   />
                   <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 mt-1.5 truncate max-w-[84px] text-center">
                     {item.reason}
@@ -71,25 +77,29 @@ export default function LossesTab({ lossReasons = [] }: LossesTabProps) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              Причины отказа (Почему теряются сделки и бюджет)
+              {lang === 'uz'
+                ? 'Rad etish sabablari (Nima uchun bitimlar va byudjet yo‘qotilmoqda)'
+                : 'Причины отказа (Почему теряются сделки и бюджет)'}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Данные собираются из системной причины отказа AmoCRM и кастомного списочного поля «Rad etish sababi» / «Причина отказа»
+              {lang === 'uz'
+                ? 'Ma’lumotlar AmoCRM tizimli rad etish sababi va «Rad etish sababi» / «Причина отказа» maydonidan olinadi'
+                : 'Данные собираются из системной причины отказа AmoCRM и кастомного списочного поля «Rad etish sababi» / «Причина отказа»'}
             </p>
           </div>
           <span className="text-xs px-3 py-1 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold border border-rose-500/20">
-            Причин отказа: {reasons.length}
+            {lang === 'uz' ? 'Rad sabablari' : 'Причин отказа'}: {reasons.length}
           </span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
               <tr>
-                <th className="p-3 text-left rounded-l-lg">Причина отказа</th>
-                <th className="p-3 text-right">Потеряно сделок</th>
-                <th className="p-3 text-right">Доля от всех отказов %</th>
-                <th className="p-3 text-right">Упущенная сумма</th>
-                <th className="p-3 text-right rounded-r-lg">Средний бюджет отказа</th>
+                <th className="p-3 text-left rounded-l-lg">{lang === 'uz' ? 'Rad etish sababi' : 'Причина отказа'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Boy berilgan bitimlar' : 'Потеряно сделок'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Barcha radlardan ulush %' : 'Доля от всех отказов %'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Boy berilgan summa' : 'Упущенная сумма'}</th>
+                <th className="p-3 text-right rounded-r-lg">{lang === 'uz' ? 'O‘rtacha rad etish byudjeti' : 'Средний бюджет отказа'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -119,7 +129,9 @@ export default function LossesTab({ lossReasons = [] }: LossesTabProps) {
               {reasons.length === 0 && (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-slate-400">
-                    Нет закрытых в отказ сделок за выбранный период
+                    {lang === 'uz'
+                      ? 'Tanlangan davr uchun rad etilgan bitimlar mavjud emas'
+                      : 'Нет закрытых в отказ сделок за выбранный период'}
                   </td>
                 </tr>
               )}

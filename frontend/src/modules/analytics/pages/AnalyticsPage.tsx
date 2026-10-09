@@ -477,7 +477,7 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
             </span>
             <Sparkles size={18} className="text-yellow-300 fill-yellow-300 group-hover:scale-110 transition-transform" />
-            <span className="text-sm">ИИ-Аналитик</span>
+            <span className="text-sm">{lang === 'uz' ? 'AI-Tahlilchi' : 'ИИ-Аналитик'}</span>
           </button>
         )}
 

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { fmtCount, fmtMoney } from '../../types';
+import { useLanguage } from '../../../../i18n/LanguageContext';
 
 interface CustomFieldsTabProps {
   customFieldsLists: any[];
 }
 
 export default function CustomFieldsTab({ customFieldsLists = [] }: CustomFieldsTabProps) {
+  const { lang } = useLanguage();
   const [selectedCustomFieldName, setSelectedCustomFieldName] = useState<string>('ALL');
 
   const listGroups: any[] = customFieldsLists || [];
@@ -21,11 +23,13 @@ export default function CustomFieldsTab({ customFieldsLists = [] }: CustomFields
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              Аналитика по списочным кастомным полям сделок AmoCRM
+              {lang === 'uz'
+                ? 'AmoCRM bitimlarining ro‘yxatli maxsus maydonlari bo‘yicha tahlil'
+                : 'Аналитика по списочным кастомным полям сделок AmoCRM'}
             </h3>
           </div>
           <span className="text-xs px-3 py-1 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold border border-indigo-500/20 whitespace-nowrap">
-            Списочных полей: {listGroups.length}
+            {lang === 'uz' ? 'Ro‘yxatli maydonlar' : 'Списочных полей'}: {listGroups.length}
           </span>
         </div>
 
@@ -40,7 +44,7 @@ export default function CustomFieldsTab({ customFieldsLists = [] }: CustomFields
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            Все списочные поля ({listGroups.length})
+            {lang === 'uz' ? 'Barcha ro‘yxatli maydonlar' : 'Все списочные поля'} ({listGroups.length})
           </button>
           {listGroups.map((g: any) => (
             <button
@@ -71,27 +75,27 @@ export default function CustomFieldsTab({ customFieldsLists = [] }: CustomFields
                 {group.fieldName}
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-400">
-                Вариантов выбора: <strong className="text-slate-800 dark:text-slate-200">{group.optionsCount}</strong>
+                {lang === 'uz' ? 'Tanlov variantlari' : 'Вариантов выбора'}: <strong className="text-slate-800 dark:text-slate-200">{group.optionsCount}</strong>
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-4 text-xs">
               <span className="text-slate-600 dark:text-slate-300">
-                Заполнено сделок: <strong className="text-slate-900 dark:text-white">{fmtCount(group.totalFilled)}</strong>
+                {lang === 'uz' ? 'To‘ldirilgan bitimlar' : 'Заполнено сделок'}: <strong className="text-slate-900 dark:text-white">{fmtCount(group.totalFilled)}</strong>
               </span>
               <span className="text-emerald-600 dark:text-emerald-400">
-                Продаж (Won): <strong>{fmtCount(group.wonFilled)}</strong>
+                {lang === 'uz' ? 'Sotuvlar (Won)' : 'Продаж (Won)'}: <strong>{fmtCount(group.wonFilled)}</strong>
               </span>
               <span className="text-rose-500">
-                Отказ (Lost): <strong>{fmtCount(group.lostFilled)}</strong>
+                {lang === 'uz' ? 'Rad (Lost)' : 'Отказ (Lost)'}: <strong>{fmtCount(group.lostFilled)}</strong>
               </span>
               <span className="text-blue-500">
-                В работе: <strong>{fmtCount(group.openFilled)}</strong>
+                {lang === 'uz' ? 'Ishda' : 'В работе'}: <strong>{fmtCount(group.openFilled)}</strong>
               </span>
               <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-semibold">
-                Win Rate поля: {group.winRate}%
+                {lang === 'uz' ? 'Maydonning Win Rate ko‘rsatkichi' : 'Win Rate поля'}: {group.winRate}%
               </span>
               <span className="font-bold text-slate-900 dark:text-white">
-                Выручка: {fmtMoney(group.wonValue)}
+                {lang === 'uz' ? 'Tushum' : 'Выручка'}: {fmtMoney(group.wonValue)}
               </span>
             </div>
           </div>
@@ -100,17 +104,17 @@ export default function CustomFieldsTab({ customFieldsLists = [] }: CustomFields
             <table className="w-full text-xs">
               <thead className="bg-slate-100 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300 sticky top-0 z-10">
                 <tr>
-                  <th className="p-3 text-left">Выборка (Вариант выбора)</th>
-                  <th className="p-3 text-right">Сделок</th>
-                  <th className="p-3 text-right">Доля в поле %</th>
-                  <th className="p-3 text-right">Продаж (Won)</th>
-                  <th className="p-3 text-right">Отказ (Lost)</th>
-                  <th className="p-3 text-right">В работе</th>
-                  <th className="p-3 text-center">Структура (Won / Open / Lost %)</th>
+                  <th className="p-3 text-left">{lang === 'uz' ? 'Tanlov varianti' : 'Выборка (Вариант выбора)'}</th>
+                  <th className="p-3 text-right">{lang === 'uz' ? 'Bitimlar' : 'Сделок'}</th>
+                  <th className="p-3 text-right">{lang === 'uz' ? 'Maydondagi ulush %' : 'Доля в поле %'}</th>
+                  <th className="p-3 text-right">{lang === 'uz' ? 'Sotuv (Won)' : 'Продаж (Won)'}</th>
+                  <th className="p-3 text-right">{lang === 'uz' ? 'Rad (Lost)' : 'Отказ (Lost)'}</th>
+                  <th className="p-3 text-right">{lang === 'uz' ? 'Ishda' : 'В работе'}</th>
+                  <th className="p-3 text-center">{lang === 'uz' ? 'Tuzilma (Won / Open / Lost %)' : 'Структура (Won / Open / Lost %)'}</th>
                   <th className="p-3 text-right">Win Rate %</th>
-                  <th className="p-3 text-right">Выручка</th>
-                  <th className="p-3 text-right">Средний чек</th>
-                  <th className="p-3 text-right">В работе (Сумма)</th>
+                  <th className="p-3 text-right">{lang === 'uz' ? 'Tushum' : 'Выручка'}</th>
+                  <th className="p-3 text-right">{lang === 'uz' ? 'O‘rtacha chek' : 'Средний чек'}</th>
+                  <th className="p-3 text-right">{lang === 'uz' ? 'Ishda (Summa)' : 'В работе (Сумма)'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -186,7 +190,9 @@ export default function CustomFieldsTab({ customFieldsLists = [] }: CustomFields
 
       {visibleGroups.length === 0 && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-slate-400">
-          Нет данных по списочным кастомным полям за выбранный период
+          {lang === 'uz'
+            ? 'Tanlangan davr uchun ro‘yxatli maydonlar bo‘yicha ma’lumot yo‘q'
+            : 'Нет данных по списочным кастомным полям за выбранный период'}
         </div>
       )}
     </div>

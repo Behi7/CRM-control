@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, ReactNode } from 'react';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { MultiSelectOption } from '../types/filters';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 export interface MultiSelectDropdownProps {
   label: string;
@@ -21,6 +22,7 @@ export default function MultiSelectDropdown({
   prefix = '',
   icon,
 }: MultiSelectDropdownProps) {
+  const { lang } = useLanguage();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -95,7 +97,7 @@ export default function MultiSelectDropdown({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск..."
+              placeholder={lang === 'uz' ? 'Qidirish...' : 'Поиск...'}
               className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs outline-none focus:border-indigo-500 text-slate-800 dark:text-slate-200"
             />
           </div>
@@ -106,7 +108,7 @@ export default function MultiSelectDropdown({
               onClick={selectAllFiltered}
               className="text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
             >
-              Выбрать все ({filtered.length})
+              {lang === 'uz' ? 'Hammasini tanlash' : 'Выбрать все'} ({filtered.length})
             </button>
             {selectedIds.length > 0 && (
               <button
@@ -114,14 +116,16 @@ export default function MultiSelectDropdown({
                 onClick={clearAll}
                 className="text-rose-500 hover:underline cursor-pointer"
               >
-                Сбросить
+                {lang === 'uz' ? 'Tozalash' : 'Сбросить'}
               </button>
             )}
           </div>
 
           <div className="max-h-48 overflow-y-auto space-y-0.5 pr-1">
             {filtered.length === 0 ? (
-              <div className="text-center py-3 text-xs text-slate-400">Ничего не найдено</div>
+              <div className="text-center py-3 text-xs text-slate-400">
+                {lang === 'uz' ? 'Hech narsa topilmadi' : 'Ничего не найдено'}
+              </div>
             ) : (
               filtered.map((item) => {
                 const checked = selectedIds.includes(item.id);

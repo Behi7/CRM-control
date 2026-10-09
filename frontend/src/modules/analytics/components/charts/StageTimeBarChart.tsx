@@ -94,7 +94,7 @@ export default function StageTimeBarChart({ items = [], onStageClick }: StageTim
               key={stage.stageId}
               onClick={() => onStageClick && onStageClick(stage.stageId)}
               className="group p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 hover:border-indigo-400/60 dark:hover:border-indigo-500/60 transition-all cursor-pointer shadow-2xs hover:shadow-xs"
-              title={`${stage.name}: ${formatDuration(stage.avgSecondsActual)} (${stage.activeLeadsCount} в работе, ${stage.leadsCount} прошло)`}
+              title={`${stage.name}: ${formatDuration(stage.avgSecondsActual)} (${stage.activeLeadsCount} ${lang === 'uz' ? 'ishda' : 'в работе'}, ${stage.leadsCount} ${lang === 'uz' ? 'o‘tdi' : 'прошло'})`}
             >
               {/* Stage Title and Badges Row */}
               <div className="flex items-center justify-between gap-2 mb-1.5">

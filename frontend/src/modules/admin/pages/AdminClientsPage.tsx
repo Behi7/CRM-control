@@ -140,7 +140,9 @@ export default function AdminClientsPage() {
                           : 'bg-red-100 dark:bg-red-950/70 text-red-800 dark:text-red-300 border border-transparent dark:border-red-800/50'
                       }`}
                     >
-                      {a.tokenStatus}
+                      {a.tokenStatus === 'active'
+                        ? (lang === 'uz' ? 'faol' : 'активен')
+                        : (lang === 'uz' ? 'faol emas' : 'неактивен')}
                     </span>
                   </td>
                   <td className="p-3">
@@ -405,7 +407,7 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={initial ? '••••••••••••' : 'Пароль для входа'}
+                placeholder={initial ? '••••••••••••' : (lang === 'uz' ? 'Kirish paroli' : 'Пароль для входа')}
                 className="w-full p-2.5 text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               />
             </div>

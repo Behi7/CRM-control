@@ -29,7 +29,7 @@ export default function LeadDetailPage() {
   if (data.isError || !data.data) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-8 flex flex-col items-center justify-center gap-4">
-        <div className="text-red-500 font-medium">{t('error') || 'Не удалось загрузить данные по сделке'}</div>
+        <div className="text-red-500 font-medium">{t('error') || (lang === 'uz' ? 'Bitim ma’lumotlarini yuklab bo‘lmadi' : 'Не удалось загрузить данные по сделке')}</div>
         <button
           onClick={() => nav(-1)}
           className="text-sm text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
@@ -178,7 +178,13 @@ export default function LeadDetailPage() {
                         <td className="p-3 text-slate-700 dark:text-slate-300">{fromStage}</td>
                         <td className="p-3 text-slate-700 dark:text-slate-300">{toStage}</td>
                         <td className="p-3 font-semibold text-amber-600 dark:text-amber-400">{skippedStage}</td>
-                        <td className="p-3 text-slate-700 dark:text-slate-300">{s.direction}</td>
+                        <td className="p-3 text-slate-700 dark:text-slate-300">
+                          {s.direction === 'forward'
+                            ? (lang === 'uz' ? 'Oldinga' : 'Вперед')
+                            : s.direction === 'backward'
+                            ? (lang === 'uz' ? 'Orqaga' : 'Назад')
+                            : s.direction}
+                        </td>
                       </tr>
                     );
                   })}

@@ -12,7 +12,7 @@ interface FilterBarProps {
 }
 
 export default function FilterBar({ showStatus = true, className = '', children }: FilterBarProps) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const {
     pipelineId,
     setPipelineId,
@@ -87,8 +87,8 @@ export default function FilterBar({ showStatus = true, className = '', children 
 
         {/* Multi-select Managers */}
         <MultiSelectDropdown
-          label="Менеджеры"
-          placeholder="Все менеджеры"
+          label={lang === 'uz' ? 'Menejerlar' : 'Менеджеры'}
+          placeholder={lang === 'uz' ? 'Barcha menejerlar' : 'Все менеджеры'}
           options={managers}
           selectedIds={selectedManagers}
           icon={<Users size={13} />}
@@ -97,8 +97,8 @@ export default function FilterBar({ showStatus = true, className = '', children 
 
         {/* Multi-select Tags */}
         <MultiSelectDropdown
-          label="Теги"
-          placeholder="Все теги"
+          label={lang === 'uz' ? 'Teglar' : 'Теги'}
+          placeholder={lang === 'uz' ? 'Barcha teglar' : 'Все теги'}
           options={tags}
           selectedIds={selectedTags}
           prefix="#"
@@ -145,7 +145,7 @@ export default function FilterBar({ showStatus = true, className = '', children 
           </div>
         )}
 
-        {/* Action buttons: Применить & Сбросить */}
+        {/* Action buttons: Qo'llash / Применить & Bekor qilish / Сбросить */}
         <div className="flex items-center gap-2 ml-auto">
           <button
             type="button"
@@ -157,7 +157,7 @@ export default function FilterBar({ showStatus = true, className = '', children 
             }`}
           >
             <Check size={14} />
-            <span>Применить</span>
+            <span>{lang === 'uz' ? 'Qo‘llash' : 'Применить'}</span>
           </button>
           <button
             type="button"
@@ -165,7 +165,7 @@ export default function FilterBar({ showStatus = true, className = '', children 
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-700 text-xs font-medium transition-colors cursor-pointer"
           >
             <X size={14} />
-            <span>Сбросить</span>
+            <span>{t('reset')}</span>
           </button>
         </div>
       </div>

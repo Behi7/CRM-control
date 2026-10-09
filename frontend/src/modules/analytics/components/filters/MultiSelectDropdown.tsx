@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Search, X, Check } from 'lucide-react';
 import { MultiSelectOption } from '../../types';
+import { useLanguage } from '../../../../i18n/LanguageContext';
 
 export interface MultiSelectDropdownProps {
   label: string;
@@ -21,6 +22,7 @@ export default function MultiSelectDropdown({
   prefix = '',
   icon,
 }: MultiSelectDropdownProps) {
+  const { lang } = useLanguage();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -95,7 +97,7 @@ export default function MultiSelectDropdown({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск..."
+              placeholder={lang === 'uz' ? 'Qidirish...' : 'Поиск...'}
               className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs outline-none focus:border-indigo-500 text-slate-800 dark:text-slate-200"
             />
             {search && (
@@ -110,28 +112,30 @@ export default function MultiSelectDropdown({
           </div>
 
           <div className="flex items-center justify-between text-[11px] px-1 text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-800">
-            <span>Выбрано: {selectedIds.length}</span>
+            <span>{lang === 'uz' ? 'Tanlandi:' : 'Выбрано:'} {selectedIds.length}</span>
             <div className="space-x-2">
               <button
                 type="button"
                 onClick={selectAllFiltered}
                 className="text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
               >
-                Все
+                {lang === 'uz' ? 'Hammasi' : 'Все'}
               </button>
               <button
                 type="button"
                 onClick={clearAll}
                 className="text-rose-500 hover:underline cursor-pointer"
               >
-                Сброс
+                {lang === 'uz' ? 'Tozalash' : 'Сброс'}
               </button>
             </div>
           </div>
 
           <div className="max-h-52 overflow-y-auto space-y-0.5 pr-1 text-xs">
             {filtered.length === 0 ? (
-              <div className="p-3 text-center text-slate-400 text-xs">Ничего не найдено</div>
+              <div className="p-3 text-center text-slate-400 text-xs">
+                {lang === 'uz' ? 'Hech narsa topilmadi' : 'Ничего не найдено'}
+              </div>
             ) : (
               filtered.map((item) => {
                 const checked = selectedIds.includes(item.id);

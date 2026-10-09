@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../../../auth/AuthContext';
+import { useLanguage } from '../../../../i18n/LanguageContext';
 import { fmtMoney } from '../../types';
 
 interface RiskAuditTabProps {
@@ -10,6 +11,7 @@ interface RiskAuditTabProps {
 
 export default function RiskAuditTab({ kpis, riskDeals = [] }: RiskAuditTabProps) {
   const { role } = useAuth();
+  const { lang } = useLanguage();
   const navigate = useNavigate();
 
   const riskBudget = riskDeals.reduce((acc: number, d: any) => acc + (d.price || 0), 0);
@@ -28,38 +30,56 @@ export default function RiskAuditTab({ kpis, riskDeals = [] }: RiskAuditTabProps
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              Термометр риска открытого пайплайна (% бюджета под угрозой)
+              {lang === 'uz'
+                ? 'Ochiq payplayn xavf termometri (xavf ostidagi byudjet %)'
+                : 'Термометр риска открытого пайплайна (% бюджета под угрозой)'}
             </h3>
             <p className="text-[11px] text-slate-500">
-              Доля бюджета в ТОП-25 проблемных сделках относительно всего открытого пайплайна ({fmtMoney(kpis?.openPipelineValue || 0)})
+              {lang === 'uz'
+                ? `TOP-25 muammoli bitimlardagi byudjetning barcha ochiq payplaynga nisbati (${fmtMoney(kpis?.openPipelineValue || 0)})`
+                : `Доля бюджета в ТОП-25 проблемных сделках относительно всего открытого пайплайна (${fmtMoney(kpis?.openPipelineValue || 0)})`}
             </p>
           </div>
           <div className="flex items-center gap-3 text-xs">
             <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
-              В безопасности: {safeSharePct}%
+              {lang === 'uz' ? 'Xavfsiz:' : 'В безопасности:'} {safeSharePct}%
             </span>
             <span className="px-3 py-1 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold">
-              В зоне риска: {fmtMoney(riskBudget)} ({riskSharePct}%)
+              {lang === 'uz' ? 'Xavf zonasida:' : 'В зоне риска:'} {fmtMoney(riskBudget)} ({riskSharePct}%)
             </span>
           </div>
         </div>
 
         <div className="w-full h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
-          <div style={{ width: `${safeSharePct}%` }} className="bg-emerald-500 h-full" title={`В порядке: ${safeSharePct}%`} />
-          <div style={{ width: `${riskSharePct}%` }} className="bg-gradient-to-r from-amber-500 to-rose-600 h-full" title={`Под угрозой: ${riskSharePct}%`} />
+          <div
+            style={{ width: `${safeSharePct}%` }}
+            className="bg-emerald-500 h-full"
+            title={lang === 'uz' ? `Xavfsiz: ${safeSharePct}%` : `В порядке: ${safeSharePct}%`}
+          />
+          <div
+            style={{ width: `${riskSharePct}%` }}
+            className="bg-gradient-to-r from-amber-500 to-rose-600 h-full"
+            title={lang === 'uz' ? `Xavf ostida: ${riskSharePct}%` : `Под угрозой: ${riskSharePct}%`}
+          />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
           <div className="p-3 rounded-xl bg-orange-500/5 border border-orange-500/20 flex items-center justify-between text-xs">
-            <span className="text-orange-600 dark:text-orange-400 font-semibold">Без поставленной задачи:</span>
+            <span className="text-orange-600 dark:text-orange-400 font-semibold">
+              {lang === 'uz' ? 'Vazifa qo‘yilmagan:' : 'Без поставленной задачи:'}
+            </span>
             <span className="font-bold text-slate-900 dark:text-white">{fmtMoney(noTaskBudget)}</span>
           </div>
           <div className="p-3 rounded-xl bg-rose-500/5 border border-rose-500/20 flex items-center justify-between text-xs">
-            <span className="text-rose-600 dark:text-rose-400 font-semibold">С просроченной задачей:</span>
+            <span className="text-rose-600 dark:text-rose-400 font-semibold">
+              {lang === 'uz' ? 'Vazifa muddati o‘tgan:' : 'С просроченной задачей:'}
+            </span>
             <span className="font-bold text-slate-900 dark:text-white">{fmtMoney(overdueBudget)}</span>
           </div>
           <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 flex items-center justify-between text-xs">
-            <span className="text-amber-600 dark:text-amber-400 font-semibold">Без движения &gt; 14 дней:</span>
+            <span className="text-amber-600 dark:text-amber-400 font-semibold">
+              {lang === 'uz' ? '14 kundan ortiq harakatsiz:' : 'Без движения > 14 дней:'}
+            </span>
             <span className="font-bold text-slate-900 dark:text-white">{fmtMoney(staleBudget)}</span>
           </div>
         </div>
@@ -69,10 +89,16 @@ export default function RiskAuditTab({ kpis, riskDeals = [] }: RiskAuditTabProps
         <div>
           <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <AlertTriangle size={18} className="text-amber-500" />
-            <span>Аудит: ТОП-25 открытых сделок с высоким бюджетом в зоне риска</span>
+            <span>
+              {lang === 'uz'
+                ? 'Audit: Xavf zonasidagi yuqori byudjetli TOP-25 ochiq bitimlar'
+                : 'Аудит: ТОП-25 открытых сделок с высоким бюджетом в зоне риска'}
+            </span>
           </h3>
           <p className="text-xs text-slate-500">
-            Активные сделки, требующие немедленного контроля РОПа (нет поставленной задачи, задача просрочена или нет движения более 14 дней)
+            {lang === 'uz'
+              ? 'ROP zudlik bilan nazorat qilishi kerak bo‘lgan faol bitimlar (vazifa qo‘yilmagan, vazifa muddati o‘tgan yoki 14 kundan ortiq harakat yo‘q)'
+              : 'Активные сделки, требующие немедленного контроля РОПа (нет поставленной задачи, задача просрочена или нет движения более 14 дней)'}
           </p>
         </div>
 
@@ -80,13 +106,13 @@ export default function RiskAuditTab({ kpis, riskDeals = [] }: RiskAuditTabProps
           <table className="w-full text-xs">
             <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300">
               <tr>
-                <th className="p-3 text-left">Сделка</th>
-                <th className="p-3 text-left">Этап</th>
-                <th className="p-3 text-left">Ответственный</th>
-                <th className="p-3 text-right">Бюджет</th>
-                <th className="p-3 text-right">Без движения</th>
-                <th className="p-3 text-left">Причина риска</th>
-                <th className="p-3 text-right">Действие</th>
+                <th className="p-3 text-left">{lang === 'uz' ? 'Bitim' : 'Сделка'}</th>
+                <th className="p-3 text-left">{lang === 'uz' ? 'Bosqich' : 'Этап'}</th>
+                <th className="p-3 text-left">{lang === 'uz' ? 'Mas’ul' : 'Ответственный'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Byudjet' : 'Бюджет'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Harakatsiz' : 'Без движения'}</th>
+                <th className="p-3 text-left">{lang === 'uz' ? 'Xavf sababi' : 'Причина риска'}</th>
+                <th className="p-3 text-right">{lang === 'uz' ? 'Amal' : 'Действие'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -107,21 +133,23 @@ export default function RiskAuditTab({ kpis, riskDeals = [] }: RiskAuditTabProps
                   <td className="p-3 text-right font-bold text-slate-900 dark:text-white">
                     {fmtMoney(deal.price)}
                   </td>
-                  <td className="p-3 text-right text-slate-500">{deal.idleDays} дн.</td>
+                  <td className="p-3 text-right text-slate-500">
+                    {deal.idleDays} {lang === 'uz' ? 'kun' : 'дн.'}
+                  </td>
                   <td className="p-3">
                     {deal.riskType === 'no_task' && (
                       <span className="px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-600 dark:text-orange-400 font-semibold">
-                        Нет поставленной задачи
+                        {lang === 'uz' ? 'Vazifa qo‘yilmagan' : 'Нет поставленной задачи'}
                       </span>
                     )}
                     {deal.riskType === 'overdue_task' && (
                       <span className="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">
-                        Задача просрочена
+                        {lang === 'uz' ? 'Vazifa muddati o‘tgan' : 'Задача просрочена'}
                       </span>
                     )}
                     {deal.riskType === 'stale_deal' && (
                       <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold">
-                        Зависла &gt; 14 дней
+                        {lang === 'uz' ? '14 kundan ortiq to‘xtab qolgan' : 'Зависла > 14 дней'}
                       </span>
                     )}
                   </td>

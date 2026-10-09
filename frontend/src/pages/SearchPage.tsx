@@ -114,8 +114,20 @@ export default function SearchPage() {
                       <td className="p-3">{l.external_id || l.externalId}</td>
                       <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{l.name || '—'}</td>
                       <td className="p-3">
-                        <span className="px-2 py-0.5 rounded text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                          {l.status}
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            l.status === 'won'
+                              ? 'bg-green-100 dark:bg-green-950/70 text-green-800 dark:text-green-300'
+                              : l.status === 'lost'
+                              ? 'bg-red-100 dark:bg-red-950/70 text-red-800 dark:text-red-300'
+                              : 'bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300'
+                          }`}
+                        >
+                          {l.status === 'won'
+                            ? (lang === 'uz' ? 'Muvaffaqiyatli' : 'Успешно')
+                            : l.status === 'lost'
+                            ? (lang === 'uz' ? 'Rad etilgan' : 'Отказ')
+                            : (lang === 'uz' ? 'Ishda' : 'В работе')}
                         </span>
                       </td>
                       <td className="p-3 text-slate-800 dark:text-slate-200">

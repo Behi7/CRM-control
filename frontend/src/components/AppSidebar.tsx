@@ -152,9 +152,9 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
           <div className="flex items-center gap-2 overflow-hidden pl-1 flex-1 min-w-0 mr-2">
             <div
               className="font-bold text-sm tracking-tight text-white leading-tight truncate capitalize"
-              title={role === 'admin' ? 'Аналитика' : fullDomain}
+              title={role === 'admin' ? (lang === 'uz' ? 'Analitika' : 'Аналитика') : fullDomain}
             >
-              {role === 'admin' ? 'Аналитика' : amoAccountName}
+              {role === 'admin' ? (lang === 'uz' ? 'Analitika' : 'Аналитика') : amoAccountName}
             </div>
             {role !== 'admin' && currentAccObj && (() => {
               const lastSync = currentAccObj.lastSyncedAt;
@@ -162,7 +162,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               return (
                 <span
                   className={`w-2 h-2 rounded-full shrink-0 ${isStale ? 'bg-amber-400' : 'bg-emerald-400'}`}
-                  title={isStale ? '⚠️ Данные устарели' : '✓ Данные актуальны'}
+                  title={isStale ? (lang === 'uz' ? '⚠️ Ma’lumotlar eskirgan' : '⚠️ Данные устарели') : (lang === 'uz' ? '✓ Ma’lumotlar yangi' : '✓ Данные актуальны')}
                 />
               );
             })()}
@@ -173,7 +173,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
           className={`hidden lg:flex w-10 h-10 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer items-center justify-center shrink-0 ${
             collapsed ? 'mx-auto' : ''
           }`}
-          title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+          title={collapsed ? (lang === 'uz' ? 'Menyuni ochish' : 'Развернуть меню') : (lang === 'uz' ? 'Menyuni yopish' : 'Свернуть меню')}
         >
           {collapsed ? <ChevronRight size={20} className="shrink-0" /> : <ChevronLeft size={20} className="shrink-0" />}
         </button>
@@ -232,8 +232,10 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                 : 'Аккаунт';
               const syncDateStr = lastSync
                 ? new Date(lastSync).toLocaleString(lang === 'uz' ? 'uz-UZ' : 'ru-RU')
-                : (lang === 'uz' ? 'никогда' : 'никогда');
-              const tip = `${accDomain} (${isStale ? '⚠️ Данные устарели' : '✓ Данные актуальны'}, синхр: ${syncDateStr})`;
+                : (lang === 'uz' ? 'hech qachon' : 'никогда');
+              const statusStr = isStale ? (lang === 'uz' ? '⚠️ Ma’lumotlar eskirgan' : '⚠️ Данные устарели') : (lang === 'uz' ? '✓ Ma’lumotlar yangi' : '✓ Данные актуальны');
+              const syncLabel = lang === 'uz' ? 'sinxron' : 'синхр';
+              const tip = `${accDomain} (${statusStr}, ${syncLabel}: ${syncDateStr})`;
 
               return (
                 <div className="flex justify-center">
@@ -437,7 +439,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
             <Menu size={22} />
           </button>
           <span className="font-bold text-sm truncate max-w-[200px]">
-            {role === 'admin' ? 'Аналитика' : amoAccountName}
+            {role === 'admin' ? (lang === 'uz' ? 'Analitika' : 'Аналитика') : amoAccountName}
           </span>
         </div>
         <div className="flex items-center gap-2">
