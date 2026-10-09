@@ -174,6 +174,8 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
             collapsed ? 'mx-auto' : ''
           }`}
           title={collapsed ? (lang === 'uz' ? 'Menyuni ochish' : 'Развернуть меню') : (lang === 'uz' ? 'Menyuni yopish' : 'Свернуть меню')}
+          aria-label={collapsed ? (lang === 'uz' ? 'Menyuni ochish' : 'Развернуть меню') : (lang === 'uz' ? 'Menyuni yopish' : 'Свернуть меню')}
+          aria-expanded={!collapsed}
         >
           {collapsed ? <ChevronRight size={20} className="shrink-0" /> : <ChevronLeft size={20} className="shrink-0" />}
         </button>
@@ -187,6 +189,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               <select
                 value={activeAccountId}
                 onChange={(e) => handleAccountChange(Number(e.target.value))}
+                aria-label={labels.activeAccount}
                 className="w-full bg-slate-800/90 hover:bg-slate-800 text-slate-100 text-xs font-medium rounded-lg px-2.5 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer truncate"
               >
                 {accounts.map((acc: any) => (
@@ -401,6 +404,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               onClick={() => setLang(lang === 'ru' ? 'uz' : 'ru')}
               className="w-10 h-10 mx-auto rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
               title={lang === 'ru' ? 'Сменить язык (RU)' : 'Tilni o‘zgartirish (UZ)'}
+              aria-label={lang === 'ru' ? 'Сменить язык (Текущий: RU)' : 'Tilni o‘zgartirish (Joriy: UZ)'}
             >
               {lang.toUpperCase()}
             </button>
@@ -409,6 +413,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               onClick={logout}
               className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
               title={labels.logout}
+              aria-label={labels.logout}
             >
               <LogOut size={18} className="shrink-0" />
             </button>
@@ -434,7 +439,9 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setMobileOpen(true)}
-            className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-800"
+            className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-800 cursor-pointer"
+            aria-label={lang === 'uz' ? 'Menyuni ochish' : 'Открыть меню'}
+            aria-expanded={mobileOpen}
           >
             <Menu size={22} />
           </button>
@@ -455,7 +462,11 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
             className="flex-1 bg-black/50 backdrop-blur-xs"
             onClick={() => setMobileOpen(false)}
           >
-            <button className="m-4 p-2 rounded-full bg-slate-900 text-white">
+            <button
+              onClick={() => setMobileOpen(false)}
+              className="m-4 p-2 rounded-full bg-slate-900 text-white cursor-pointer"
+              aria-label={lang === 'uz' ? 'Menyuni yopish' : 'Закрыть меню'}
+            >
               <X size={20} />
             </button>
           </div>

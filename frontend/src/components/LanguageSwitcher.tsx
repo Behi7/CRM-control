@@ -11,6 +11,8 @@ export default function LanguageSwitcher({ className = '', showIcon = false }: L
 
   return (
     <div
+      role="group"
+      aria-label={lang === 'ru' ? 'Выбор языка' : 'Tilni tanlash'}
       className={`inline-flex items-center rounded-lg p-0.5 bg-slate-200/80 dark:bg-slate-800 border border-slate-300/80 dark:border-slate-700 text-xs font-semibold ${className}`}
       title={lang === 'ru' ? 'Сменить язык / Tilni o‘zgartirish' : 'Tilni o‘zgartirish / Сменить язык'}
     >
@@ -18,6 +20,8 @@ export default function LanguageSwitcher({ className = '', showIcon = false }: L
       <button
         type="button"
         onClick={() => setLang('ru')}
+        aria-label="Русский язык"
+        aria-pressed={lang === 'ru'}
         className={`px-2 py-1 rounded-md transition-all cursor-pointer ${
           lang === 'ru'
             ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs font-bold'
@@ -29,6 +33,8 @@ export default function LanguageSwitcher({ className = '', showIcon = false }: L
       <button
         type="button"
         onClick={() => setLang('uz')}
+        aria-label="O‘zbek tili"
+        aria-pressed={lang === 'uz'}
         className={`px-2 py-1 rounded-md transition-all cursor-pointer ${
           lang === 'uz'
             ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs font-bold'

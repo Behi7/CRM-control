@@ -353,13 +353,15 @@ def get_detailed_analytics(
                     ) AS "avgCycleDays",
                     COUNT(l.id) FILTER (WHERE l.status = 'open' AND l.closest_task_at IS NOT NULL AND l.closest_task_at < NOW()) AS "overdueTasksLeads",
                     COUNT(l.id) FILTER (WHERE l.status = 'open' AND l.closest_task_at IS NULL) AS "noTaskLeads",
-                    (
-                        SELECT COUNT(*)
-                        FROM lead_stage_skips sk
-                        WHERE sk.lead_id = ANY(ARRAY_AGG(l.id))
-                    ) AS "stageSkipsCount"
+                    COALESCE(SUM(sk.skips_count), 0) AS "stageSkipsCount"
                 FROM leads l
                 LEFT JOIN amo_users u ON u.id = l.responsible_user_id
+                LEFT JOIN (
+                    SELECT lead_id, COUNT(*) AS skips_count
+                    FROM lead_stage_skips
+                    WHERE account_id = :acc_id
+                    GROUP BY lead_id
+                ) sk ON sk.lead_id = l.id
                 WHERE {where_sql}
                 GROUP BY u.id, u.name
                 ORDER BY revenue DESC, "wonLeads" DESC, "totalLeads" DESC
