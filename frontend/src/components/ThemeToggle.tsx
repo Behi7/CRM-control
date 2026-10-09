@@ -19,8 +19,6 @@ export default function ThemeToggle({ className = '' }: ThemeToggleProps) {
           ? 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border-slate-700 hover:border-slate-600 shadow-sm'
           : 'bg-white hover:bg-slate-100 text-amber-500 border-slate-300/80 hover:border-slate-400 shadow-xs'
       } ${className}`}
-      title={isDark ? 'Переключить на светлую тему' : 'Переключить на темную тему'}
-      aria-label={isDark ? 'Переключить на светлую тему' : 'Переключить на темную тему'}
     >
       {isDark ? (
         <Moon size={16} className="text-indigo-300 animate-in -spin-in-90 duration-200" />

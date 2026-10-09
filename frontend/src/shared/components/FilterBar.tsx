@@ -61,7 +61,6 @@ export default function FilterBar({ showStatus = true, className = '', children 
             const nextPipelineId = val === 'all' || !val ? null : parseInt(val, 10);
             setPipelineId(nextPipelineId);
           }}
-          aria-label={t('pipeline')}
           className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
         >
           <option value="all">{t('pipeline_all')}</option>
@@ -77,7 +76,6 @@ export default function FilterBar({ showStatus = true, className = '', children 
           <select
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
-            aria-label={lang === 'uz' ? 'Bitim holati' : 'Статус сделки'}
             className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
           >
             <option value="all">{t('status_all')}</option>
@@ -135,7 +133,6 @@ export default function FilterBar({ showStatus = true, className = '', children 
               type="date"
               value={dateFrom}
               onChange={(e) => setCustomDates(e.target.value, dateTo)}
-              aria-label={lang === 'uz' ? 'Boshlanish sanasi' : 'Дата с'}
               className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-800 dark:text-slate-200"
             />
             <span className="text-slate-400">—</span>
@@ -143,7 +140,6 @@ export default function FilterBar({ showStatus = true, className = '', children 
               type="date"
               value={dateTo}
               onChange={(e) => setCustomDates(dateFrom, e.target.value)}
-              aria-label={lang === 'uz' ? 'Tugash sanasi' : 'Дата по'}
               className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-800 dark:text-slate-200"
             />
           </div>
@@ -190,7 +186,6 @@ export default function FilterBar({ showStatus = true, className = '', children 
                 <button
                   type="button"
                   onClick={() => setSelectedManagers(selectedManagers.filter((x) => x !== id))}
-                  aria-label={lang === 'uz' ? `${m.name} menejerini olib tashlash` : `Удалить менеджера ${m.name}`}
                   className="ml-0.5 hover:text-rose-500 cursor-pointer"
                 >
                   <X size={12} />
@@ -210,7 +205,6 @@ export default function FilterBar({ showStatus = true, className = '', children 
                 <button
                   type="button"
                   onClick={() => setSelectedTags(selectedTags.filter((x) => x !== id))}
-                  aria-label={lang === 'uz' ? `${tg.name} tegini olib tashlash` : `Удалить тег ${tg.name}`}
                   className="ml-0.5 hover:text-rose-500 cursor-pointer"
                 >
                   <X size={12} />
