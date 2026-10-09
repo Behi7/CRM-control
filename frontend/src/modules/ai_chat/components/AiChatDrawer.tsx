@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { userApi, FilterParams } from '@/api/client';
 import { useLanguage } from '@/i18n/LanguageContext';
@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   Lightbulb,
   Clock,
+  Search,
+  ChevronDown,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -155,11 +157,31 @@ export default function AiChatDrawer({
     return pipelineId || 'all';
   });
 
+  const [pipelineModalOpen, setPipelineModalOpen] = useState(false);
+  const [pipelineSearchQuery, setPipelineSearchQuery] = useState('');
+
   useEffect(() => {
     if (pipelineId) {
       setSelectedPipelineForStages(pipelineId);
     }
   }, [pipelineId]);
+
+  const filteredPipelines = useMemo(() => {
+    if (!pipelineSearchQuery) return pipelines;
+    const q = pipelineSearchQuery.toLowerCase();
+    return pipelines.filter((p) => p.name.toLowerCase().includes(q));
+  }, [pipelines, pipelineSearchQuery]);
+
+  const getStageBlockLabel = () => {
+    let pName = '';
+    if (selectedPipelineForStages === 'all') {
+      pName = lang === 'uz' ? 'Barcha voronkalar' : 'Все воронки';
+    } else {
+      const pObj = pipelines.find((p) => p.id === selectedPipelineForStages);
+      pName = pObj?.name || (pipelineName ? pipelineName : (lang === 'uz' ? 'Voronka' : 'Воронка'));
+    }
+    return lang === 'uz' ? `Bosqichlar vaqti: ${pName}` : `Время на этапах: ${pName}`;
+  };
 
   const storageKey = biData
     ? `amocrm_ai_chat_bi_${accountId}`
@@ -304,7 +326,7 @@ export default function AiChatDrawer({
     }
   };
 
-  const quickPrompts = biData
+  const quickPrompts = (biData || activeBiTab)
     ? [
         {
           icon: Clock,
@@ -362,7 +384,7 @@ export default function AiChatDrawer({
 
   const chatCard = (
     <div
-      className={`w-full h-full bg-white dark:bg-slate-900 flex flex-col ${
+      className={`w-full h-full bg-white dark:bg-slate-900 flex flex-col relative ${
         variant === 'docked'
           ? 'border-0 overflow-hidden'
           : 'w-screen max-w-lg h-full shadow-2xl border-l border-slate-200 dark:border-slate-800'
@@ -411,80 +433,102 @@ export default function AiChatDrawer({
         </div>
       )}
 
-      {/* Interactive BI Blocks Context Selector (when in BI Module 02) */}
-          {biData && (
-            <div className="bg-white dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 p-3 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-700 dark:text-slate-200">
-                  {lang === 'uz' ? 'AI uchun ekran konteksti:' : 'Контекст экрана для ИИ:'}
-                </span>
+      {/* Interactive BI Blocks Context Selector (when in BI Module 02 or Analytics view) */}
+      {(biData || activeBiTab || accountId) && (
+        <div className="bg-white dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 p-3 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-slate-700 dark:text-slate-200">
+              {lang === 'uz' ? 'AI uchun ekran konteksti:' : 'Контекст экрана для ИИ:'}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedBiBlocks.length === BI_AVAILABLE_BLOCKS.length) {
+                  setSelectedBiBlocks([tabToBlockId(activeBiTab)]);
+                } else {
+                  setSelectedBiBlocks(BI_AVAILABLE_BLOCKS.map((b) => b.id));
+                }
+              }}
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
+            >
+              {selectedBiBlocks.length === BI_AVAILABLE_BLOCKS.length
+                ? (lang === 'uz' ? 'Joriyga qaytarish' : 'Сбросить к текущей')
+                : (lang === 'uz' ? '⚡ Hammasini tanlash' : '⚡ Выбрать всё')}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {BI_AVAILABLE_BLOCKS.map((block) => {
+              const active = selectedBiBlocks.includes(block.id);
+
+              if (block.id === 'time_stages') {
+                if (active) {
+                  return (
+                    <div
+                      key="time_stages"
+                      className="inline-flex items-center gap-1 bg-emerald-600 text-white pl-2.5 pr-1.5 py-1 rounded-lg text-[11px] font-semibold shadow-xs"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setPipelineModalOpen(true)}
+                        className="flex items-center gap-1 hover:opacity-90 cursor-pointer"
+                        title={lang === 'uz' ? 'Voronkani o‘zgartirish' : 'Изменить воронку'}
+                      >
+                        <span>✓ {getStageBlockLabel()}</span>
+                        <ChevronDown size={11} className="opacity-80 shrink-0" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedBiBlocks((prev) => prev.filter((id) => id !== 'time_stages'));
+                        }}
+                        className="hover:bg-emerald-700 rounded p-0.5 transition-colors cursor-pointer"
+                        title={lang === 'uz' ? 'Olib tashlash' : 'Убрать'}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    key="time_stages"
+                    type="button"
+                    onClick={() => setPipelineModalOpen(true)}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <span>+ {lang === 'uz' ? block.labelUz : block.label}</span>
+                    <ChevronDown size={11} className="opacity-60 shrink-0" />
+                  </button>
+                );
+              }
+
+              return (
                 <button
+                  key={block.id}
                   type="button"
                   onClick={() => {
-                    if (selectedBiBlocks.length === BI_AVAILABLE_BLOCKS.length) {
-                      setSelectedBiBlocks([tabToBlockId(activeBiTab)]);
+                    if (active) {
+                      if (selectedBiBlocks.length > 1) {
+                        setSelectedBiBlocks(selectedBiBlocks.filter((id) => id !== block.id));
+                      }
                     } else {
-                      setSelectedBiBlocks(BI_AVAILABLE_BLOCKS.map((b) => b.id));
+                      setSelectedBiBlocks([...selectedBiBlocks, block.id]);
                     }
                   }}
-                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                    active
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
                 >
-                  {selectedBiBlocks.length === BI_AVAILABLE_BLOCKS.length
-                    ? (lang === 'uz' ? 'Joriyga qaytarish' : 'Сбросить к текущей')
-                    : (lang === 'uz' ? '⚡ Hammasini tanlash' : '⚡ Выбрать всё')}
+                  {active ? '✓ ' : '+ '} {lang === 'uz' ? block.labelUz : block.label}
                 </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {BI_AVAILABLE_BLOCKS.map((block) => {
-                  const active = selectedBiBlocks.includes(block.id);
-                  return (
-                    <button
-                      key={block.id}
-                      type="button"
-                      onClick={() => {
-                        if (active) {
-                          if (selectedBiBlocks.length > 1) {
-                            setSelectedBiBlocks(selectedBiBlocks.filter((id) => id !== block.id));
-                          }
-                        } else {
-                          setSelectedBiBlocks([...selectedBiBlocks, block.id]);
-                        }
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
-                        active
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      {active ? '✓ ' : '+ '} {lang === 'uz' ? block.labelUz : block.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Option A: Pipeline Selector when 'time_stages' is selected */}
-              {selectedBiBlocks.includes('time_stages') && pipelines && pipelines.length > 0 && (
-                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 animate-in fade-in duration-150">
-                  <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 font-medium">
-                    <Clock size={13} className="text-indigo-500 shrink-0" />
-                    <span>{lang === 'uz' ? 'Voronkani tanlang:' : 'Воронка:'}</span>
-                  </div>
-                  <select
-                    value={selectedPipelineForStages}
-                    onChange={(e) => setSelectedPipelineForStages(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-w-[230px] truncate cursor-pointer shadow-2xs"
-                  >
-                    <option value="all">{lang === 'uz' ? 'Barcha voronkalar' : 'Все воронки'}</option>
-                    {pipelines.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
+              );
+            })}
+          </div>
+        </div>
+      )}
 
           {/* Chat Messages */}
           <div
@@ -570,6 +614,160 @@ export default function AiChatDrawer({
               {t('ai_footer_hint')}
             </p>
           </div>
+
+      {/* Compulsory Pipeline Selector Modal for Stage Time Analysis */}
+      {pipelineModalOpen && (
+        <div
+          className="absolute inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 flex items-center justify-center p-3 animate-in fade-in duration-150"
+          onClick={() => setPipelineModalOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <Clock size={16} />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                    {lang === 'uz' ? 'Voronkani tanlang' : 'Выберите воронку'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    {lang === 'uz' ? 'Bosqichlar vaqti va tor joylar tahlili uchun' : 'Для анализа этапов и скорости сделок'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPipelineModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Search filter if pipelines > 4 */}
+            {pipelines && pipelines.length > 4 && (
+              <div className="p-2.5 border-b border-slate-100 dark:border-slate-800">
+                <div className="relative">
+                  <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={pipelineSearchQuery}
+                    onChange={(e) => setPipelineSearchQuery(e.target.value)}
+                    placeholder={lang === 'uz' ? 'Voronka qidirish...' : 'Поиск воронки...'}
+                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-lg text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Pipelines List */}
+            <div className="p-2 space-y-1 overflow-y-auto max-h-[320px]">
+              {/* Option 1: All Pipelines */}
+              {(!pipelineSearchQuery || (lang === 'uz' ? 'barcha voronkalar' : 'все воронки').includes(pipelineSearchQuery.toLowerCase())) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPipelineForStages('all');
+                    if (!selectedBiBlocks.includes('time_stages')) {
+                      setSelectedBiBlocks([...selectedBiBlocks, 'time_stages']);
+                    }
+                    setPipelineModalOpen(false);
+                  }}
+                  className={`w-full text-left p-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                    selectedPipelineForStages === 'all' && selectedBiBlocks.includes('time_stages')
+                      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
+                      : 'hover:bg-slate-100 dark:hover:bg-slate-800/70 text-slate-800 dark:text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">🌐</span>
+                    <div>
+                      <div>{lang === 'uz' ? 'Barcha voronkalar' : 'Все воронки'}</div>
+                      <div className="text-[10px] text-slate-400 font-normal">
+                        {lang === 'uz' ? 'Barcha voronkalardagi bosqichlar umumiy ko‘rinishi' : 'Сводка по всем активным воронкам'}
+                      </div>
+                    </div>
+                  </div>
+                  {selectedPipelineForStages === 'all' && selectedBiBlocks.includes('time_stages') && (
+                    <span className="text-indigo-600 dark:text-indigo-400 font-bold">✓</span>
+                  )}
+                </button>
+              )}
+
+              {/* List of individual pipelines */}
+              {filteredPipelines.map((pipe) => {
+                const isSelected = selectedPipelineForStages === pipe.id && selectedBiBlocks.includes('time_stages');
+                return (
+                  <button
+                    key={pipe.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPipelineForStages(pipe.id);
+                      if (!selectedBiBlocks.includes('time_stages')) {
+                        setSelectedBiBlocks([...selectedBiBlocks, 'time_stages']);
+                      }
+                      setPipelineModalOpen(false);
+                    }}
+                    className={`w-full text-left p-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80'
+                        : 'hover:bg-slate-100 dark:hover:bg-slate-800/70 text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">📊</span>
+                      <span className="truncate">{pipe.name}</span>
+                    </div>
+                    {isSelected && (
+                      <span className="text-indigo-600 dark:text-indigo-400 font-bold">✓</span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {filteredPipelines.length === 0 && pipelines.length > 0 && (
+                <div className="p-4 text-center text-xs text-slate-400">
+                  {lang === 'uz' ? 'Voronka topilmadi' : 'Воронки не найдены'}
+                </div>
+              )}
+
+              {pipelines.length === 0 && (
+                <div className="p-4 text-center text-xs text-slate-400">
+                  {lang === 'uz' ? 'Voronkalar yuklanmoqda...' : 'Загрузка списка воронок...'}
+                </div>
+              )}
+            </div>
+
+            {/* Footer if already selected */}
+            {selectedBiBlocks.includes('time_stages') && (
+              <div className="p-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBiBlocks(selectedBiBlocks.filter((id) => id !== 'time_stages'));
+                    setPipelineModalOpen(false);
+                  }}
+                  className="text-rose-600 dark:text-rose-400 hover:underline font-semibold cursor-pointer"
+                >
+                  {lang === 'uz' ? '✕ Kontekstdan olib tashlash' : '✕ Убрать из контекста'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPipelineModalOpen(false)}
+                  className="px-3 py-1 bg-slate-200 dark:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-300 cursor-pointer"
+                >
+                  {lang === 'uz' ? 'Yopish' : 'Закрыть'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 
