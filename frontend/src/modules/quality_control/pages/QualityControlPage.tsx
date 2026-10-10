@@ -24,18 +24,48 @@ export default function QualityControlPage() {
   const {
     effectiveAccountId,
     applied,
+    applyFilters,
   } = useFilterContext();
 
   const storedAccountId = Number(localStorage.getItem('active_account_id')) || 1;
   const accountId = params.accountId ? parseInt(params.accountId, 10) : (effectiveAccountId || storedAccountId);
 
-  // Local filter states for Call feed specifics
-  const [scoreFilter, setScoreFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [search, setSearch] = useState('');
+  // Draft vs Applied filters for Call feed specifics
+  const [draftScoreFilter, setDraftScoreFilter] = useState('all');
+  const [appliedScoreFilter, setAppliedScoreFilter] = useState('all');
+
+  const [draftStatusFilter, setDraftStatusFilter] = useState('completed');
+  const [appliedStatusFilter, setAppliedStatusFilter] = useState('completed');
+
+  const [draftSearch, setDraftSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+
   const [page, setPage] = useState(1);
   const [selectedCallId, setSelectedCallId] = useState<number | null>(null);
   const [selectedManagerId, setSelectedManagerId] = useState<number | null>(null);
+
+  const isExtraDirty =
+    draftScoreFilter !== appliedScoreFilter ||
+    draftStatusFilter !== appliedStatusFilter ||
+    draftSearch !== appliedSearch;
+
+  const handleApplyExtra = () => {
+    setAppliedScoreFilter(draftScoreFilter);
+    setAppliedStatusFilter(draftStatusFilter);
+    setAppliedSearch(draftSearch);
+    setPage(1);
+  };
+
+  const handleResetExtra = () => {
+    setDraftScoreFilter('all');
+    setAppliedScoreFilter('all');
+    setDraftStatusFilter('completed');
+    setAppliedStatusFilter('completed');
+    setDraftSearch('');
+    setAppliedSearch('');
+    setSelectedManagerId(null);
+    setPage(1);
+  };
 
   // Stats query connected to unified FilterBar filters
   const statsQuery = useQuery({
@@ -68,15 +98,15 @@ export default function QualityControlPage() {
     ? applied.managerIds
     : undefined;
 
-  // Calls feed query connected to unified filters + score/status/search + selected manager
+  // Calls feed query connected to applied filters + applied score/status/search + selected manager
   const callsQuery = useQuery({
     queryKey: [
       'qc-calls',
       accountId,
       page,
-      scoreFilter,
-      statusFilter,
-      search,
+      appliedScoreFilter,
+      appliedStatusFilter,
+      appliedSearch,
       selectedManagerId,
       applied.pipelineId,
       applied.managerIds,
@@ -89,9 +119,9 @@ export default function QualityControlPage() {
       qcApi.listCalls(accountId, {
         page,
         limit: 15,
-        scoreFilter,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-        search: search.trim() || undefined,
+        scoreFilter: appliedScoreFilter,
+        status: appliedStatusFilter !== 'all' ? appliedStatusFilter : undefined,
+        search: appliedSearch.trim() || undefined,
         pipelineId: applied.pipelineId || undefined,
         managers: effectiveManagerIds,
         tags: applied.tagIds.length > 0 ? applied.tagIds : undefined,
@@ -107,14 +137,16 @@ export default function QualityControlPage() {
   return (
     <div className="p-4 lg:p-6 mx-auto max-w-[1920px] space-y-6">
       {/* 1. Unified FilterBar with integrated Call Filters (Score, Status, Search) */}
-      <FilterBar showStatus={true}>
+      <FilterBar
+        showStatus={true}
+        isExtraDirty={isExtraDirty}
+        onApplyExtra={handleApplyExtra}
+        onResetExtra={handleResetExtra}
+      >
         {/* Score filter dropdown */}
         <select
-          value={scoreFilter}
-          onChange={(e) => {
-            setScoreFilter(e.target.value);
-            setPage(1);
-          }}
+          value={draftScoreFilter}
+          onChange={(e) => setDraftScoreFilter(e.target.value)}
           className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
         >
           <option value="all">{lang === 'uz' ? 'Barcha baholar' : 'Все оценки'}</option>
@@ -125,15 +157,12 @@ export default function QualityControlPage() {
 
         {/* Call status dropdown */}
         <select
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value);
-            setPage(1);
-          }}
+          value={draftStatusFilter}
+          onChange={(e) => setDraftStatusFilter(e.target.value)}
           className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
         >
-          <option value="all">{lang === 'uz' ? 'Barcha holatlar' : 'Все статусы звонков'}</option>
           <option value="completed">{lang === 'uz' ? 'Faqat tahlil qilingan' : 'Только проанализированные'}</option>
+          <option value="all">{lang === 'uz' ? 'Barcha holatlar' : 'Все статусы звонков'}</option>
           <option value="skipped_duration">{lang === 'uz' ? 'O‘tkazib yuborilgan (vaqt)' : 'Пропущенные по времени'}</option>
           <option value="skipped_not_answered">{lang === 'uz' ? 'Javob berilmagan' : 'Не состоявшиеся'}</option>
         </select>
@@ -143,18 +172,22 @@ export default function QualityControlPage() {
           <Search size={13} className="absolute left-3 top-2.5 text-slate-400" />
           <input
             type="text"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
+            value={draftSearch}
+            onChange={(e) => setDraftSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                applyFilters();
+                handleApplyExtra();
+              }
             }}
-            placeholder={lang === 'uz' ? 'Telefon yoki bitim...' : 'Телефон или сделка...'}
+            placeholder={lang === 'uz' ? 'Telefon yoki bitim (Enter)...' : 'Телефон или сделка (Enter)...'}
             className="w-full pl-8 pr-7 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
           />
-          {search && (
+          {draftSearch && (
             <button
               onClick={() => {
-                setSearch('');
+                setDraftSearch('');
+                setAppliedSearch('');
                 setPage(1);
               }}
               className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
@@ -176,7 +209,7 @@ export default function QualityControlPage() {
         isLoading={statsQuery.isLoading}
       />
 
-      {/* 3. Calls Feed (No secondary filter bar!) */}
+      {/* 3. Calls Feed */}
       <div className="space-y-4">
         {callsQuery.isLoading ? (
           <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">

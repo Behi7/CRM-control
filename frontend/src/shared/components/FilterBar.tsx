@@ -9,9 +9,19 @@ interface FilterBarProps {
   showStatus?: boolean;
   className?: string;
   children?: ReactNode;
+  onApplyExtra?: () => void;
+  onResetExtra?: () => void;
+  isExtraDirty?: boolean;
 }
 
-export default function FilterBar({ showStatus = true, className = '', children }: FilterBarProps) {
+export default function FilterBar({
+  showStatus = true,
+  className = '',
+  children,
+  onApplyExtra,
+  onResetExtra,
+  isExtraDirty = false,
+}: FilterBarProps) {
   const { t, lang } = useLanguage();
   const {
     pipelineId,
@@ -149,9 +159,12 @@ export default function FilterBar({ showStatus = true, className = '', children 
         <div className="flex items-center gap-2 ml-auto">
           <button
             type="button"
-            onClick={applyFilters}
+            onClick={() => {
+              applyFilters();
+              onApplyExtra?.();
+            }}
             className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              isDirty
+              (isDirty || isExtraDirty)
                 ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md ring-2 ring-indigo-400/40'
                 : 'bg-indigo-600/90 hover:bg-indigo-600 text-white shadow-xs'
             }`}
@@ -161,7 +174,10 @@ export default function FilterBar({ showStatus = true, className = '', children 
           </button>
           <button
             type="button"
-            onClick={resetFilters}
+            onClick={() => {
+              resetFilters();
+              onResetExtra?.();
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-700 text-xs font-medium transition-colors cursor-pointer"
           >
             <X size={14} />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Headphones, Clock, AlertTriangle, CheckCircle2, User, X } from 'lucide-react';
+import { Headphones, Clock, AlertTriangle, CheckCircle2, User } from 'lucide-react';
 import { QcManagerStat } from '../api/qcApi';
 import { useLanguage } from '../../../i18n/LanguageContext';
 
@@ -59,28 +59,7 @@ export default function QcManagerCards({
   }
 
   return (
-    <div className="space-y-2.5 mb-6">
-      {/* Active Manager Filter Banner */}
-      {selectedManagerId && (
-        <div className="flex items-center justify-between px-4 py-2 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 rounded-xl text-xs text-blue-800 dark:text-blue-300">
-          <span className="flex items-center gap-2">
-            <span>🔍</span>
-            <span>
-              {lang === 'uz' ? 'Tanlangan menejer bo‘yicha filtr:' : 'Фильтр по выбранному менеджеру:'}{' '}
-              <b>{managers.find((m) => m.managerId === selectedManagerId)?.managerName}</b>
-            </span>
-          </span>
-          <button
-            type="button"
-            onClick={() => onSelectManager(null)}
-            className="flex items-center gap-1 font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 cursor-pointer"
-          >
-            <X size={14} />
-            <span>{lang === 'uz' ? 'Barcha menejerlarni ko‘rsatish' : 'Показать всех менеджеров'}</span>
-          </button>
-        </div>
-      )}
-
+    <div className="mb-6">
       {/* Grid of Manager Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {managers.map((m) => {
@@ -202,3 +181,4 @@ export default function QcManagerCards({
     </div>
   );
 }
+
