@@ -92,6 +92,7 @@ export default function CallFilters({
           <option value="all">{lang === 'uz' ? 'Barcha holatlar' : 'Все статусы'}</option>
           <option value="completed">{lang === 'uz' ? 'Faqat tahlil qilingan' : 'Только проанализированные'}</option>
           <option value="skipped_duration">{lang === 'uz' ? 'O\'tkazib yuborilgan (vaqt)' : 'Пропущенные по времени'}</option>
+          <option value="skipped_not_answered">{lang === 'uz' ? 'Javob berilmagan' : 'Не состоявшиеся'}</option>
         </select>
 
         <div className="relative flex-1 max-w-xs">

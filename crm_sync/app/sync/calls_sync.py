@@ -16,6 +16,15 @@ from app.core.crm_client import crm_client
 
 logger = logging.getLogger("CallsSync")
 
+CALL_STATUS_DESCRIPTIONS = {
+    1: "Оставлено сообщение на автоответчик",
+    2: "Перезвонить позже",
+    3: "Нет на месте",
+    5: "Неверный номер",
+    6: "Не дозвонился / абонент не ответил",
+    7: "Номер занят",
+}
+
 async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
     """Синхронизирует недавние звонки из AmoCRM и анализирует их через Gemini по настроенным правилам."""
     try:
@@ -135,6 +144,35 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
                         )
                     )).scalar_one_or_none()
                 amo_user_id = amo_user_row.id if amo_user_row else (lead_row.responsible_user_id if lead_row else None)
+
+                # Проверка статуса звонка в AmoCRM: если передан статус несостоявшегося звонка (не 4 - разговор состоялся)
+                raw_call_status = params.get("call_status")
+                call_status = None
+                if raw_call_status is not None:
+                    try:
+                        call_status = int(raw_call_status)
+                    except (ValueError, TypeError):
+                        call_status = None
+
+                if call_status is not None and call_status != 4:
+                    reason_desc = CALL_STATUS_DESCRIPTIONS.get(call_status, f"код статуса {call_status}")
+                    skip_eval = QcCallEvaluation(
+                        account_id=account_id,
+                        external_call_id=note_id,
+                        lead_id=lead_id,
+                        pipeline_id=pipeline_id,
+                        amo_user_id=amo_user_id,
+                        phone=phone,
+                        call_direction=direction,
+                        call_date=call_date,
+                        duration_seconds=duration,
+                        recording_url=link,
+                        status="skipped_not_answered",
+                        skip_reason=f"Разговор не состоялся ({reason_desc})",
+                    )
+                    session.add(skip_eval)
+                    await session.commit()
+                    continue
 
                 # Проверка фильтров длительности
                 if duration < qc_settings.min_duration_sec:
