@@ -21,6 +21,7 @@ export const adminApi = {
       qcMinDurationSec?: number;
       qcMaxDurationSec?: number;
       qcRescueThresholdScore?: number;
+      qcSystemPrompt?: string | null;
     }>(`/admin/accounts/${id}/ai-settings`),
   patchAiSettings: (
     id: number,
@@ -33,6 +34,7 @@ export const adminApi = {
       qcMinDurationSec?: number;
       qcMaxDurationSec?: number;
       qcRescueThresholdScore?: number;
+      qcSystemPrompt?: string | null;
     }
   ) => baseApi(`/admin/accounts/${id}/ai-settings`, { method: 'PATCH', body: JSON.stringify(data) }),
   testAi: (data: { model: string; token: string }) =>

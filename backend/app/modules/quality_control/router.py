@@ -91,6 +91,7 @@ async def get_qc_settings(
         minDurationSec=qc.min_duration_sec,
         maxDurationSec=qc.max_duration_sec,
         rescueThresholdScore=qc.rescue_threshold_score,
+        systemPrompt=qc.system_prompt,
         lastCallSyncedAt=qc.last_call_synced_at,
     )
 
@@ -120,6 +121,8 @@ async def update_qc_settings(
         qc.max_duration_sec = max(qc.min_duration_sec + 10, dto.maxDurationSec)
     if dto.rescueThresholdScore is not None:
         qc.rescue_threshold_score = max(5, dto.rescueThresholdScore)
+    if dto.systemPrompt is not None:
+        qc.system_prompt = dto.systemPrompt.strip() if dto.systemPrompt else None
 
     qc.updated_at = datetime.now(timezone.utc)
     await db.commit()
@@ -132,6 +135,7 @@ async def update_qc_settings(
         minDurationSec=qc.min_duration_sec,
         maxDurationSec=qc.max_duration_sec,
         rescueThresholdScore=qc.rescue_threshold_score,
+        systemPrompt=qc.system_prompt,
         lastCallSyncedAt=qc.last_call_synced_at,
     )
 

@@ -4,13 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Headphones,
   LifeBuoy,
-  FileCheck,
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Sparkles,
 } from 'lucide-react';
 import { qcApi } from '../api/qcApi';
 import { useLanguage } from '../../../i18n/LanguageContext';
+import { useAuth } from '../../../auth/AuthContext';
 import { useFilterContext } from '../../../shared/context/FilterContext';
 import FilterBar from '../../../shared/components/FilterBar';
 import QcKpiCards from '../components/QcKpiCards';
@@ -18,30 +19,34 @@ import CallFilters from '../components/CallFilters';
 import CallCard from '../components/CallCard';
 import CallDetailModal from '../components/CallDetailModal';
 import RescueDealsBoard from '../components/RescueDealsBoard';
-import RulesSettingsTab from '../components/RulesSettingsTab';
+import AiSettingsModal from '../../../components/AiSettingsModal';
 
 export default function QualityControlPage() {
   const { lang } = useLanguage();
+  const { role } = useAuth();
   const params = useParams<{ accountId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const {
     effectiveAccountId,
     applied,
-    pipelines,
   } = useFilterContext();
 
   const storedAccountId = Number(localStorage.getItem('active_account_id')) || 1;
   const accountId = params.accountId ? parseInt(params.accountId, 10) : (effectiveAccountId || storedAccountId);
 
-  const activeTab = (searchParams.get('tab') as 'calls' | 'rescue' | 'rules') || 'calls';
-  const handleTabChange = (tab: 'calls' | 'rescue' | 'rules') => {
+  const rawTab = searchParams.get('tab');
+  const activeTab: 'calls' | 'rescue' = rawTab === 'rescue' ? 'rescue' : 'calls';
+
+  const handleTabChange = (tab: 'calls' | 'rescue') => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set('tab', tab);
       return next;
     });
   };
+
+  const [showAiModal, setShowAiModal] = useState(false);
 
   // Local filter states for Call feed specifics
   const [scoreFilter, setScoreFilter] = useState('all');
@@ -130,10 +135,21 @@ export default function QualityControlPage() {
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             {lang === 'uz'
-              ? 'AI orqali qo\'ng\'iroqlarni avtomatik tahlil qilish, reglament buzilishlari va boy berilgan bitimlarni qutqarish'
-              : 'Автоматический аудит звонков с ИИ, чек-листы по воронкам и реанимация слитых сделок'}
+              ? 'AI orqali qo\'ng\'iroqlarni avtomatik tahlil qilish va boy berilgan bitimlarni qutqarish'
+              : 'Автоматический аудит звонков с ИИ и реанимация слитых сделок'}
           </p>
         </div>
+
+        {role === 'admin' && (
+          <button
+            type="button"
+            onClick={() => setShowAiModal(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-all flex items-center gap-2 cursor-pointer self-start sm:self-auto shrink-0"
+          >
+            <Sparkles size={14} className="text-yellow-300" />
+            <span>{lang === 'uz' ? 'AI va reglament sozlamalari' : 'Настройки ИИ и чек-листов'}</span>
+          </button>
+        )}
       </div>
 
       {/* 1. Unified FilterBar */}
@@ -170,19 +186,6 @@ export default function QualityControlPage() {
               {statsQuery.data?.rescueDealsCount}
             </span>
           )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleTabChange('rules')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-            activeTab === 'rules'
-              ? 'bg-purple-600 text-white shadow-sm'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-          }`}
-        >
-          <FileCheck size={15} />
-          <span>{lang === 'uz' ? 'Tekshirish qoidalari' : 'Законы проверки'}</span>
         </button>
       </div>
 
@@ -288,21 +291,21 @@ export default function QualityControlPage() {
         />
       )}
 
-      {/* Tab 3: Rules Settings */}
-      {activeTab === 'rules' && (
-        <RulesSettingsTab
-          accountId={accountId}
-          pipelines={pipelines}
-          pipelineId={applied.pipelineId || undefined}
-        />
-      )}
-
       {/* Call Detail Modal */}
       {selectedCallId && (
         <CallDetailModal
           accountId={accountId}
           callId={selectedCallId}
           onClose={() => setSelectedCallId(null)}
+        />
+      )}
+
+      {/* Admin AI & Rules Settings Modal */}
+      {showAiModal && (
+        <AiSettingsModal
+          accountId={accountId}
+          initialTab="qc"
+          onClose={() => setShowAiModal(false)}
         />
       )}
     </div>

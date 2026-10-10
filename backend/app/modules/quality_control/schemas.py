@@ -9,6 +9,7 @@ class QcSettingsDto(BaseModel):
     minDurationSec: int
     maxDurationSec: int
     rescueThresholdScore: int
+    systemPrompt: Optional[str] = None
     lastCallSyncedAt: Optional[datetime] = None
 
 class UpdateQcSettingsDto(BaseModel):
@@ -17,6 +18,7 @@ class UpdateQcSettingsDto(BaseModel):
     minDurationSec: Optional[int] = None
     maxDurationSec: Optional[int] = None
     rescueThresholdScore: Optional[int] = None
+    systemPrompt: Optional[str] = None
 
 class QcRuleDto(BaseModel):
     id: int

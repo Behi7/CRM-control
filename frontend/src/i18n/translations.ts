@@ -186,6 +186,14 @@ export const translations = {
     ai_save_btn: 'Сохранить настройки',
     ai_saving: 'Сохранение...',
     ai_testing: 'Проверка...',
+    ai_tab_general: 'Основные настройки',
+    ai_tab_qc: 'Аудит звонков и Промпт',
+    ai_tab_rules: 'Чек-листы и законы проверки',
+    ai_qc_system_prompt_label: 'Системный промпт для аудита звонков',
+    ai_qc_system_prompt_desc: 'Gemini использует этот базовый промпт для анализа аудиозаписей звонков. Список законов регламента подставляется автоматически.',
+    ai_qc_system_prompt_reset: 'Сбросить на базовый промпт',
+    ai_qc_threshold_label: 'Порог для спасения сделки (баллы)',
+    ai_qc_threshold_hint: 'Сделки со звонками ниже этого балла попадают на доску спасения',
   },
   uz: {
     // Common
@@ -372,6 +380,14 @@ export const translations = {
     ai_save_btn: 'Sozlamalarni saqlash',
     ai_saving: 'Saqlanmoqda...',
     ai_testing: 'Tekshirilmoqda...',
+    ai_tab_general: 'Asosiy sozlamalar',
+    ai_tab_qc: 'Qo‘ng‘iroqlar auditi va Prompt',
+    ai_tab_rules: 'Chek-listlar va tekshirish qoidalari',
+    ai_qc_system_prompt_label: 'Qo‘ng‘iroqlar auditi uchun tizimli prompt',
+    ai_qc_system_prompt_desc: 'Gemini audio yozuvlarni tahlil qilishda ushbu asosiy promptdan foydalanadi. Reglament qoidalari avtomatik ravishda qo‘shiladi.',
+    ai_qc_system_prompt_reset: 'Standart promptga qaytarish',
+    ai_qc_threshold_label: 'Bitimni qutqarish chegarasi (ball)',
+    ai_qc_threshold_hint: 'Ushbu balldan past bo‘lgan qo‘ng‘iroqlarga ega bitimlar qutqarish doskasiga tushadi',
   },
 } as const;
 
