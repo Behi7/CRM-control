@@ -6,13 +6,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Search,
+  X,
 } from 'lucide-react';
 import { qcApi } from '../api/qcApi';
 import { useLanguage } from '../../../i18n/LanguageContext';
 import { useFilterContext } from '../../../shared/context/FilterContext';
 import FilterBar from '../../../shared/components/FilterBar';
-import QcKpiCards from '../components/QcKpiCards';
-import CallFilters from '../components/CallFilters';
+import QcManagerCards from '../components/QcManagerCards';
 import CallCard from '../components/CallCard';
 import CallDetailModal from '../components/CallDetailModal';
 
@@ -34,6 +35,7 @@ export default function QualityControlPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selectedCallId, setSelectedCallId] = useState<number | null>(null);
+  const [selectedManagerId, setSelectedManagerId] = useState<number | null>(null);
 
   // Stats query connected to unified FilterBar filters
   const statsQuery = useQuery({
@@ -59,7 +61,14 @@ export default function QualityControlPage() {
     refetchInterval: 30_000,
   });
 
-  // Calls feed query connected to unified filters + score/status/search
+  // Effective manager filter for calls: selectedManagerId takes precedence, then applied.managerIds
+  const effectiveManagerIds = selectedManagerId
+    ? [selectedManagerId]
+    : applied.managerIds.length > 0
+    ? applied.managerIds
+    : undefined;
+
+  // Calls feed query connected to unified filters + score/status/search + selected manager
   const callsQuery = useQuery({
     queryKey: [
       'qc-calls',
@@ -68,6 +77,7 @@ export default function QualityControlPage() {
       scoreFilter,
       statusFilter,
       search,
+      selectedManagerId,
       applied.pipelineId,
       applied.managerIds,
       applied.tagIds,
@@ -83,7 +93,7 @@ export default function QualityControlPage() {
         status: statusFilter !== 'all' ? statusFilter : undefined,
         search: search.trim() || undefined,
         pipelineId: applied.pipelineId || undefined,
-        managers: applied.managerIds.length > 0 ? applied.managerIds : undefined,
+        managers: effectiveManagerIds,
         tags: applied.tagIds.length > 0 ? applied.tagIds : undefined,
         dealStatus: applied.status !== 'all' ? applied.status : undefined,
         dateFrom: applied.dateFrom || undefined,
@@ -92,51 +102,86 @@ export default function QualityControlPage() {
     refetchInterval: 30_000,
   });
 
-  const handleResetCallFilters = () => {
-    setScoreFilter('all');
-    setStatusFilter('all');
-    setSearch('');
-    setPage(1);
-  };
-
   const totalPages = Math.ceil((callsQuery.data?.total || 0) / 15) || 1;
 
   return (
     <div className="p-4 lg:p-6 mx-auto max-w-[1920px] space-y-6">
-      {/* 1. Unified FilterBar */}
-      <FilterBar showStatus={true} />
+      {/* 1. Unified FilterBar with integrated Call Filters (Score, Status, Search) */}
+      <FilterBar showStatus={true}>
+        {/* Score filter dropdown */}
+        <select
+          value={scoreFilter}
+          onChange={(e) => {
+            setScoreFilter(e.target.value);
+            setPage(1);
+          }}
+          className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
+        >
+          <option value="all">{lang === 'uz' ? 'Barcha baholar' : 'Все оценки'}</option>
+          <option value="low">{lang === 'uz' ? 'Xatolar (< 50)' : 'С ошибками (< 50)'}</option>
+          <option value="med">{lang === 'uz' ? 'O‘rtacha (50-75)' : 'Средние (50-75)'}</option>
+          <option value="high">{lang === 'uz' ? 'A’lo (> 75)' : 'Отличные (> 75)'}</option>
+        </select>
 
-      {/* 2. KPI Cards */}
-      <QcKpiCards
-        stats={statsQuery.data}
+        {/* Call status dropdown */}
+        <select
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
+          className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
+        >
+          <option value="all">{lang === 'uz' ? 'Barcha holatlar' : 'Все статусы звонков'}</option>
+          <option value="completed">{lang === 'uz' ? 'Faqat tahlil qilingan' : 'Только проанализированные'}</option>
+          <option value="skipped_duration">{lang === 'uz' ? 'O‘tkazib yuborilgan (vaqt)' : 'Пропущенные по времени'}</option>
+          <option value="skipped_not_answered">{lang === 'uz' ? 'Javob berilmagan' : 'Не состоявшиеся'}</option>
+        </select>
+
+        {/* Search input by phone or lead */}
+        <div className="relative min-w-[200px] max-w-xs">
+          <Search size={13} className="absolute left-3 top-2.5 text-slate-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            placeholder={lang === 'uz' ? 'Telefon yoki bitim...' : 'Телефон или сделка...'}
+            className="w-full pl-8 pr-7 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+          />
+          {search && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setPage(1);
+              }}
+              className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </FilterBar>
+
+      {/* 2. Manager-by-Manager Cards (Calls count, minutes, avg score, mistakes) */}
+      <QcManagerCards
+        managers={statsQuery.data?.managersStats}
+        selectedManagerId={selectedManagerId}
+        onSelectManager={(id) => {
+          setSelectedManagerId(id);
+          setPage(1);
+        }}
         isLoading={statsQuery.isLoading}
       />
 
-      {/* 3. Calls Feed */}
+      {/* 3. Calls Feed (No secondary filter bar!) */}
       <div className="space-y-4">
-        <CallFilters
-          scoreFilter={scoreFilter}
-          onScoreFilterChange={(v) => {
-            setScoreFilter(v);
-            setPage(1);
-          }}
-          statusFilter={statusFilter}
-          onStatusFilterChange={(v) => {
-            setStatusFilter(v);
-            setPage(1);
-          }}
-          search={search}
-          onSearchChange={(v) => {
-            setSearch(v);
-            setPage(1);
-          }}
-          onReset={handleResetCallFilters}
-        />
-
         {callsQuery.isLoading ? (
           <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
             <Loader2 size={28} className="animate-spin text-blue-600" />
-            <span className="text-xs">{lang === 'uz' ? 'Qo\'ng\'iroqlar yuklanmoqda...' : 'Загрузка списка звонков...'}</span>
+            <span className="text-xs">{lang === 'uz' ? 'Qo‘ng‘iroqlar yuklanmoqda...' : 'Загрузка списка звонков...'}</span>
           </div>
         ) : callsQuery.data?.items && callsQuery.data.items.length > 0 ? (
           <div className="space-y-3">
@@ -180,11 +225,11 @@ export default function QualityControlPage() {
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center text-slate-400 space-y-2">
             <Headphones size={36} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
             <h3 className="font-bold text-slate-800 dark:text-slate-200 text-base">
-              {lang === 'uz' ? 'Qo\'ng\'iroqlar topilmadi' : 'Звонков пока нет'}
+              {lang === 'uz' ? 'Qo‘ng‘iroqlar topilmadi' : 'Звонков пока нет'}
             </h3>
             <p className="text-xs max-w-md mx-auto">
               {lang === 'uz'
-                ? 'Tanlangan filtrlar bo\'yicha qo\'ng\'iroqlar topilmadi yoki hali yuklanmagan.'
+                ? 'Tanlangan filtrlar bo‘yicha qo‘ng‘iroqlar topilmadi yoki hali yuklanmagan.'
                 : 'По выбранным фильтрам звонков не найдено, либо воркер еще не подтянул новые звонки.'}
             </p>
           </div>

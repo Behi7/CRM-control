@@ -74,6 +74,19 @@ export interface RescueDealItem {
   updatedAt: string;
 }
 
+export interface QcManagerStat {
+  managerId?: number | null;
+  managerName: string;
+  totalCalls: number;
+  analyzedCalls: number;
+  totalDurationSec: number;
+  avgDurationSec: number;
+  avgScore: number;
+  lowScoreCalls: number;
+  highScoreCalls: number;
+  compliancePercent: number;
+}
+
 export interface QcStats {
   totalCalls: number;
   analyzedCalls: number;
@@ -83,6 +96,7 @@ export interface QcStats {
   highScoreCalls?: number;
   rescueDealsCount: number;
   topMistakes: Array<{ mistake: string; count: number }>;
+  managersStats?: QcManagerStat[];
 }
 
 export const qcApi = {

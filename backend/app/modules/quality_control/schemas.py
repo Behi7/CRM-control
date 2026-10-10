@@ -89,6 +89,18 @@ class RescueDealItemDto(BaseModel):
     callsCount: int = 0
     updatedAt: datetime
 
+class QcManagerStatDto(BaseModel):
+    managerId: Optional[int] = None
+    managerName: str
+    totalCalls: int
+    analyzedCalls: int
+    totalDurationSec: int
+    avgDurationSec: int
+    avgScore: float
+    lowScoreCalls: int
+    highScoreCalls: int
+    compliancePercent: float
+
 class QcStatsDto(BaseModel):
     totalCalls: int
     analyzedCalls: int
@@ -98,4 +110,5 @@ class QcStatsDto(BaseModel):
     highScoreCalls: int = 0
     rescueDealsCount: int
     topMistakes: List[Dict[str, Any]]
+    managersStats: List[QcManagerStatDto] = []
 

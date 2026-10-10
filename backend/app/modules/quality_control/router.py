@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, func, desc, and_, or_
+from sqlalchemy import select, update, delete, func, desc, and_, or_, case
 from sqlalchemy.orm import selectinload
 
 from app.core.database import AsyncSessionLocal
@@ -704,6 +704,46 @@ async def get_qc_stats(
         for m, cnt in mistakes_counter.most_common(5)
     ]
 
+    # 5. Manager-by-manager stats
+    mgr_stmt = (
+        select(
+            QcCallEvaluation.amo_user_id,
+            func.coalesce(AmoUser.name, "Не назначен").label("manager_name"),
+            func.count(QcCallEvaluation.id).label("total_calls"),
+            func.count(case((QcCallEvaluation.status == "completed", 1))).label("analyzed_calls"),
+            func.coalesce(func.sum(QcCallEvaluation.duration_seconds), 0).label("total_duration_sec"),
+            func.coalesce(func.avg(QcCallEvaluation.duration_seconds), 0).label("avg_duration_sec"),
+            func.coalesce(func.avg(case((QcCallEvaluation.status == "completed", QcCallEvaluation.overall_score))), 0).label("avg_score"),
+            func.count(case((and_(QcCallEvaluation.status == "completed", QcCallEvaluation.overall_score < 50), 1))).label("low_score_calls"),
+            func.count(case((and_(QcCallEvaluation.status == "completed", QcCallEvaluation.overall_score >= 75), 1))).label("high_score_calls"),
+        )
+        .select_from(QcCallEvaluation)
+        .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
+        .outerjoin(AmoUser, QcCallEvaluation.amo_user_id == AmoUser.id)
+        .where(*base_conditions)
+        .group_by(QcCallEvaluation.amo_user_id, AmoUser.name)
+        .order_by(func.count(QcCallEvaluation.id).desc())
+    )
+    mgr_res = await db.execute(mgr_stmt)
+    managers_stats = []
+    for row in mgr_res.all():
+        m_total = row.total_calls or 0
+        m_analyzed = row.analyzed_calls or 0
+        m_high = row.high_score_calls or 0
+        comp_pct = round((m_high / m_analyzed * 100), 1) if m_analyzed > 0 else 0.0
+        managers_stats.append({
+            "managerId": row.amo_user_id,
+            "managerName": row.manager_name or "Не назначен",
+            "totalCalls": m_total,
+            "analyzedCalls": m_analyzed,
+            "totalDurationSec": int(row.total_duration_sec or 0),
+            "avgDurationSec": int(row.avg_duration_sec or 0),
+            "avgScore": round(float(row.avg_score or 0), 1),
+            "lowScoreCalls": row.low_score_calls or 0,
+            "highScoreCalls": m_high,
+            "compliancePercent": comp_pct,
+        })
+
     return QcStatsDto(
         totalCalls=total_calls,
         analyzedCalls=analyzed_calls or 0,
@@ -713,5 +753,6 @@ async def get_qc_stats(
         highScoreCalls=high_score_calls,
         rescueDealsCount=rescue_cnt,
         topMistakes=top_mistakes,
+        managersStats=managers_stats,
     )
 
