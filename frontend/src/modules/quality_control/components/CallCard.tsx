@@ -105,6 +105,10 @@ export default function CallCard({ call, onOpenDetail }: CallCardProps) {
             >
               {score}
             </div>
+          ) : call.status === 'pending' ? (
+            <div className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 animate-pulse">
+              {lang === 'uz' ? 'Tahlil kutilmoqda...' : 'В очереди анализа...'}
+            </div>
           ) : (
             <div className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">
               {call.skipReason || (lang === 'uz' ? 'O\'tkazib yuborilgan' : 'Пропущен')}

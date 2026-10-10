@@ -756,3 +756,50 @@ async def get_qc_stats(
         managersStats=managers_stats,
     )
 
+
+# ==========================================
+# 6. ON-DEMAND ANALYSIS & SCORE RECALCULATION
+# ==========================================
+
+@router.post("/accounts/{account_id}/qc/calls/{call_id}/analyze")
+async def trigger_call_analysis(
+    account_id: int,
+    call_id: int,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    check_account_access(user, account_id)
+    from app.modules.quality_control.service import process_call_evaluation
+    ok = await process_call_evaluation(db, call_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Не удалось проанализировать звонок (проверьте наличие аудио и настройки ИИ)")
+    return {"ok": True, "message": "Звонок успешно проанализирован"}
+
+
+@router.post("/accounts/{account_id}/qc/recalculate-scores")
+async def recalculate_scores(
+    account_id: int,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Пересчитывает оценки всех завершенных звонков по новой математической формуле процентов."""
+    check_account_access(user, account_id)
+    from app.modules.quality_control.service import calculate_score_and_anomalies, get_active_rules
+
+    stmt = select(QcCallEvaluation).where(
+        QcCallEvaluation.account_id == account_id,
+        QcCallEvaluation.status == "completed",
+        QcCallEvaluation.rules_breakdown.is_not(None),
+    )
+    res = await db.execute(stmt)
+    calls = res.scalars().all()
+    updated = 0
+    for c in calls:
+        rules = await get_active_rules(db, account_id, c.pipeline_id)
+        new_score, new_anomalies = calculate_score_and_anomalies(c.rules_breakdown or [], rules)
+        c.overall_score = new_score
+        c.anomaly_points = new_anomalies
+        updated += 1
+    await db.commit()
+    return {"ok": True, "updatedCount": updated}
+

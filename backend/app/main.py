@@ -14,6 +14,8 @@ from app.modules.admin.router import router as admin_router
 from app.modules.analytics.router import router as analytics_router
 from app.modules.ai_chat.router import router as ai_router
 from app.modules.quality_control.router import router as qc_router
+from app.modules.quality_control.service import qc_background_worker
+import asyncio
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,8 +41,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[Core] Startup database check warning: {e}")
 
+    # Launch QC processing worker in background
+    qc_task = asyncio.create_task(qc_background_worker())
+
     yield
+
     # Shutdown
+    qc_task.cancel()
+    try:
+        await qc_task
+    except asyncio.CancelledError:
+        pass
 
 app = FastAPI(
     title="AmoCRM Analytics - Unified Python Backend",

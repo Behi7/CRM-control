@@ -162,6 +162,7 @@ export default function QualityControlPage() {
           className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200"
         >
           <option value="completed">{lang === 'uz' ? 'Faqat tahlil qilingan' : 'Только проанализированные'}</option>
+          <option value="pending">{lang === 'uz' ? 'Navbatda' : 'В очереди анализа'}</option>
           <option value="all">{lang === 'uz' ? 'Barcha holatlar' : 'Все статусы звонков'}</option>
           <option value="skipped_duration">{lang === 'uz' ? 'O‘tkazib yuborilgan (vaqt)' : 'Пропущенные по времени'}</option>
           <option value="skipped_not_answered">{lang === 'uz' ? 'Javob berilmagan' : 'Не состоявшиеся'}</option>
