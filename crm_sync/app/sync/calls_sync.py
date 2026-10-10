@@ -90,14 +90,23 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
                 break
 
             for note in notes:
+                # 1. Фильтруем строго только звонки
+                note_type = note.get("note_type")
+                if note_type not in ("call_in", "call_out"):
+                    continue
+
                 total_found += 1
                 note_id = str(note.get("id"))
                 lead_ext_id = str(note.get("entity_id") or "")
                 params = note.get("params") or {}
                 duration = int(params.get("duration") or 0)
-                link = params.get("link")
+
+                # Безопасное извлечение ссылки (исключаем словари связей и не-URL)
+                raw_link = params.get("link")
+                link = raw_link.strip() if isinstance(raw_link, str) and raw_link.strip().startswith("http") else None
+
                 phone = str(params.get("phone") or "")
-                direction = "in" if note.get("note_type") == "call_in" else "out"
+                direction = "in" if note_type == "call_in" else "out"
                 call_created_ts = note.get("created_at") or int(job_started_at.timestamp())
                 call_date = datetime.fromtimestamp(call_created_ts, tz=timezone.utc)
                 responsible_user_ext_id = str(note.get("responsible_user_id") or "")
