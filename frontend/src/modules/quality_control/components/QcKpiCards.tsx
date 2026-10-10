@@ -1,15 +1,15 @@
 import React from 'react';
-import { Award, Headphones, AlertTriangle, LifeBuoy } from 'lucide-react';
+import { Award, Headphones, AlertTriangle } from 'lucide-react';
 import { QcStats } from '../api/qcApi';
 import { useLanguage } from '../../../i18n/LanguageContext';
 
 interface QcKpiCardsProps {
   stats?: QcStats;
   isLoading: boolean;
-  onSelectRescueTab: () => void;
+  onSelectRescueTab?: () => void;
 }
 
-export default function QcKpiCards({ stats, isLoading, onSelectRescueTab }: QcKpiCardsProps) {
+export default function QcKpiCards({ stats, isLoading }: QcKpiCardsProps) {
   const { lang } = useLanguage();
 
   if (isLoading) {
@@ -82,30 +82,20 @@ export default function QcKpiCards({ stats, isLoading, onSelectRescueTab }: QcKp
         </div>
       </div>
 
-      {/* 4. Сделки в зоне спасения */}
-      <button
-        type="button"
-        onClick={onSelectRescueTab}
-        className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-rose-200 dark:border-rose-900/40 hover:border-rose-400 flex items-center gap-3.5 shadow-xs text-left cursor-pointer transition-all hover:bg-rose-50/30 dark:hover:bg-rose-950/20"
-      >
-        <div className="w-12 h-12 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
-          <LifeBuoy size={22} />
+      {/* 4. Отличные звонки (≥ 75) */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center gap-3.5 shadow-xs">
+        <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+          <Award size={22} />
         </div>
         <div>
-          <span className="text-xs text-rose-600 dark:text-rose-400 block font-semibold">
-            {lang === 'uz' ? 'Qutqarish mumkin bo\'lgan' : 'Еще можно спасти'}
+          <span className="text-xs text-slate-500 dark:text-slate-400 block font-medium">
+            {lang === 'uz' ? 'A\'lo qo\'ng\'iroqlar (≥ 75)' : 'Отличные звонки (≥ 75)'}
           </span>
-          <div className="flex items-center gap-1.5">
-            <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
-              {stats?.rescueDealsCount ?? 0}
-            </span>
-            <span className="text-[11px] text-slate-400 underline">
-              {lang === 'uz' ? 'ko\'rish' : 'посмотреть'}
-            </span>
-          </div>
+          <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+            {stats?.highScoreCalls ?? 0}
+          </span>
         </div>
-      </button>
+      </div>
     </div>
   );
 }
-
