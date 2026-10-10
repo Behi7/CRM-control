@@ -9,6 +9,7 @@ import StageLeadsPage from './pages/StageLeadsPage';
 import LeadDetailPage from './pages/LeadDetailPage';
 import SearchPage from './pages/SearchPage';
 import BiAnalyticsPage from './pages/BiAnalyticsPage';
+import QualityControlPage from './modules/quality_control/pages/QualityControlPage';
 import AppSidebarLayout from './components/AppSidebar';
 import { FilterProvider } from './shared/context/FilterContext';
 
@@ -45,6 +46,8 @@ export default function App() {
           <Route path="/admin/stage/:stageId" element={<WithSidebar><StageLeadsPage /></WithSidebar>} />
           <Route path="/admin/lead/:leadId" element={<WithSidebar><LeadDetailPage /></WithSidebar>} />
           <Route path="/admin/search/:accountId" element={<WithSidebar><SearchPage /></WithSidebar>} />
+          <Route path="/admin/qc/:accountId" element={<WithSidebar><QualityControlPage /></WithSidebar>} />
+          <Route path="/admin/quality/:accountId" element={<WithSidebar><QualityControlPage /></WithSidebar>} />
         </>
       )}
       {role === 'viewer' && (
@@ -55,6 +58,8 @@ export default function App() {
           <Route path="/stage/:stageId" element={<WithSidebar><StageLeadsPage /></WithSidebar>} />
           <Route path="/lead/:leadId" element={<WithSidebar><LeadDetailPage /></WithSidebar>} />
           <Route path="/search" element={<WithSidebar><SearchPage /></WithSidebar>} />
+          <Route path="/qc" element={<WithSidebar><QualityControlPage /></WithSidebar>} />
+          <Route path="/quality" element={<WithSidebar><QualityControlPage /></WithSidebar>} />
         </>
       )}
       <Route

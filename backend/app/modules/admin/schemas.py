@@ -20,6 +20,10 @@ class UpdateAiSettingsDto(BaseModel):
     aiModel: Optional[str] = None
     aiToken: Optional[str] = None
     aiCompanyContext: Optional[str] = None
+    qcEnabled: Optional[bool] = None
+    qcMinDurationSec: Optional[int] = None
+    qcMaxDurationSec: Optional[int] = None
+    qcRescueThresholdScore: Optional[int] = None
 
 class TestAiDto(BaseModel):
     model: str

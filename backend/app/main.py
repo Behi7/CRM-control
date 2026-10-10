@@ -13,6 +13,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.admin.router import router as admin_router
 from app.modules.analytics.router import router as analytics_router
 from app.modules.ai_chat.router import router as ai_router
+from app.modules.quality_control.router import router as qc_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -71,6 +72,7 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(analytics_router)
 app.include_router(ai_router)
+app.include_router(qc_router)
 
 # Mount Routers under /api prefix as well (for direct proxying without url rewriting)
 app.include_router(auth_router, prefix="/api")
@@ -79,3 +81,4 @@ app.include_router(analytics_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api/py2")
 app.include_router(ai_router, prefix="/api")
 app.include_router(ai_router, prefix="/api/py3")
+app.include_router(qc_router, prefix="/api")

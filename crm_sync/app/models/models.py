@@ -247,3 +247,82 @@ class Notification(Base):
     message = Column(Text, nullable=False)
     is_read = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+class QcSettings(Base):
+    __tablename__ = "qc_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), unique=True, nullable=False)
+    is_enabled = Column(Boolean, nullable=False, default=False)
+    ai_model = Column(Text, nullable=False, default="gemini-2.5-flash")
+    min_duration_sec = Column(Integer, nullable=False, default=20)
+    max_duration_sec = Column(Integer, nullable=False, default=600)
+    rescue_threshold_score = Column(Integer, nullable=False, default=40)
+    last_call_synced_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+class QcRule(Base):
+    __tablename__ = "qc_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    pipeline_id = Column(Integer, ForeignKey("pipelines.id", ondelete="CASCADE"), nullable=True)
+    title = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    penalty_points = Column(Integer, nullable=False, default=10)
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+class QcCallEvaluation(Base):
+    __tablename__ = "qc_call_evaluations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    external_call_id = Column(Text, nullable=False)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
+    pipeline_id = Column(Integer, ForeignKey("pipelines.id", ondelete="SET NULL"), nullable=True)
+    amo_user_id = Column(Integer, ForeignKey("amo_users.id", ondelete="SET NULL"), nullable=True)
+    contact_id = Column(Text, nullable=True)
+    phone = Column(Text, nullable=True)
+    call_direction = Column(Text, nullable=True)
+    call_date = Column(DateTime(timezone=True), nullable=False)
+    duration_seconds = Column(Integer, nullable=False)
+    recording_url = Column(Text, nullable=True)
+    status = Column(Text, nullable=False, default="completed")
+    skip_reason = Column(Text, nullable=True)
+    overall_score = Column(Integer, nullable=True)
+    rules_breakdown = Column(JSONB, nullable=True)
+    errors_list = Column(JSONB, nullable=True)
+    bottleneck = Column(Text, nullable=True)
+    transcript = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
+    recommendation = Column(Text, nullable=True)
+    anomaly_points = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "external_call_id", name="qc_call_evaluations_account_external_call_id_key"),
+        Index("idx_qc_eval_account_lead", "account_id", "lead_id"),
+        Index("idx_qc_eval_account_date", "account_id", "call_date"),
+        Index("idx_qc_eval_account_score", "account_id", "overall_score"),
+    )
+
+class QcLeadRiskScore(Base):
+    __tablename__ = "qc_lead_risk_scores"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), unique=True, nullable=False)
+    total_risk_score = Column(Integer, nullable=False, default=0)
+    risk_breakdown = Column(JSONB, nullable=True)
+    is_rescue_candidate = Column(Boolean, nullable=False, default=False)
+    rescue_reason = Column(Text, nullable=True)
+    ai_rescue_script = Column(Text, nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_qc_risk_account_rescue", "account_id", "is_rescue_candidate"),
+    )

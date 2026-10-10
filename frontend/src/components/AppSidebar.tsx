@@ -14,6 +14,7 @@ import {
   Cpu,
   Menu,
   X,
+  Headphones,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -125,6 +126,10 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
   const isClientsActive = isPathActive('/admin/clients');
   const isNotifsActive = isPathActive('/admin/notifications');
 
+  const qcUrl =
+    role === 'admin' ? `/admin/qc/${activeAccountId}` : `/qc`;
+  const isQcActive = isPathActive('/admin/qc') || isPathActive('/qc') || isPathActive('/admin/quality') || isPathActive('/quality');
+
   const currentAccObj = accounts.find((a: any) => a.id === activeAccountId) || accounts[0];
   const amoAccountName = currentAccObj?.subdomain || 'AmoCRM';
   const fullDomain = currentAccObj?.subdomain
@@ -134,6 +139,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
   const labels = {
     appAnalytics: lang === 'uz' ? 'AmoCRM Tahlil Markazi' : 'Аналитика продаж',
     appAnalyticsSub: lang === 'uz' ? 'Moliya, Vaqt, Voronka, UTM' : 'Финансы, Время, Воронка, UTM',
+    qcApp: lang === 'uz' ? 'Sifat nazorati (QC)' : 'Контроль качества',
     search: lang === 'uz' ? 'Bitimlarni qidirish' : 'Поиск сделок',
     app03: lang === 'uz' ? 'AI Prognoz (Tez kunda)' : 'AI-Прогнозы',
     clients: lang === 'uz' ? 'AmoCRM Mijozlar' : 'Клиенты AmoCRM',
@@ -295,6 +301,30 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               {!collapsed && (
                 <div className="overflow-hidden flex-1">
                   <span className="text-xs font-semibold truncate">{labels.appAnalytics}</span>
+                </div>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                setMobileOpen(false);
+                navigate(qcUrl);
+              }}
+              className={`${
+                collapsed
+                  ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
+                  : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
+              } transition-all cursor-pointer ${
+                isQcActive
+                  ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-950/50'
+                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+              }`}
+              title={labels.qcApp}
+            >
+              <Headphones size={20} className="shrink-0" />
+              {!collapsed && (
+                <div className="overflow-hidden flex-1">
+                  <span className="text-xs font-semibold truncate">{labels.qcApp}</span>
                 </div>
               )}
             </button>

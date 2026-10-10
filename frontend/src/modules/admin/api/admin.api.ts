@@ -11,11 +11,30 @@ export const adminApi = {
   listNotifications: (unreadOnly = false) => baseApi<any[]>(`/admin/notifications?unreadOnly=${unreadOnly}`),
   readNotification: (id: number) => baseApi(`/admin/notifications/${id}/read`, { method: 'POST' }),
   getAiSettings: (id: number) =>
-    baseApi<{ accountId: number; aiEnabled: boolean; aiModel: string; hasToken: boolean; aiCompanyContext: string }>(
-      `/admin/accounts/${id}/ai-settings`,
-    ),
-  patchAiSettings: (id: number, data: { aiEnabled?: boolean; aiModel?: string; aiToken?: string; aiCompanyContext?: string }) =>
-    baseApi(`/admin/accounts/${id}/ai-settings`, { method: 'PATCH', body: JSON.stringify(data) }),
+    baseApi<{
+      accountId: number;
+      aiEnabled: boolean;
+      aiModel: string;
+      hasToken: boolean;
+      aiCompanyContext: string;
+      qcEnabled?: boolean;
+      qcMinDurationSec?: number;
+      qcMaxDurationSec?: number;
+      qcRescueThresholdScore?: number;
+    }>(`/admin/accounts/${id}/ai-settings`),
+  patchAiSettings: (
+    id: number,
+    data: {
+      aiEnabled?: boolean;
+      aiModel?: string;
+      aiToken?: string;
+      aiCompanyContext?: string;
+      qcEnabled?: boolean;
+      qcMinDurationSec?: number;
+      qcMaxDurationSec?: number;
+      qcRescueThresholdScore?: number;
+    }
+  ) => baseApi(`/admin/accounts/${id}/ai-settings`, { method: 'PATCH', body: JSON.stringify(data) }),
   testAi: (data: { model: string; token: string }) =>
     baseApi<{ ok: boolean; message: string }>('/admin/ai/test', { method: 'POST', body: JSON.stringify(data) }),
 };

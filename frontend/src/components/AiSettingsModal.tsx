@@ -17,6 +17,9 @@ export default function AiSettingsModal({ accountId, subdomain, onClose }: AiSet
   const [token, setToken] = useState('');
   const [companyContext, setCompanyContext] = useState('');
   const [enabled, setEnabled] = useState(false);
+  const [qcEnabled, setQcEnabled] = useState(false);
+  const [minDuration, setMinDuration] = useState(20);
+  const [maxDuration, setMaxDuration] = useState(600);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -32,6 +35,9 @@ export default function AiSettingsModal({ accountId, subdomain, onClose }: AiSet
       setModel(settingsQuery.data.aiModel || 'gemini-2.5-flash');
       setCompanyContext(settingsQuery.data.aiCompanyContext || '');
       setEnabled(settingsQuery.data.aiEnabled ?? false);
+      setQcEnabled(settingsQuery.data.qcEnabled ?? false);
+      setMinDuration(settingsQuery.data.qcMinDurationSec ?? 20);
+      setMaxDuration(settingsQuery.data.qcMaxDurationSec ?? 600);
     }
   }, [settingsQuery.data]);
 
@@ -80,6 +86,9 @@ export default function AiSettingsModal({ accountId, subdomain, onClose }: AiSet
         aiEnabled: enabled,
         aiModel: model.trim(),
         aiCompanyContext: companyContext.trim(),
+        qcEnabled: qcEnabled,
+        qcMinDurationSec: Number(minDuration) || 20,
+        qcMaxDurationSec: Number(maxDuration) || 600,
       };
       if (token.trim()) {
         payload.aiToken = token.trim();
@@ -249,6 +258,66 @@ export default function AiSettingsModal({ accountId, subdomain, onClose }: AiSet
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
                 {t('ai_context_hint')}
               </p>
+            </div>
+
+            {/* 4. QC Call Settings (Контроль качества звонков) */}
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                    <span>🎧</span> {lang === 'uz' ? 'Qo\'ng\'iroqlar nazorati (AI QC)' : 'Контроль качества звонков (AI QC)'}
+                  </span>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {lang === 'uz' ? 'Vorker orqali qo\'ng\'iroqlarni avtomatik tahlil qilish' : 'Автоматический анализ звонков воркером'}
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={qcEnabled}
+                    onChange={(e) => setQcEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                </label>
+              </div>
+
+              {qcEnabled && (
+                <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-slate-200 dark:border-slate-700/70">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      {lang === 'uz' ? 'Min. davomiylik (soniya)' : 'Мин. длительность (сек)'}
+                    </label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={3600}
+                      value={minDuration}
+                      onChange={(e) => setMinDuration(Number(e.target.value))}
+                      className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      {lang === 'uz' ? 'Qisqa qo\'ng\'iroqlar o\'tkaziladi' : 'Короткие звонки будут пропущены'}
+                    </span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      {lang === 'uz' ? 'Maks. davomiylik (soniya)' : 'Макс. длительность (сек)'}
+                    </label>
+                    <input
+                      type="number"
+                      min={30}
+                      max={7200}
+                      value={maxDuration}
+                      onChange={(e) => setMaxDuration(Number(e.target.value))}
+                      className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      {lang === 'uz' ? 'Toknlarni tejash uchun limit' : 'Защита бюджета токенов'}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Actions */}

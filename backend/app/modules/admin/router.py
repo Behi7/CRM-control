@@ -10,7 +10,7 @@ from app.core.security import (
     require_admin, hash_password, encrypt_token
 )
 from app.core.crm_client import CrmClient
-from app.models import Account, User, Notification
+from app.models import Account, User, Notification, QcSettings
 from app.modules.admin.schemas import (
     CreateAccountDto, PatchAccountDto, UpdateAiSettingsDto, TestAiDto
 )
@@ -228,12 +228,19 @@ async def get_ai_settings(account_id: int, db: AsyncSession = Depends(get_db)):
     if not acc:
         raise HTTPException(status_code=404, detail="Account not found")
 
+    qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
+    qc = (await db.execute(qc_stmt)).scalar_one_or_none()
+
     return {
         "accountId": acc.id,
         "aiEnabled": acc.ai_enabled,
         "aiModel": acc.ai_model or "gemini-2.5-flash",
         "hasToken": bool(acc.ai_encrypted_token),
         "aiCompanyContext": acc.ai_company_context or "",
+        "qcEnabled": qc.is_enabled if qc else False,
+        "qcMinDurationSec": qc.min_duration_sec if qc else 20,
+        "qcMaxDurationSec": qc.max_duration_sec if qc else 600,
+        "qcRescueThresholdScore": qc.rescue_threshold_score if qc else 40,
     }
 
 @router.patch("/accounts/{account_id}/ai-settings")
@@ -253,13 +260,37 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
     if dto.aiToken:
         acc.ai_encrypted_token = encrypt_token(dto.aiToken.strip())
 
+    # QC Settings
+    qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
+    qc = (await db.execute(qc_stmt)).scalar_one_or_none()
+    if not qc:
+        qc = QcSettings(account_id=account_id)
+        db.add(qc)
+
+    if dto.qcEnabled is not None:
+        qc.is_enabled = dto.qcEnabled
+    if dto.aiModel is not None:
+        qc.ai_model = dto.aiModel.strip()
+    if dto.qcMinDurationSec is not None:
+        qc.min_duration_sec = max(5, dto.qcMinDurationSec)
+    if dto.qcMaxDurationSec is not None:
+        qc.max_duration_sec = max(qc.min_duration_sec + 10, dto.qcMaxDurationSec)
+    if dto.qcRescueThresholdScore is not None:
+        qc.rescue_threshold_score = max(5, dto.qcRescueThresholdScore)
+
     await db.commit()
+    await db.refresh(qc)
+
     return {
         "accountId": acc.id,
         "aiEnabled": acc.ai_enabled,
         "aiModel": acc.ai_model or "gemini-2.5-flash",
         "hasToken": bool(acc.ai_encrypted_token),
         "aiCompanyContext": acc.ai_company_context or "",
+        "qcEnabled": qc.is_enabled,
+        "qcMinDurationSec": qc.min_duration_sec,
+        "qcMaxDurationSec": qc.max_duration_sec,
+        "qcRescueThresholdScore": qc.rescue_threshold_score,
     }
 
 @router.get("/notifications")
