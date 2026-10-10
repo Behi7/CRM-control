@@ -11,6 +11,7 @@ import {
   Headphones,
   FileCheck,
   RotateCcw,
+  GitBranch,
 } from 'lucide-react';
 import RulesSettingsTab from '../modules/quality_control/components/RulesSettingsTab';
 
@@ -22,14 +23,14 @@ interface AiSettingsModalProps {
 }
 
 const DEFAULT_QC_SYSTEM_PROMPT = `Ты — объективный и внимательный эксперт службы контроля качества звонков отдела продаж.
-Твоя задача — внимательно прослушать аудиозапись разговора менеджера с клиентом, составить точную транскрипцию и оценить диалог строго по законам регламента.
+Твоя задача — внимательно прослушать аудиозапись разговора менеджера с клиентом, провести глубокий аудит соблюдения законов регламента, зафиксировать точные таймкоды, цитаты ошибок и составить готовую речевую подсказку (как следовало сказать).
 
 Критерии оценки:
-- Базовый счет: 100 баллов. За каждое нарушенное правило снижается оценка на вес этого правила.
-- Если диалог идеален, оценка 90-100.
+- Базовый счет: рассчитывается математически от соблюдения каждого правила.
 - Будь строгим, но справедливым. Замечай перебивания, уход от прямых ответов по ценам, пассивность.
 - Обязательно найди узкое место (bottleneck) — момент, где клиент потерял интерес или засомневался.
-- Составь полную транскрипцию с разделением ролей (Менеджер: ... / Клиент: ...).`;
+- Для каждого несоблюденного правила предложи эталонный вариант ответа менеджера (improvement).
+- Зафиксируй ключевые поворотные точки диалога (хронологию timeline).`;
 
 export default function AiSettingsModal({
   accountId,
@@ -54,6 +55,7 @@ export default function AiSettingsModal({
   const [maxDuration, setMaxDuration] = useState(600);
   const [rescueThreshold, setRescueThreshold] = useState(40);
   const [qcSystemPrompt, setQcSystemPrompt] = useState('');
+  const [disabledPipelineIds, setDisabledPipelineIds] = useState<number[]>([]);
 
   // Status & tests
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -82,6 +84,7 @@ export default function AiSettingsModal({
       setMaxDuration(settingsQuery.data.qcMaxDurationSec ?? 600);
       setRescueThreshold(settingsQuery.data.qcRescueThresholdScore ?? 40);
       setQcSystemPrompt(settingsQuery.data.qcSystemPrompt || '');
+      setDisabledPipelineIds(settingsQuery.data.qcDisabledPipelineIds || []);
     }
   }, [settingsQuery.data]);
 
@@ -139,6 +142,7 @@ export default function AiSettingsModal({
         qcMaxDurationSec: Number(maxDuration) || 600,
         qcRescueThresholdScore: Number(rescueThreshold) || 40,
         qcSystemPrompt: qcSystemPrompt.trim() ? qcSystemPrompt.trim() : null,
+        qcDisabledPipelineIds: disabledPipelineIds,
       };
       if (token.trim()) {
         payload.aiToken = token.trim();
@@ -441,6 +445,76 @@ export default function AiSettingsModal({
                             {t('ai_qc_threshold_hint')}
                           </span>
                         </div>
+                      </div>
+                    )}
+
+                    {qcEnabled && (
+                      <div className="pt-3.5 border-t border-slate-200 dark:border-slate-700/70 space-y-2.5">
+                        <div>
+                          <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                            <GitBranch size={14} className="text-purple-600 dark:text-purple-400" />
+                            {lang === 'uz' ? 'Qo\'ng\'iroqlar tahlili uchun voronkalar' : 'Воронки для анализа диалогов'}
+                          </span>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            {lang === 'uz'
+                              ? 'Kerakli voronkalarni yoqing yoki o\'chiring. O\'chirilgan voronkalardagi qo\'ng\'iroqlar tahlil qilinmaydi.'
+                              : 'Включайте или отключайте анализ звонков для конкретных воронок продаж. Звонки по сделкам из отключенных воронок пропускаются.'}
+                          </p>
+                        </div>
+
+                        {pipelines.length === 0 ? (
+                          <p className="text-xs text-slate-400 italic">
+                            {pipelinesQuery.isLoading
+                              ? (lang === 'uz' ? 'Voronkalar yuklanmoqda...' : 'Загрузка списка воронок...')
+                              : (lang === 'uz' ? 'Voronkalar topilmadi' : 'Воронки не найдены')}
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                            {pipelines.map((pipe: any) => {
+                              const isPipelineDisabled = disabledPipelineIds.includes(pipe.id);
+                              const isPipeActive = !isPipelineDisabled;
+                              return (
+                                <div
+                                  key={pipe.id}
+                                  className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
+                                    isPipeActive
+                                      ? 'bg-white dark:bg-slate-800/80 border-purple-200/70 dark:border-purple-900/40 shadow-xs'
+                                      : 'bg-slate-100/70 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 opacity-60'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0 pr-2">
+                                    <span
+                                      className={`w-2 h-2 rounded-full shrink-0 ${
+                                        isPipeActive ? 'bg-emerald-500' : 'bg-slate-400'
+                                      }`}
+                                    />
+                                    <span className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                                      {pipe.name}
+                                    </span>
+                                  </div>
+                                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                                    <input
+                                      type="checkbox"
+                                      checked={isPipeActive}
+                                      onChange={(e) => {
+                                        const checked = e.target.checked;
+                                        if (checked) {
+                                          setDisabledPipelineIds((prev) => prev.filter((id) => id !== pipe.id));
+                                        } else {
+                                          setDisabledPipelineIds((prev) =>
+                                            prev.includes(pipe.id) ? prev : [...prev, pipe.id]
+                                          );
+                                        }
+                                      }}
+                                      className="sr-only peer"
+                                    />
+                                    <div className="w-8 h-4.5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-purple-600"></div>
+                                  </label>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

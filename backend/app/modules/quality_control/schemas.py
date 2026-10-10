@@ -10,6 +10,7 @@ class QcSettingsDto(BaseModel):
     maxDurationSec: int
     rescueThresholdScore: int
     systemPrompt: Optional[str] = None
+    disabledPipelineIds: Optional[List[int]] = []
     lastCallSyncedAt: Optional[datetime] = None
 
 class UpdateQcSettingsDto(BaseModel):
@@ -19,6 +20,7 @@ class UpdateQcSettingsDto(BaseModel):
     maxDurationSec: Optional[int] = None
     rescueThresholdScore: Optional[int] = None
     systemPrompt: Optional[str] = None
+    disabledPipelineIds: Optional[List[int]] = None
 
 class QcRuleDto(BaseModel):
     id: int

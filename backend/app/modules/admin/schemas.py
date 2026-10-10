@@ -25,6 +25,7 @@ class UpdateAiSettingsDto(BaseModel):
     qcMaxDurationSec: Optional[int] = None
     qcRescueThresholdScore: Optional[int] = None
     qcSystemPrompt: Optional[str] = None
+    qcDisabledPipelineIds: Optional[list[int]] = None
 
 class TestAiDto(BaseModel):
     model: str

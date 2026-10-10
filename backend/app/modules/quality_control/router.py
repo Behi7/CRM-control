@@ -92,6 +92,7 @@ async def get_qc_settings(
         maxDurationSec=qc.max_duration_sec,
         rescueThresholdScore=qc.rescue_threshold_score,
         systemPrompt=qc.system_prompt,
+        disabledPipelineIds=qc.disabled_pipeline_ids or [],
         lastCallSyncedAt=qc.last_call_synced_at,
     )
 
@@ -123,6 +124,8 @@ async def update_qc_settings(
         qc.rescue_threshold_score = max(5, dto.rescueThresholdScore)
     if dto.systemPrompt is not None:
         qc.system_prompt = dto.systemPrompt.strip() if dto.systemPrompt else None
+    if dto.disabledPipelineIds is not None:
+        qc.disabled_pipeline_ids = dto.disabledPipelineIds
 
     qc.updated_at = datetime.now(timezone.utc)
     await db.commit()
@@ -136,6 +139,7 @@ async def update_qc_settings(
         maxDurationSec=qc.max_duration_sec,
         rescueThresholdScore=qc.rescue_threshold_score,
         systemPrompt=qc.system_prompt,
+        disabledPipelineIds=qc.disabled_pipeline_ids or [],
         lastCallSyncedAt=qc.last_call_synced_at,
     )
 

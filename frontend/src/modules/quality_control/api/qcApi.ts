@@ -7,6 +7,7 @@ export interface QcSettings {
   minDurationSec: number;
   maxDurationSec: number;
   rescueThresholdScore: number;
+  disabledPipelineIds?: number[];
   lastCallSyncedAt?: string | null;
 }
 
@@ -46,6 +47,8 @@ export interface CallEvaluationItem {
     passed?: boolean;
     penalty?: number;
     details?: string;
+    timestamp?: string | null;
+    improvement?: string | null;
   }> | null;
   errorsList?: string[] | null;
   bottleneck?: string | null;

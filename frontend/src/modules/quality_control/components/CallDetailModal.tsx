@@ -170,7 +170,7 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
             }`}
           >
-            {lang === 'uz' ? 'To\'liq transkripsiya' : 'Транскрипция разговора'}
+            {lang === 'uz' ? 'Xronologiya (Timeline)' : 'Хронология диалога'}
           </button>
         </div>
 
@@ -244,36 +244,58 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
                 call.rulesBreakdown.map((r, i) => (
                   <div
                     key={i}
-                    className={`p-3.5 rounded-xl border flex items-start justify-between gap-3 ${
+                    className={`p-3.5 rounded-xl border flex flex-col gap-2 ${
                       r.passed
                         ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200/80 dark:border-emerald-900/40'
                         : 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200/80 dark:border-rose-900/40'
                     }`}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 shrink-0">
-                        {r.passed ? (
-                          <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400" />
-                        ) : (
-                          <XCircle size={18} className="text-rose-600 dark:text-rose-400" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-sm text-slate-900 dark:text-slate-100">
-                          {r.rule_title}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 shrink-0">
+                          {r.passed ? (
+                            <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400" />
+                          ) : (
+                            <XCircle size={18} className="text-rose-600 dark:text-rose-400" />
+                          )}
                         </div>
-                        {r.details && (
-                          <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">
-                            {r.details}
-                          </p>
-                        )}
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm text-slate-900 dark:text-slate-100">
+                              {r.rule_title}
+                            </span>
+                            {r.timestamp && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center gap-0.5">
+                                <Clock size={10} />
+                                {r.timestamp}
+                              </span>
+                            )}
+                          </div>
+                          {r.details && (
+                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                              {r.details}
+                            </p>
+                          )}
+                        </div>
                       </div>
+
+                      {!r.passed && (
+                        <span className="text-xs px-2.5 py-0.5 rounded-md font-semibold bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 shrink-0">
+                          {lang === 'uz' ? 'Bajarilmadi' : 'Не выполнено'}
+                        </span>
+                      )}
                     </div>
 
-                    {!r.passed && (
-                      <span className="text-xs px-2.5 py-0.5 rounded-md font-semibold bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 shrink-0">
-                        {lang === 'uz' ? 'Bajarilmadi' : 'Не выполнено'}
-                      </span>
+                    {!r.passed && r.improvement && (
+                      <div className="mt-1 ml-7.5 p-2.5 bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/20 rounded-lg text-xs">
+                        <span className="font-semibold text-amber-700 dark:text-amber-400 block mb-0.5 flex items-center gap-1">
+                          <Lightbulb size={13} />
+                          {lang === 'uz' ? 'Qanday aytish kerak edi:' : 'Как следовало сказать:'}
+                        </span>
+                        <p className="text-amber-950 dark:text-amber-200 italic leading-relaxed">
+                          {r.improvement}
+                        </p>
+                      </div>
                     )}
                   </div>
                 ))
@@ -288,12 +310,37 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
           {activeTab === 'transcript' && (
             <div>
               {call.transcript ? (
-                <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800 whitespace-pre-wrap font-sans text-xs text-slate-800 dark:text-slate-200 leading-relaxed max-h-[450px] overflow-y-auto">
-                  {call.transcript}
+                <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800 font-sans text-xs text-slate-800 dark:text-slate-200 leading-relaxed max-h-[450px] overflow-y-auto space-y-2.5">
+                  {call.transcript.split('\n').filter(Boolean).map((line, idx) => {
+                    const match = line.match(/^\[(.*?)\]\s*(.*?):\s*(.*)$/);
+                    if (match) {
+                      const [, time, stage, event] = match;
+                      return (
+                        <div key={idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800">
+                          <span className="px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 shrink-0">
+                            {time}
+                          </span>
+                          <div className="min-w-0">
+                            <span className="font-semibold text-slate-900 dark:text-slate-100 mr-1.5">
+                              {stage}:
+                            </span>
+                            <span className="text-slate-600 dark:text-slate-300">
+                              {event}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <p key={idx} className="whitespace-pre-wrap">
+                        {line}
+                      </p>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-8 text-sm text-slate-400">
-                  {lang === 'uz' ? 'Transkripsiya mavjud emas' : 'Транскрипция для этого звонка отсутствует'}
+                  {lang === 'uz' ? 'Xronologiya ma\'lumotlari yo\'q' : 'Хронология для этого звонка отсутствует'}
                 </div>
               )}
             </div>

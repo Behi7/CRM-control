@@ -145,6 +145,27 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
                     )).scalar_one_or_none()
                 amo_user_id = amo_user_row.id if amo_user_row else (lead_row.responsible_user_id if lead_row else None)
 
+                # Проверка исключения воронки из анализа контроля качества
+                disabled_pipeline_ids = set(qc_settings.disabled_pipeline_ids or [])
+                if pipeline_id and pipeline_id in disabled_pipeline_ids:
+                    skip_eval = QcCallEvaluation(
+                        account_id=account_id,
+                        external_call_id=note_id,
+                        lead_id=lead_id,
+                        pipeline_id=pipeline_id,
+                        amo_user_id=amo_user_id,
+                        phone=phone,
+                        call_direction=direction,
+                        call_date=call_date,
+                        duration_seconds=duration,
+                        recording_url=link,
+                        status="skipped_pipeline",
+                        skip_reason="Анализ отключён для данной воронки",
+                    )
+                    session.add(skip_eval)
+                    await session.commit()
+                    continue
+
                 # Проверка статуса звонка в AmoCRM
                 raw_call_status = params.get("call_status")
                 call_status = None

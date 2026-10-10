@@ -304,6 +304,7 @@ class QcSettings(Base):
     min_duration_sec = Column(Integer, nullable=False, default=20)
     max_duration_sec = Column(Integer, nullable=False, default=600)
     rescue_threshold_score = Column(Integer, nullable=False, default=40)
+    disabled_pipeline_ids = Column(JSONB, nullable=True, default=list)
     system_prompt = Column(Text, nullable=True)
     last_call_synced_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
