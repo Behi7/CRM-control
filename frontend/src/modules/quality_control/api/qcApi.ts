@@ -78,7 +78,9 @@ export interface QcStats {
   totalCalls: number;
   analyzedCalls: number;
   avgScore: number;
-  totalAnomalies: number;
+  totalAnomalies?: number;
+  lowScoreCalls?: number;
+  highScoreCalls?: number;
   rescueDealsCount: number;
   topMistakes: Array<{ mistake: string; count: number }>;
 }

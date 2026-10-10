@@ -179,7 +179,7 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                {lang === 'uz' ? 'Jarima bali (agar buzilsa)' : 'Штрафной балл (при нарушении)'}
+                {lang === 'uz' ? 'Qoida vazni / ball' : 'Вес правила (баллы)'}
               </label>
               <input
                 type="number"
@@ -291,8 +291,8 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
                           <span className="font-semibold text-sm text-slate-900 dark:text-slate-100">
                             {rule.title}
                           </span>
-                          <span className="text-[11px] px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 font-medium border border-rose-200/60 dark:border-rose-900/40">
-                            -{rule.penaltyPoints} {lang === 'uz' ? 'ball' : 'баллов'}
+                          <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-medium border border-slate-200 dark:border-slate-700">
+                            {lang === 'uz' ? 'Vazni:' : 'Вес:'} {rule.penaltyPoints} {lang === 'uz' ? 'ball' : 'б.'}
                           </span>
                         </div>
                         {rule.description && (

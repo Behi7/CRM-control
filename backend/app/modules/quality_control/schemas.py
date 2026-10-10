@@ -91,7 +91,9 @@ class QcStatsDto(BaseModel):
     totalCalls: int
     analyzedCalls: int
     avgScore: float
-    totalAnomalies: int
+    totalAnomalies: int = 0
+    lowScoreCalls: int = 0
+    highScoreCalls: int = 0
     rescueDealsCount: int
     topMistakes: List[Dict[str, Any]]
 

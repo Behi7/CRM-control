@@ -634,7 +634,24 @@ async def get_qc_stats(
     a_res = await db.execute(a_stmt)
     analyzed_calls, avg_score, sum_anomalies = a_res.first() or (0, 0, 0)
 
-    # 2. Rescue deals count
+    # 2. Low score (<50) and High score (>=75) calls
+    low_stmt = (
+        select(func.count(QcCallEvaluation.id))
+        .select_from(QcCallEvaluation)
+        .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
+        .where(*base_conditions, QcCallEvaluation.status == "completed", QcCallEvaluation.overall_score < 50)
+    )
+    low_score_calls = (await db.execute(low_stmt)).scalar() or 0
+
+    high_stmt = (
+        select(func.count(QcCallEvaluation.id))
+        .select_from(QcCallEvaluation)
+        .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
+        .where(*base_conditions, QcCallEvaluation.status == "completed", QcCallEvaluation.overall_score >= 75)
+    )
+    high_score_calls = (await db.execute(high_stmt)).scalar() or 0
+
+    # 3. Rescue deals count
     r_stmt = (
         select(func.count(QcLeadRiskScore.id))
         .select_from(QcLeadRiskScore)
@@ -659,7 +676,7 @@ async def get_qc_stats(
 
     rescue_cnt = (await db.execute(r_stmt)).scalar() or 0
 
-    # 3. Top mistakes
+    # 4. Top mistakes
     mistakes_stmt = (
         select(QcCallEvaluation.errors_list)
         .select_from(QcCallEvaluation)
@@ -687,7 +704,9 @@ async def get_qc_stats(
         totalCalls=total_calls,
         analyzedCalls=analyzed_calls or 0,
         avgScore=round(float(avg_score or 0), 1),
-        totalAnomalies=int(sum_anomalies or 0),
+        totalAnomalies=0,
+        lowScoreCalls=low_score_calls,
+        highScoreCalls=high_score_calls,
         rescueDealsCount=rescue_cnt,
         topMistakes=top_mistakes,
     )

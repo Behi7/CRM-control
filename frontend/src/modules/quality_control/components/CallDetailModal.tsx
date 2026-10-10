@@ -271,8 +271,8 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
                     </div>
 
                     {!r.passed && (
-                      <span className="text-xs px-2 py-0.5 rounded-md font-semibold bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 shrink-0">
-                        -{r.penalty || 10} б.
+                      <span className="text-xs px-2.5 py-0.5 rounded-md font-semibold bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 shrink-0">
+                        {lang === 'uz' ? 'Bajarilmadi' : 'Не выполнено'}
                       </span>
                     )}
                   </div>

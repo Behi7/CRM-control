@@ -67,17 +67,17 @@ export default function QcKpiCards({ stats, isLoading, onSelectRescueTab }: QcKp
         </div>
       </div>
 
-      {/* 3. Выявлено штрафов/аномалий */}
+      {/* 3. Звонки с ошибками (< 50) */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center gap-3.5 shadow-xs">
         <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
           <AlertTriangle size={22} />
         </div>
         <div>
           <span className="text-xs text-slate-500 dark:text-slate-400 block font-medium">
-            {lang === 'uz' ? 'Qoidabuzarlik ballari' : 'Штрафные баллы'}
+            {lang === 'uz' ? 'Xatoli qo\'ng\'iroqlar (< 50)' : 'Звонки с ошибками (< 50)'}
           </span>
           <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
-            {stats?.totalAnomalies ?? 0}
+            {stats?.lowScoreCalls ?? 0}
           </span>
         </div>
       </div>
