@@ -7,14 +7,35 @@ import { useLanguage } from '../../../i18n/LanguageContext';
 interface RescueDealsBoardProps {
   accountId: number;
   pipelineId?: number;
+  managers?: number[];
+  tags?: number[];
+  dealStatus?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
-export default function RescueDealsBoard({ accountId, pipelineId }: RescueDealsBoardProps) {
+export default function RescueDealsBoard({
+  accountId,
+  pipelineId,
+  managers,
+  tags,
+  dealStatus,
+  dateFrom,
+  dateTo,
+}: RescueDealsBoardProps) {
   const { lang } = useLanguage();
 
   const { data: deals, isLoading } = useQuery({
-    queryKey: ['qc-rescue-deals', accountId, pipelineId],
-    queryFn: () => qcApi.listRescueDeals(accountId, pipelineId),
+    queryKey: ['qc-rescue-deals', accountId, pipelineId, managers, tags, dealStatus, dateFrom, dateTo],
+    queryFn: () =>
+      qcApi.listRescueDeals(accountId, {
+        pipelineId,
+        managers,
+        tags,
+        dealStatus,
+        dateFrom,
+        dateTo,
+      }),
   });
 
   if (isLoading) {

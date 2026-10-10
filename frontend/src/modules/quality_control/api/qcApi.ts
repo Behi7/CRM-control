@@ -137,8 +137,11 @@ export const qcApi = {
       limit?: number;
       scoreFilter?: string;
       managerId?: number;
+      managers?: number[];
       pipelineId?: number;
       status?: string;
+      dealStatus?: string;
+      tags?: number[];
       search?: string;
       dateFrom?: string;
       dateTo?: string;
@@ -149,8 +152,11 @@ export const qcApi = {
     if (params.limit) qs.set('limit', String(params.limit));
     if (params.scoreFilter && params.scoreFilter !== 'all') qs.set('scoreFilter', params.scoreFilter);
     if (params.managerId) qs.set('managerId', String(params.managerId));
+    if (params.managers && params.managers.length > 0) qs.set('managers', params.managers.join(','));
     if (params.pipelineId) qs.set('pipelineId', String(params.pipelineId));
-    if (params.status) qs.set('status', params.status);
+    if (params.status && params.status !== 'all') qs.set('status', params.status);
+    if (params.dealStatus && params.dealStatus !== 'all') qs.set('dealStatus', params.dealStatus);
+    if (params.tags && params.tags.length > 0) qs.set('tags', params.tags.join(','));
     if (params.search) qs.set('search', params.search);
     if (params.dateFrom) qs.set('dateFrom', params.dateFrom);
     if (params.dateTo) qs.set('dateTo', params.dateTo);
@@ -162,13 +168,55 @@ export const qcApi = {
     return baseApi<CallEvaluationDetail>(`/accounts/${accountId}/qc/calls/${callId}`);
   },
 
-  listRescueDeals: async (accountId: number, pipelineId?: number): Promise<RescueDealItem[]> => {
-    const params = pipelineId ? `?pipeline_id=${pipelineId}` : '';
-    return baseApi<RescueDealItem[]>(`/accounts/${accountId}/qc/rescue-deals${params}`);
+  listRescueDeals: async (
+    accountId: number,
+    filters?: number | {
+      pipelineId?: number;
+      managers?: number[];
+      tags?: number[];
+      dealStatus?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    }
+  ): Promise<RescueDealItem[]> => {
+    const qs = new URLSearchParams();
+    if (typeof filters === 'number') {
+      qs.set('pipelineId', String(filters));
+    } else if (filters) {
+      if (filters.pipelineId) qs.set('pipelineId', String(filters.pipelineId));
+      if (filters.managers && filters.managers.length > 0) qs.set('managers', filters.managers.join(','));
+      if (filters.tags && filters.tags.length > 0) qs.set('tags', filters.tags.join(','));
+      if (filters.dealStatus && filters.dealStatus !== 'all') qs.set('dealStatus', filters.dealStatus);
+      if (filters.dateFrom) qs.set('dateFrom', filters.dateFrom);
+      if (filters.dateTo) qs.set('dateTo', filters.dateTo);
+    }
+    const qStr = qs.toString();
+    return baseApi<RescueDealItem[]>(`/accounts/${accountId}/qc/rescue-deals${qStr ? `?${qStr}` : ''}`);
   },
 
-  getStats: async (accountId: number, pipelineId?: number): Promise<QcStats> => {
-    const params = pipelineId ? `?pipeline_id=${pipelineId}` : '';
-    return baseApi<QcStats>(`/accounts/${accountId}/qc/stats${params}`);
+  getStats: async (
+    accountId: number,
+    filters?: number | {
+      pipelineId?: number;
+      managers?: number[];
+      tags?: number[];
+      dealStatus?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    }
+  ): Promise<QcStats> => {
+    const qs = new URLSearchParams();
+    if (typeof filters === 'number') {
+      qs.set('pipelineId', String(filters));
+    } else if (filters) {
+      if (filters.pipelineId) qs.set('pipelineId', String(filters.pipelineId));
+      if (filters.managers && filters.managers.length > 0) qs.set('managers', filters.managers.join(','));
+      if (filters.tags && filters.tags.length > 0) qs.set('tags', filters.tags.join(','));
+      if (filters.dealStatus && filters.dealStatus !== 'all') qs.set('dealStatus', filters.dealStatus);
+      if (filters.dateFrom) qs.set('dateFrom', filters.dateFrom);
+      if (filters.dateTo) qs.set('dateTo', filters.dateTo);
+    }
+    const qStr = qs.toString();
+    return baseApi<QcStats>(`/accounts/${accountId}/qc/stats${qStr ? `?${qStr}` : ''}`);
   },
 };

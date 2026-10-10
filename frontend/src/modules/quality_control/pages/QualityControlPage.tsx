@@ -8,11 +8,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
-  RefreshCw,
 } from 'lucide-react';
 import { qcApi } from '../api/qcApi';
-import { py2Api } from '../../../api/client';
 import { useLanguage } from '../../../i18n/LanguageContext';
+import { useFilterContext } from '../../../shared/context/FilterContext';
+import FilterBar from '../../../shared/components/FilterBar';
 import QcKpiCards from '../components/QcKpiCards';
 import CallFilters from '../components/CallFilters';
 import CallCard from '../components/CallCard';
@@ -25,8 +25,14 @@ export default function QualityControlPage() {
   const params = useParams<{ accountId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const {
+    effectiveAccountId,
+    applied,
+    pipelines,
+  } = useFilterContext();
+
   const storedAccountId = Number(localStorage.getItem('active_account_id')) || 1;
-  const accountId = params.accountId ? parseInt(params.accountId, 10) : storedAccountId;
+  const accountId = params.accountId ? parseInt(params.accountId, 10) : (effectiveAccountId || storedAccountId);
 
   const activeTab = (searchParams.get('tab') as 'calls' | 'rescue' | 'rules') || 'calls';
   const handleTabChange = (tab: 'calls' | 'rescue' | 'rules') => {
@@ -37,31 +43,53 @@ export default function QualityControlPage() {
     });
   };
 
-  // Filter States
+  // Local filter states for Call feed specifics
   const [scoreFilter, setScoreFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selectedCallId, setSelectedCallId] = useState<number | null>(null);
 
-  // Pipelines query
-  const pipelinesQuery = useQuery({
-    queryKey: ['pipelines', accountId],
-    queryFn: () => py2Api.pipelines(accountId),
-    staleTime: 5 * 60 * 1000,
-  });
-  const pipelines = (pipelinesQuery.data as any)?.items || [];
-
-  // Stats query
+  // Stats query connected to unified FilterBar filters
   const statsQuery = useQuery({
-    queryKey: ['qc-stats', accountId],
-    queryFn: () => qcApi.getStats(accountId),
+    queryKey: [
+      'qc-stats',
+      accountId,
+      applied.pipelineId,
+      applied.managerIds,
+      applied.tagIds,
+      applied.status,
+      applied.dateFrom,
+      applied.dateTo,
+    ],
+    queryFn: () =>
+      qcApi.getStats(accountId, {
+        pipelineId: applied.pipelineId || undefined,
+        managers: applied.managerIds.length > 0 ? applied.managerIds : undefined,
+        tags: applied.tagIds.length > 0 ? applied.tagIds : undefined,
+        dealStatus: applied.status !== 'all' ? applied.status : undefined,
+        dateFrom: applied.dateFrom || undefined,
+        dateTo: applied.dateTo || undefined,
+      }),
     refetchInterval: 30_000,
   });
 
-  // Calls feed query
+  // Calls feed query connected to unified filters + score/status/search
   const callsQuery = useQuery({
-    queryKey: ['qc-calls', accountId, page, scoreFilter, statusFilter, search],
+    queryKey: [
+      'qc-calls',
+      accountId,
+      page,
+      scoreFilter,
+      statusFilter,
+      search,
+      applied.pipelineId,
+      applied.managerIds,
+      applied.tagIds,
+      applied.status,
+      applied.dateFrom,
+      applied.dateTo,
+    ],
     queryFn: () =>
       qcApi.listCalls(accountId, {
         page,
@@ -69,12 +97,18 @@ export default function QualityControlPage() {
         scoreFilter,
         status: statusFilter !== 'all' ? statusFilter : undefined,
         search: search.trim() || undefined,
+        pipelineId: applied.pipelineId || undefined,
+        managers: applied.managerIds.length > 0 ? applied.managerIds : undefined,
+        tags: applied.tagIds.length > 0 ? applied.tagIds : undefined,
+        dealStatus: applied.status !== 'all' ? applied.status : undefined,
+        dateFrom: applied.dateFrom || undefined,
+        dateTo: applied.dateTo || undefined,
       }),
     enabled: activeTab === 'calls',
     refetchInterval: 30_000,
   });
 
-  const handleResetFilters = () => {
+  const handleResetCallFilters = () => {
     setScoreFilter('all');
     setStatusFilter('all');
     setSearch('');
@@ -84,9 +118,9 @@ export default function QualityControlPage() {
   const totalPages = Math.ceil((callsQuery.data?.total || 0) / 15) || 1;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
+    <div className="p-4 lg:p-6 mx-auto max-w-[1920px] space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
             <span className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
@@ -100,63 +134,69 @@ export default function QualityControlPage() {
               : 'Автоматический аудит звонков с ИИ, чек-листы по воронкам и реанимация слитых сделок'}
           </p>
         </div>
-
-        {/* Tab Switcher */}
-        <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl self-start sm:self-auto shadow-xs border border-slate-200 dark:border-slate-700/60">
-          <button
-            type="button"
-            onClick={() => handleTabChange('calls')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'calls'
-                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            <Headphones size={15} />
-            <span>{lang === 'uz' ? 'Qo\'ng\'iroqlar' : 'Звонки'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTabChange('rescue')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'rescue'
-                ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            <LifeBuoy size={15} />
-            <span>{lang === 'uz' ? 'Qutqarish' : 'Спасение сделок'}</span>
-            {(statsQuery.data?.rescueDealsCount ?? 0) > 0 && (
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTabChange('rules')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'rules'
-                ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            <FileCheck size={15} />
-            <span>{lang === 'uz' ? 'Tekshirish qoidalari' : 'Законы проверки'}</span>
-          </button>
-        </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* 1. Unified FilterBar */}
+      <FilterBar showStatus={true} />
+
+      {/* 2. Horizontal Navigation Tabs matching Analytics Module */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+        <button
+          type="button"
+          onClick={() => handleTabChange('calls')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            activeTab === 'calls'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Headphones size={15} />
+          <span>{lang === 'uz' ? 'Qo\'ng\'iroqlar' : 'Звонки'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange('rescue')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            activeTab === 'rescue'
+              ? 'bg-rose-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+          }`}
+        >
+          <LifeBuoy size={15} />
+          <span>{lang === 'uz' ? 'Qutqarish' : 'Спасение сделок'}</span>
+          {(statsQuery.data?.rescueDealsCount ?? 0) > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500 text-white animate-pulse">
+              {statsQuery.data?.rescueDealsCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange('rules')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            activeTab === 'rules'
+              ? 'bg-purple-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+          }`}
+        >
+          <FileCheck size={15} />
+          <span>{lang === 'uz' ? 'Tekshirish qoidalari' : 'Законы проверки'}</span>
+        </button>
+      </div>
+
+      {/* 3. KPI Cards */}
       <QcKpiCards
         stats={statsQuery.data}
         isLoading={statsQuery.isLoading}
         onSelectRescueTab={() => handleTabChange('rescue')}
       />
 
+      {/* 4. Tab Content */}
       {/* Tab 1: Calls Feed */}
       {activeTab === 'calls' && (
-        <div>
+        <div className="space-y-4">
           <CallFilters
             scoreFilter={scoreFilter}
             onScoreFilterChange={(v) => {
@@ -173,7 +213,7 @@ export default function QualityControlPage() {
               setSearch(v);
               setPage(1);
             }}
-            onReset={handleResetFilters}
+            onReset={handleResetCallFilters}
           />
 
           {callsQuery.isLoading ? (
@@ -227,8 +267,8 @@ export default function QualityControlPage() {
               </h3>
               <p className="text-xs max-w-md mx-auto">
                 {lang === 'uz'
-                  ? 'AmoCRM orqali yangi qo\'ng\'iroqlar amalga oshirilganda, ular har 10 daqiqada avtomatik tahlil qilinadi.'
-                  : 'Когда менеджеры совершат звонки в AmoCRM, они автоматически подтянутся и проанализируются воркером.'}
+                  ? 'Tanlangan filtrlar bo\'yicha qo\'ng\'iroqlar topilmadi yoki hali yuklanmagan.'
+                  : 'По выбранным фильтрам звонков не найдено, либо воркер еще не подтянул новые звонки.'}
               </p>
             </div>
           )}
@@ -237,12 +277,24 @@ export default function QualityControlPage() {
 
       {/* Tab 2: Rescue Deals */}
       {activeTab === 'rescue' && (
-        <RescueDealsBoard accountId={accountId} />
+        <RescueDealsBoard
+          accountId={accountId}
+          pipelineId={applied.pipelineId || undefined}
+          managers={applied.managerIds.length > 0 ? applied.managerIds : undefined}
+          tags={applied.tagIds.length > 0 ? applied.tagIds : undefined}
+          dealStatus={applied.status !== 'all' ? applied.status : undefined}
+          dateFrom={applied.dateFrom || undefined}
+          dateTo={applied.dateTo || undefined}
+        />
       )}
 
       {/* Tab 3: Rules Settings */}
       {activeTab === 'rules' && (
-        <RulesSettingsTab accountId={accountId} pipelines={pipelines} />
+        <RulesSettingsTab
+          accountId={accountId}
+          pipelines={pipelines}
+          pipelineId={applied.pipelineId || undefined}
+        />
       )}
 
       {/* Call Detail Modal */}

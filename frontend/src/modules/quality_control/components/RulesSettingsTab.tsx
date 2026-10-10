@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit2, Check, X, ShieldAlert, Sparkles, Loader2 } from 'lucide-react';
 import { qcApi, QcRule } from '../api/qcApi';
@@ -7,15 +7,22 @@ import { useLanguage } from '../../../i18n/LanguageContext';
 interface RulesSettingsTabProps {
   accountId: number;
   pipelines: Array<{ id: number; name: string }>;
+  pipelineId?: number;
 }
 
-export default function RulesSettingsTab({ accountId, pipelines }: RulesSettingsTabProps) {
+export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: RulesSettingsTabProps) {
   const { lang } = useLanguage();
   const queryClient = useQueryClient();
 
   const [selectedPipelineId, setSelectedPipelineId] = useState<number | undefined>(
-    pipelines[0]?.id
+    pipelineId || pipelines[0]?.id
   );
+
+  useEffect(() => {
+    if (pipelineId) {
+      setSelectedPipelineId(pipelineId);
+    }
+  }, [pipelineId]);
 
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');

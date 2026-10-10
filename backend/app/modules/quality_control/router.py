@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import AsyncSessionLocal
 from app.core.security import get_current_user
 from app.models import (
-    Account, Lead, Pipeline, AmoUser,
+    Account, Lead, Pipeline, AmoUser, Tag, LeadTag,
     QcSettings, QcRule, QcCallEvaluation, QcLeadRiskScore
 )
 from app.modules.quality_control.schemas import (
@@ -27,6 +27,34 @@ async def get_db():
 def check_account_access(user: dict, account_id: int):
     if user.get("role") != "admin" and user.get("accountId") != account_id:
         raise HTTPException(status_code=403, detail="Access denied to this account")
+
+def parse_date_param(d_str: Optional[str], is_end: bool = False) -> Optional[datetime]:
+    if not d_str:
+        return None
+    d_clean = d_str.strip()
+    if not d_clean:
+        return None
+    try:
+        if "T" in d_clean:
+            dt = datetime.fromisoformat(d_clean.replace("Z", "+00:00"))
+        else:
+            time_part = "23:59:59+00:00" if is_end else "00:00:00+00:00"
+            dt = datetime.fromisoformat(f"{d_clean}T{time_part}")
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+def parse_ids_list(ids_str: Optional[str]) -> List[int]:
+    if not ids_str:
+        return []
+    res = []
+    for x in ids_str.split(","):
+        x = x.strip()
+        if x.isdigit():
+            res.append(int(x))
+    return res
 
 # ==========================================
 # 1. SETTINGS
@@ -254,8 +282,11 @@ async def list_qc_calls(
     limit: int = Query(default=20, ge=1, le=100),
     scoreFilter: Optional[str] = Query(default=None),
     managerId: Optional[int] = Query(default=None),
+    managers: Optional[str] = Query(default=None),
     pipelineId: Optional[int] = Query(default=None),
     status: Optional[str] = Query(default=None),
+    dealStatus: Optional[str] = Query(default=None),
+    tags: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
     dateFrom: Optional[str] = Query(default=None),
     dateTo: Optional[str] = Query(default=None),
@@ -278,7 +309,12 @@ async def list_qc_calls(
         .where(QcCallEvaluation.account_id == account_id)
     )
 
-    count_stmt = select(func.count(QcCallEvaluation.id)).where(QcCallEvaluation.account_id == account_id)
+    count_stmt = (
+        select(func.count(QcCallEvaluation.id))
+        .select_from(QcCallEvaluation)
+        .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
+        .where(QcCallEvaluation.account_id == account_id)
+    )
 
     # Filters
     if scoreFilter == "low":
@@ -291,40 +327,49 @@ async def list_qc_calls(
         stmt = stmt.where(QcCallEvaluation.overall_score >= 75)
         count_stmt = count_stmt.where(QcCallEvaluation.overall_score >= 75)
 
-    if managerId:
+    m_ids = parse_ids_list(managers)
+    if m_ids:
+        stmt = stmt.where(QcCallEvaluation.amo_user_id.in_(m_ids))
+        count_stmt = count_stmt.where(QcCallEvaluation.amo_user_id.in_(m_ids))
+    elif managerId:
         stmt = stmt.where(QcCallEvaluation.amo_user_id == managerId)
         count_stmt = count_stmt.where(QcCallEvaluation.amo_user_id == managerId)
 
     if pipelineId:
-        stmt = stmt.where(QcCallEvaluation.pipeline_id == pipelineId)
-        count_stmt = count_stmt.where(QcCallEvaluation.pipeline_id == pipelineId)
+        p_cond = or_(QcCallEvaluation.pipeline_id == pipelineId, Lead.pipeline_id == pipelineId)
+        stmt = stmt.where(p_cond)
+        count_stmt = count_stmt.where(p_cond)
 
-    if status:
+    if status and status != "all":
         stmt = stmt.where(QcCallEvaluation.status == status)
         count_stmt = count_stmt.where(QcCallEvaluation.status == status)
 
-    if search:
+    if dealStatus and dealStatus != "all":
+        statuses = [s.strip() for s in dealStatus.split(",") if s.strip() in ("open", "won", "lost")]
+        if statuses:
+            stmt = stmt.where(Lead.status.in_(statuses))
+            count_stmt = count_stmt.where(Lead.status.in_(statuses))
+
+    t_ids = parse_ids_list(tags)
+    if t_ids:
+        tag_subq = select(LeadTag.lead_id).where(LeadTag.tag_id.in_(t_ids))
+        stmt = stmt.where(Lead.id.in_(tag_subq))
+        count_stmt = count_stmt.where(Lead.id.in_(tag_subq))
+
+    if search and search.strip():
         s_term = f"%{search.strip()}%"
         stmt = stmt.where(or_(QcCallEvaluation.phone.ilike(s_term), Lead.name.ilike(s_term)))
-        count_stmt = count_stmt.outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id).where(
-            or_(QcCallEvaluation.phone.ilike(s_term), Lead.name.ilike(s_term))
-        )
+        count_stmt = count_stmt.where(or_(QcCallEvaluation.phone.ilike(s_term), Lead.name.ilike(s_term)))
 
-    if dateFrom:
-        try:
-            d_from = datetime.fromisoformat(dateFrom)
-            stmt = stmt.where(QcCallEvaluation.call_date >= d_from)
-            count_stmt = count_stmt.where(QcCallEvaluation.call_date >= d_from)
-        except Exception:
-            pass
+    d_from = parse_date_param(dateFrom, is_end=False)
+    if d_from:
+        stmt = stmt.where(QcCallEvaluation.call_date >= d_from)
+        count_stmt = count_stmt.where(QcCallEvaluation.call_date >= d_from)
 
-    if dateTo:
-        try:
-            d_to = datetime.fromisoformat(dateTo)
-            stmt = stmt.where(QcCallEvaluation.call_date <= d_to)
-            count_stmt = count_stmt.where(QcCallEvaluation.call_date <= d_to)
-        except Exception:
-            pass
+    d_to = parse_date_param(dateTo, is_end=True)
+    if d_to:
+        stmt = stmt.where(QcCallEvaluation.call_date <= d_to)
+        count_stmt = count_stmt.where(QcCallEvaluation.call_date <= d_to)
 
     total = (await db.execute(count_stmt)).scalar() or 0
 
@@ -429,6 +474,12 @@ async def get_qc_call_detail(
 async def list_rescue_deals(
     account_id: int,
     pipeline_id: Optional[int] = Query(default=None),
+    pipelineId: Optional[int] = Query(default=None),
+    managers: Optional[str] = Query(default=None),
+    tags: Optional[str] = Query(default=None),
+    dealStatus: Optional[str] = Query(default=None),
+    dateFrom: Optional[str] = Query(default=None),
+    dateTo: Optional[str] = Query(default=None),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -460,15 +511,41 @@ async def list_rescue_deals(
                 QcLeadRiskScore.total_risk_score >= threshold,
             ),
         )
-        .group_by(
+    )
+
+    eff_pipeline_id = pipeline_id or pipelineId
+    if eff_pipeline_id:
+        stmt = stmt.where(Lead.pipeline_id == eff_pipeline_id)
+
+    m_ids = parse_ids_list(managers)
+    if m_ids:
+        stmt = stmt.where(Lead.responsible_user_id.in_(m_ids))
+
+    t_ids = parse_ids_list(tags)
+    if t_ids:
+        tag_subq = select(LeadTag.lead_id).where(LeadTag.tag_id.in_(t_ids))
+        stmt = stmt.where(Lead.id.in_(tag_subq))
+
+    if dealStatus and dealStatus != "all":
+        statuses = [s.strip() for s in dealStatus.split(",") if s.strip() in ("won", "lost", "open")]
+        if statuses:
+            stmt = stmt.where(Lead.status.in_(statuses))
+
+    d_from = parse_date_param(dateFrom, is_end=False)
+    if d_from:
+        stmt = stmt.where(or_(Lead.crm_closed_at >= d_from, QcLeadRiskScore.updated_at >= d_from))
+
+    d_to = parse_date_param(dateTo, is_end=True)
+    if d_to:
+        stmt = stmt.where(or_(Lead.crm_closed_at <= d_to, QcLeadRiskScore.updated_at <= d_to))
+
+    stmt = (
+        stmt.group_by(
             QcLeadRiskScore.id, Lead.id, Pipeline.id, AmoUser.id
         )
         .order_by(QcLeadRiskScore.total_risk_score.desc())
         .limit(100)
     )
-
-    if pipeline_id:
-        stmt = stmt.where(Lead.pipeline_id == pipeline_id)
 
     res = await db.execute(stmt)
     rows = res.all()
@@ -503,38 +580,91 @@ async def list_rescue_deals(
 async def get_qc_stats(
     account_id: int,
     pipeline_id: Optional[int] = Query(default=None),
+    pipelineId: Optional[int] = Query(default=None),
+    managers: Optional[str] = Query(default=None),
+    tags: Optional[str] = Query(default=None),
+    dealStatus: Optional[str] = Query(default=None),
+    dateFrom: Optional[str] = Query(default=None),
+    dateTo: Optional[str] = Query(default=None),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     check_account_access(user, account_id)
 
-    base_filter = [QcCallEvaluation.account_id == account_id]
-    if pipeline_id:
-        base_filter.append(QcCallEvaluation.pipeline_id == pipeline_id)
+    eff_pipeline_id = pipeline_id or pipelineId
+    m_ids = parse_ids_list(managers)
+    t_ids = parse_ids_list(tags)
+    statuses = [s.strip() for s in dealStatus.split(",") if s.strip() in ("won", "lost", "open")] if (dealStatus and dealStatus != "all") else []
+    d_from = parse_date_param(dateFrom, is_end=False)
+    d_to = parse_date_param(dateTo, is_end=True)
+
+    base_conditions = [QcCallEvaluation.account_id == account_id]
+    if eff_pipeline_id:
+        base_conditions.append(or_(QcCallEvaluation.pipeline_id == eff_pipeline_id, Lead.pipeline_id == eff_pipeline_id))
+    if m_ids:
+        base_conditions.append(QcCallEvaluation.amo_user_id.in_(m_ids))
+    if statuses:
+        base_conditions.append(Lead.status.in_(statuses))
+    if t_ids:
+        base_conditions.append(Lead.id.in_(select(LeadTag.lead_id).where(LeadTag.tag_id.in_(t_ids))))
+    if d_from:
+        base_conditions.append(QcCallEvaluation.call_date >= d_from)
+    if d_to:
+        base_conditions.append(QcCallEvaluation.call_date <= d_to)
 
     # 1. Total & Analyzed calls
-    t_stmt = select(func.count(QcCallEvaluation.id)).where(*base_filter)
+    t_stmt = (
+        select(func.count(QcCallEvaluation.id))
+        .select_from(QcCallEvaluation)
+        .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
+        .where(*base_conditions)
+    )
     total_calls = (await db.execute(t_stmt)).scalar() or 0
 
-    a_stmt = select(
-        func.count(QcCallEvaluation.id),
-        func.avg(QcCallEvaluation.overall_score),
-        func.sum(QcCallEvaluation.anomaly_points)
-    ).where(*base_filter, QcCallEvaluation.status == "completed")
+    a_stmt = (
+        select(
+            func.count(QcCallEvaluation.id),
+            func.avg(QcCallEvaluation.overall_score),
+            func.sum(QcCallEvaluation.anomaly_points)
+        )
+        .select_from(QcCallEvaluation)
+        .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
+        .where(*base_conditions, QcCallEvaluation.status == "completed")
+    )
     a_res = await db.execute(a_stmt)
     analyzed_calls, avg_score, sum_anomalies = a_res.first() or (0, 0, 0)
 
     # 2. Rescue deals count
-    r_stmt = select(func.count(QcLeadRiskScore.id)).where(
-        QcLeadRiskScore.account_id == account_id,
-        QcLeadRiskScore.is_rescue_candidate == True,
+    r_stmt = (
+        select(func.count(QcLeadRiskScore.id))
+        .select_from(QcLeadRiskScore)
+        .join(Lead, QcLeadRiskScore.lead_id == Lead.id)
+        .where(
+            QcLeadRiskScore.account_id == account_id,
+            QcLeadRiskScore.is_rescue_candidate == True,
+        )
     )
+    if eff_pipeline_id:
+        r_stmt = r_stmt.where(Lead.pipeline_id == eff_pipeline_id)
+    if m_ids:
+        r_stmt = r_stmt.where(Lead.responsible_user_id.in_(m_ids))
+    if t_ids:
+        r_stmt = r_stmt.where(Lead.id.in_(select(LeadTag.lead_id).where(LeadTag.tag_id.in_(t_ids))))
+    if statuses:
+        r_stmt = r_stmt.where(Lead.status.in_(statuses))
+    if d_from:
+        r_stmt = r_stmt.where(or_(Lead.crm_closed_at >= d_from, QcLeadRiskScore.updated_at >= d_from))
+    if d_to:
+        r_stmt = r_stmt.where(or_(Lead.crm_closed_at <= d_to, QcLeadRiskScore.updated_at <= d_to))
+
     rescue_cnt = (await db.execute(r_stmt)).scalar() or 0
 
     # 3. Top mistakes
     mistakes_stmt = (
         select(QcCallEvaluation.errors_list)
-        .where(*base_filter, QcCallEvaluation.errors_list.isnot(None))
+        .select_from(QcCallEvaluation)
+        .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
+        .where(*base_conditions, QcCallEvaluation.status == "completed", QcCallEvaluation.errors_list.isnot(None))
         .limit(100)
     )
     m_res = await db.execute(mistakes_stmt)
