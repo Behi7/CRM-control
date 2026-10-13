@@ -85,15 +85,10 @@ services:
       - backend
     ports:
       - "80:80"
-
-  tunnel:
-    image: ngrok/ngrok:latest
-    restart: always
-    environment:
-      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
-    command: http frontend:80 --url https://hemstitch-trowel-marbled.ngrok-free.dev
-    depends_on:
-      - frontend
+      - "443:443"
+    volumes:
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
 
 volumes:
   pgdata:
