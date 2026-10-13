@@ -113,6 +113,8 @@ async def update_qc_settings(
         db.add(qc)
 
     if dto.isEnabled is not None:
+        if dto.isEnabled and not qc.is_enabled:
+            qc.last_call_synced_at = None
         qc.is_enabled = dto.isEnabled
     if dto.aiModel is not None:
         qc.ai_model = dto.aiModel.strip()

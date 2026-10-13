@@ -217,6 +217,14 @@ async def start_sync(account_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Account not found")
 
     acc.sync_status = "active"
+
+    # При возобновлении синхронизации сбрасываем курсор звонков,
+    # чтобы звонки периода простоя ("Стоп") не отправлялись в контроль качества
+    qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
+    qc = (await db.execute(qc_stmt)).scalar_one_or_none()
+    if qc:
+        qc.last_call_synced_at = None
+
     await db.commit()
     return {"ok": True}
 
@@ -270,6 +278,8 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         db.add(qc)
 
     if dto.qcEnabled is not None:
+        if dto.qcEnabled and not qc.is_enabled:
+            qc.last_call_synced_at = None
         qc.is_enabled = dto.qcEnabled
     if dto.aiModel is not None:
         qc.ai_model = dto.aiModel.strip()

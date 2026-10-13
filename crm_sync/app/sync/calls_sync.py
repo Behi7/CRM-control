@@ -109,6 +109,11 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
                 direction = "in" if note_type == "call_in" else "out"
                 call_created_ts = note.get("created_at") or int(job_started_at.timestamp())
                 call_date = datetime.fromtimestamp(call_created_ts, tz=timezone.utc)
+
+                # Игнорируем звонки, совершенные ранее границы временного окна (защита от архивных обновленных звонков)
+                if call_date < window_from:
+                    continue
+
                 responsible_user_ext_id = str(note.get("responsible_user_id") or "")
 
                 # Дедупликация: проверяем, не сохранен ли уже этот звонок
