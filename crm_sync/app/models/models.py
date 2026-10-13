@@ -257,7 +257,6 @@ class QcSettings(Base):
     ai_model = Column(Text, nullable=False, default="gemini-2.5-flash")
     min_duration_sec = Column(Integer, nullable=False, default=20)
     max_duration_sec = Column(Integer, nullable=False, default=600)
-    rescue_threshold_score = Column(Integer, nullable=False, default=40)
     disabled_pipeline_ids = Column(JSONB, nullable=True, default=list)
     system_prompt = Column(Text, nullable=True)
     last_call_synced_at = Column(DateTime(timezone=True), nullable=True)
@@ -310,21 +309,4 @@ class QcCallEvaluation(Base):
         Index("idx_qc_eval_account_lead", "account_id", "lead_id"),
         Index("idx_qc_eval_account_date", "account_id", "call_date"),
         Index("idx_qc_eval_account_score", "account_id", "overall_score"),
-    )
-
-class QcLeadRiskScore(Base):
-    __tablename__ = "qc_lead_risk_scores"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
-    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), unique=True, nullable=False)
-    total_risk_score = Column(Integer, nullable=False, default=0)
-    risk_breakdown = Column(JSONB, nullable=True)
-    is_rescue_candidate = Column(Boolean, nullable=False, default=False)
-    rescue_reason = Column(Text, nullable=True)
-    ai_rescue_script = Column(Text, nullable=True)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-
-    __table_args__ = (
-        Index("idx_qc_risk_account_rescue", "account_id", "is_rescue_candidate"),
     )

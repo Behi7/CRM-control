@@ -248,7 +248,6 @@ async def get_ai_settings(account_id: int, db: AsyncSession = Depends(get_db)):
         "qcEnabled": qc.is_enabled if qc else False,
         "qcMinDurationSec": qc.min_duration_sec if qc else 20,
         "qcMaxDurationSec": qc.max_duration_sec if qc else 600,
-        "qcRescueThresholdScore": qc.rescue_threshold_score if qc else 40,
         "qcSystemPrompt": qc.system_prompt if qc else None,
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids if (qc and qc.disabled_pipeline_ids is not None) else [],
     }
@@ -287,8 +286,6 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         qc.min_duration_sec = max(5, dto.qcMinDurationSec)
     if dto.qcMaxDurationSec is not None:
         qc.max_duration_sec = max(qc.min_duration_sec + 10, dto.qcMaxDurationSec)
-    if dto.qcRescueThresholdScore is not None:
-        qc.rescue_threshold_score = max(5, dto.qcRescueThresholdScore)
     if dto.qcSystemPrompt is not None:
         qc.system_prompt = dto.qcSystemPrompt.strip() if dto.qcSystemPrompt else None
     if dto.qcDisabledPipelineIds is not None:
@@ -306,7 +303,6 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         "qcEnabled": qc.is_enabled,
         "qcMinDurationSec": qc.min_duration_sec,
         "qcMaxDurationSec": qc.max_duration_sec,
-        "qcRescueThresholdScore": qc.rescue_threshold_score,
         "qcSystemPrompt": qc.system_prompt,
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids or [],
     }

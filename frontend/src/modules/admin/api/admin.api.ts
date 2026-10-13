@@ -20,7 +20,6 @@ export const adminApi = {
       qcEnabled?: boolean;
       qcMinDurationSec?: number;
       qcMaxDurationSec?: number;
-      qcRescueThresholdScore?: number;
       qcSystemPrompt?: string | null;
       qcDisabledPipelineIds?: number[];
     }>(`/admin/accounts/${id}/ai-settings`),
@@ -34,7 +33,6 @@ export const adminApi = {
       qcEnabled?: boolean;
       qcMinDurationSec?: number;
       qcMaxDurationSec?: number;
-      qcRescueThresholdScore?: number;
       qcSystemPrompt?: string | null;
       qcDisabledPipelineIds?: number[];
     }

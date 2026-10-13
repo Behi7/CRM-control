@@ -8,7 +8,6 @@ class QcSettingsDto(BaseModel):
     aiModel: str
     minDurationSec: int
     maxDurationSec: int
-    rescueThresholdScore: int
     systemPrompt: Optional[str] = None
     disabledPipelineIds: Optional[List[int]] = []
     lastCallSyncedAt: Optional[datetime] = None
@@ -18,7 +17,6 @@ class UpdateQcSettingsDto(BaseModel):
     aiModel: Optional[str] = None
     minDurationSec: Optional[int] = None
     maxDurationSec: Optional[int] = None
-    rescueThresholdScore: Optional[int] = None
     systemPrompt: Optional[str] = None
     disabledPipelineIds: Optional[List[int]] = None
 
@@ -76,21 +74,6 @@ class CallEvaluationDetailDto(CallEvaluationItemDto):
     transcript: Optional[str] = None
     recommendation: Optional[str] = None
 
-class RescueDealItemDto(BaseModel):
-    id: int
-    leadId: int
-    leadName: Optional[str] = None
-    leadPrice: Optional[float] = None
-    pipelineId: Optional[int] = None
-    pipelineName: Optional[str] = None
-    managerName: Optional[str] = None
-    lossReasonName: Optional[str] = None
-    totalRiskScore: int
-    rescueReason: Optional[str] = None
-    aiRescueScript: Optional[str] = None
-    callsCount: int = 0
-    updatedAt: datetime
-
 class QcManagerStatDto(BaseModel):
     managerId: Optional[int] = None
     managerName: str
@@ -110,7 +93,6 @@ class QcStatsDto(BaseModel):
     totalAnomalies: int = 0
     lowScoreCalls: int = 0
     highScoreCalls: int = 0
-    rescueDealsCount: int
     topMistakes: List[Dict[str, Any]]
     managersStats: List[QcManagerStatDto] = []
 

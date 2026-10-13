@@ -11,7 +11,7 @@ import httpx
 from app.core.database import AsyncSessionLocal
 from app.models import (
     Account, Lead, Pipeline, AmoUser,
-    QcSettings, QcRule, QcCallEvaluation, QcLeadRiskScore
+    QcSettings, QcRule, QcCallEvaluation
 )
 from app.core.security import decrypt_token
 
@@ -263,54 +263,6 @@ def calculate_score_and_anomalies(
     return score, anomaly_points
 
 
-async def update_lead_risk_score(
-    session: AsyncSession,
-    account_id: int,
-    lead_row: Lead,
-    added_call_anomaly: int,
-    rescue_threshold: int,
-):
-    """Обновляет суммарный балл риска сделки и определяет статус кандидата на спасение."""
-    try:
-        risk_stmt = select(QcLeadRiskScore).where(
-            QcLeadRiskScore.account_id == account_id,
-            QcLeadRiskScore.lead_id == lead_row.id,
-        )
-        risk_res = await session.execute(risk_stmt)
-        risk_obj = risk_res.scalar_one_or_none()
-
-        if not risk_obj:
-            risk_obj = QcLeadRiskScore(
-                account_id=account_id,
-                lead_id=lead_row.id,
-                total_risk_score=added_call_anomaly,
-                risk_breakdown={"call_anomalies": added_call_anomaly},
-            )
-            session.add(risk_obj)
-        else:
-            risk_obj.total_risk_score += added_call_anomaly
-            breakdown = risk_obj.risk_breakdown or {}
-            breakdown["call_anomalies"] = breakdown.get("call_anomalies", 0) + added_call_anomaly
-            risk_obj.risk_breakdown = breakdown
-
-        is_lost = (lead_row.status in ("closed_lost", "lost") or bool(lead_row.loss_reason_id))
-
-        if is_lost and risk_obj.total_risk_score >= rescue_threshold:
-            risk_obj.is_rescue_candidate = True
-            risk_obj.rescue_reason = (
-                f"Сделка закрыта с высоким баллом нарушений ({risk_obj.total_risk_score} очков >= порога {rescue_threshold}). "
-                f"Клиент был потерян из-за грубых ошибок ведения диалога или несоблюдения регламента."
-            )
-            risk_obj.ai_rescue_script = (
-                "Рекомендация РОПу: сменить менеджера и совершить звонок контроля качества: "
-                "«Добрый день! Руководитель отдела контроля качества компании. Заметили, что наша консультация была неполной...»"
-            )
-
-        await session.commit()
-    except Exception as e:
-        logger.error(f"Error updating lead risk score for lead #{lead_row.id}: {e}")
-
-
 async def process_call_evaluation(session: AsyncSession, eval_id: int) -> bool:
     """Обрабатывает один звонок (скачивает аудио, запускает Gemini, рассчитывает математический балл)."""
     stmt = select(QcCallEvaluation).where(QcCallEvaluation.id == eval_id)
@@ -394,19 +346,6 @@ async def process_call_evaluation(session: AsyncSession, eval_id: int) -> bool:
     call_eval.anomaly_points = anomaly_points
 
     await session.commit()
-
-    # 6. Обновление скоринга риска сделки
-    if call_eval.lead_id:
-        lead_stmt = select(Lead).where(Lead.id == call_eval.lead_id)
-        lead_row = (await session.execute(lead_stmt)).scalar_one_or_none()
-        if lead_row:
-            await update_lead_risk_score(
-                session=session,
-                account_id=account_id,
-                lead_row=lead_row,
-                added_call_anomaly=anomaly_points,
-                rescue_threshold=qc_settings.rescue_threshold_score,
-            )
 
     logger.info(f"Successfully evaluated call #{call_eval.id} (external={call_eval.external_call_id}): score={score}%")
     return True

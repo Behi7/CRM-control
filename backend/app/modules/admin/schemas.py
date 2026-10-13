@@ -23,7 +23,6 @@ class UpdateAiSettingsDto(BaseModel):
     qcEnabled: Optional[bool] = None
     qcMinDurationSec: Optional[int] = None
     qcMaxDurationSec: Optional[int] = None
-    qcRescueThresholdScore: Optional[int] = None
     qcSystemPrompt: Optional[str] = None
     qcDisabledPipelineIds: Optional[list[int]] = None
 

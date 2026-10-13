@@ -9,13 +9,13 @@ from app.core.database import AsyncSessionLocal
 from app.core.security import get_current_user
 from app.models import (
     Account, Lead, Pipeline, AmoUser, Tag, LeadTag,
-    QcSettings, QcRule, QcCallEvaluation, QcLeadRiskScore
+    QcSettings, QcRule, QcCallEvaluation
 )
 from app.modules.quality_control.schemas import (
     QcSettingsDto, UpdateQcSettingsDto,
     QcRuleDto, CreateQcRuleDto, UpdateQcRuleDto,
     CallEvaluationItemDto, CallEvaluationDetailDto,
-    RescueDealItemDto, QcStatsDto
+    QcStatsDto
 )
 
 router = APIRouter(prefix="", tags=["Quality Control"])
@@ -78,7 +78,6 @@ async def get_qc_settings(
             ai_model="gemini-2.5-flash",
             min_duration_sec=20,
             max_duration_sec=600,
-            rescue_threshold_score=40,
         )
         db.add(qc)
         await db.commit()
@@ -90,7 +89,6 @@ async def get_qc_settings(
         aiModel=qc.ai_model,
         minDurationSec=qc.min_duration_sec,
         maxDurationSec=qc.max_duration_sec,
-        rescueThresholdScore=qc.rescue_threshold_score,
         systemPrompt=qc.system_prompt,
         disabledPipelineIds=qc.disabled_pipeline_ids or [],
         lastCallSyncedAt=qc.last_call_synced_at,
@@ -122,8 +120,6 @@ async def update_qc_settings(
         qc.min_duration_sec = max(5, dto.minDurationSec)
     if dto.maxDurationSec is not None:
         qc.max_duration_sec = max(qc.min_duration_sec + 10, dto.maxDurationSec)
-    if dto.rescueThresholdScore is not None:
-        qc.rescue_threshold_score = max(5, dto.rescueThresholdScore)
     if dto.systemPrompt is not None:
         qc.system_prompt = dto.systemPrompt.strip() if dto.systemPrompt else None
     if dto.disabledPipelineIds is not None:
@@ -139,7 +135,6 @@ async def update_qc_settings(
         aiModel=qc.ai_model,
         minDurationSec=qc.min_duration_sec,
         maxDurationSec=qc.max_duration_sec,
-        rescueThresholdScore=qc.rescue_threshold_score,
         systemPrompt=qc.system_prompt,
         disabledPipelineIds=qc.disabled_pipeline_ids or [],
         lastCallSyncedAt=qc.last_call_synced_at,
@@ -477,113 +472,8 @@ async def get_qc_call_detail(
     )
 
 # ==========================================
-# 4. RESCUE DEALS (СПАСЕНИЕ СДЕЛОК)
 # ==========================================
-
-@router.get("/accounts/{account_id}/qc/rescue-deals", response_model=List[RescueDealItemDto])
-async def list_rescue_deals(
-    account_id: int,
-    pipeline_id: Optional[int] = Query(default=None),
-    pipelineId: Optional[int] = Query(default=None),
-    managers: Optional[str] = Query(default=None),
-    tags: Optional[str] = Query(default=None),
-    dealStatus: Optional[str] = Query(default=None),
-    dateFrom: Optional[str] = Query(default=None),
-    dateTo: Optional[str] = Query(default=None),
-    user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    check_account_access(user, account_id)
-
-    # Получаем порог из настроек
-    qc_stmt = select(QcSettings.rescue_threshold_score).where(QcSettings.account_id == account_id)
-    threshold = (await db.execute(qc_stmt)).scalar() or 40
-
-    stmt = (
-        select(
-            QcLeadRiskScore,
-            Lead.name.label("lead_name"),
-            Lead.price.label("lead_price"),
-            Lead.pipeline_id.label("lead_pipeline_id"),
-            Lead.loss_reason_name.label("loss_reason_name"),
-            Pipeline.name.label("pipeline_name"),
-            AmoUser.name.label("manager_name"),
-            func.count(QcCallEvaluation.id).label("calls_count"),
-        )
-        .join(Lead, QcLeadRiskScore.lead_id == Lead.id)
-        .outerjoin(Pipeline, Lead.pipeline_id == Pipeline.id)
-        .outerjoin(AmoUser, Lead.responsible_user_id == AmoUser.id)
-        .outerjoin(QcCallEvaluation, QcCallEvaluation.lead_id == Lead.id)
-        .where(
-            QcLeadRiskScore.account_id == account_id,
-            or_(
-                QcLeadRiskScore.is_rescue_candidate == True,
-                QcLeadRiskScore.total_risk_score >= threshold,
-            ),
-        )
-    )
-
-    eff_pipeline_id = pipeline_id or pipelineId
-    if eff_pipeline_id:
-        stmt = stmt.where(Lead.pipeline_id == eff_pipeline_id)
-
-    m_ids = parse_ids_list(managers)
-    if m_ids:
-        stmt = stmt.where(Lead.responsible_user_id.in_(m_ids))
-
-    t_ids = parse_ids_list(tags)
-    if t_ids:
-        tag_subq = select(LeadTag.lead_id).where(LeadTag.tag_id.in_(t_ids))
-        stmt = stmt.where(Lead.id.in_(tag_subq))
-
-    if dealStatus and dealStatus != "all":
-        statuses = [s.strip() for s in dealStatus.split(",") if s.strip() in ("won", "lost", "open")]
-        if statuses:
-            stmt = stmt.where(Lead.status.in_(statuses))
-
-    d_from = parse_date_param(dateFrom, is_end=False)
-    if d_from:
-        stmt = stmt.where(or_(Lead.crm_closed_at >= d_from, QcLeadRiskScore.updated_at >= d_from))
-
-    d_to = parse_date_param(dateTo, is_end=True)
-    if d_to:
-        stmt = stmt.where(or_(Lead.crm_closed_at <= d_to, QcLeadRiskScore.updated_at <= d_to))
-
-    stmt = (
-        stmt.group_by(
-            QcLeadRiskScore.id, Lead.id, Pipeline.id, AmoUser.id
-        )
-        .order_by(QcLeadRiskScore.total_risk_score.desc())
-        .limit(100)
-    )
-
-    res = await db.execute(stmt)
-    rows = res.all()
-
-    items = []
-    for r, lead_name, lead_price, lead_p_id, loss_reason, p_name, manager_name, calls_cnt in rows:
-        items.append(
-            RescueDealItemDto(
-                id=r.id,
-                leadId=r.lead_id,
-                leadName=lead_name or f"Сделка #{r.lead_id}",
-                leadPrice=float(lead_price) if lead_price is not None else None,
-                pipelineId=lead_p_id,
-                pipelineName=p_name,
-                managerName=manager_name,
-                lossReasonName=loss_reason,
-                totalRiskScore=r.total_risk_score,
-                rescueReason=r.rescue_reason or f"Накоплено {r.total_risk_score} штрафных баллов при закрытии",
-                aiRescueScript=r.ai_rescue_script or "Рекомендация РОПу: поручить звонок старшему менеджеру для уточнения причин отказа.",
-                callsCount=calls_cnt or 0,
-                updatedAt=r.updated_at,
-            )
-        )
-
-    return items
-
-# ==========================================
-# 5. STATS & KPIS
+# 4. STATS & KPIS
 # ==========================================
 
 @router.get("/accounts/{account_id}/qc/stats", response_model=QcStatsDto)
@@ -661,32 +551,7 @@ async def get_qc_stats(
     )
     high_score_calls = (await db.execute(high_stmt)).scalar() or 0
 
-    # 3. Rescue deals count
-    r_stmt = (
-        select(func.count(QcLeadRiskScore.id))
-        .select_from(QcLeadRiskScore)
-        .join(Lead, QcLeadRiskScore.lead_id == Lead.id)
-        .where(
-            QcLeadRiskScore.account_id == account_id,
-            QcLeadRiskScore.is_rescue_candidate == True,
-        )
-    )
-    if eff_pipeline_id:
-        r_stmt = r_stmt.where(Lead.pipeline_id == eff_pipeline_id)
-    if m_ids:
-        r_stmt = r_stmt.where(Lead.responsible_user_id.in_(m_ids))
-    if t_ids:
-        r_stmt = r_stmt.where(Lead.id.in_(select(LeadTag.lead_id).where(LeadTag.tag_id.in_(t_ids))))
-    if statuses:
-        r_stmt = r_stmt.where(Lead.status.in_(statuses))
-    if d_from:
-        r_stmt = r_stmt.where(or_(Lead.crm_closed_at >= d_from, QcLeadRiskScore.updated_at >= d_from))
-    if d_to:
-        r_stmt = r_stmt.where(or_(Lead.crm_closed_at <= d_to, QcLeadRiskScore.updated_at <= d_to))
-
-    rescue_cnt = (await db.execute(r_stmt)).scalar() or 0
-
-    # 4. Top mistakes
+    # 3. Top mistakes
     mistakes_stmt = (
         select(QcCallEvaluation.errors_list)
         .select_from(QcCallEvaluation)
@@ -710,7 +575,7 @@ async def get_qc_stats(
         for m, cnt in mistakes_counter.most_common(5)
     ]
 
-    # 5. Manager-by-manager stats
+    # 4. Manager-by-manager stats
     mgr_stmt = (
         select(
             QcCallEvaluation.amo_user_id,
@@ -757,7 +622,6 @@ async def get_qc_stats(
         totalAnomalies=0,
         lowScoreCalls=low_score_calls,
         highScoreCalls=high_score_calls,
-        rescueDealsCount=rescue_cnt,
         topMistakes=top_mistakes,
         managersStats=managers_stats,
     )

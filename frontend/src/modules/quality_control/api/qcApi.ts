@@ -6,7 +6,6 @@ export interface QcSettings {
   aiModel: string;
   minDurationSec: number;
   maxDurationSec: number;
-  rescueThresholdScore: number;
   disabledPipelineIds?: number[];
   lastCallSyncedAt?: string | null;
 }
@@ -61,22 +60,6 @@ export interface CallEvaluationDetail extends CallEvaluationItem {
   recommendation?: string | null;
 }
 
-export interface RescueDealItem {
-  id: number;
-  leadId: number;
-  leadName?: string | null;
-  leadPrice?: number | null;
-  pipelineId?: number | null;
-  pipelineName?: string | null;
-  managerName?: string | null;
-  lossReasonName?: string | null;
-  totalRiskScore: number;
-  rescueReason?: string | null;
-  aiRescueScript?: string | null;
-  callsCount: number;
-  updatedAt: string;
-}
-
 export interface QcManagerStat {
   managerId?: number | null;
   managerName: string;
@@ -97,7 +80,6 @@ export interface QcStats {
   totalAnomalies?: number;
   lowScoreCalls?: number;
   highScoreCalls?: number;
-  rescueDealsCount: number;
   topMistakes: Array<{ mistake: string; count: number }>;
   managersStats?: QcManagerStat[];
 }
@@ -185,32 +167,6 @@ export const qcApi = {
 
   getCallDetail: async (accountId: number, callId: number): Promise<CallEvaluationDetail> => {
     return baseApi<CallEvaluationDetail>(`/accounts/${accountId}/qc/calls/${callId}`);
-  },
-
-  listRescueDeals: async (
-    accountId: number,
-    filters?: number | {
-      pipelineId?: number;
-      managers?: number[];
-      tags?: number[];
-      dealStatus?: string;
-      dateFrom?: string;
-      dateTo?: string;
-    }
-  ): Promise<RescueDealItem[]> => {
-    const qs = new URLSearchParams();
-    if (typeof filters === 'number') {
-      qs.set('pipelineId', String(filters));
-    } else if (filters) {
-      if (filters.pipelineId) qs.set('pipelineId', String(filters.pipelineId));
-      if (filters.managers && filters.managers.length > 0) qs.set('managers', filters.managers.join(','));
-      if (filters.tags && filters.tags.length > 0) qs.set('tags', filters.tags.join(','));
-      if (filters.dealStatus && filters.dealStatus !== 'all') qs.set('dealStatus', filters.dealStatus);
-      if (filters.dateFrom) qs.set('dateFrom', filters.dateFrom);
-      if (filters.dateTo) qs.set('dateTo', filters.dateTo);
-    }
-    const qStr = qs.toString();
-    return baseApi<RescueDealItem[]>(`/accounts/${accountId}/qc/rescue-deals${qStr ? `?${qStr}` : ''}`);
   },
 
   getStats: async (

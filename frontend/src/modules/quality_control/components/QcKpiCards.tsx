@@ -6,7 +6,6 @@ import { useLanguage } from '../../../i18n/LanguageContext';
 interface QcKpiCardsProps {
   stats?: QcStats;
   isLoading: boolean;
-  onSelectRescueTab?: () => void;
 }
 
 export default function QcKpiCards({ stats, isLoading }: QcKpiCardsProps) {

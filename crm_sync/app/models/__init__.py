@@ -2,12 +2,12 @@ from app.models.models import (
     Base, Account, Pipeline, Stage,
     Lead, LeadStageHistory, LeadStageSkip, Tag, LeadTag,
     AmoUser, CustomFieldDefinition, ProcessedCrmEvent, Notification,
-    QcSettings, QcRule, QcCallEvaluation, QcLeadRiskScore
+    QcSettings, QcRule, QcCallEvaluation
 )
 
 __all__ = [
     "Base", "Account", "Pipeline", "Stage",
     "Lead", "LeadStageHistory", "LeadStageSkip", "Tag", "LeadTag",
     "AmoUser", "CustomFieldDefinition", "ProcessedCrmEvent", "Notification",
-    "QcSettings", "QcRule", "QcCallEvaluation", "QcLeadRiskScore"
+    "QcSettings", "QcRule", "QcCallEvaluation"
 ]

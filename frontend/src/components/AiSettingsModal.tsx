@@ -53,7 +53,6 @@ export default function AiSettingsModal({
   const [qcEnabled, setQcEnabled] = useState(false);
   const [minDuration, setMinDuration] = useState(20);
   const [maxDuration, setMaxDuration] = useState(600);
-  const [rescueThreshold, setRescueThreshold] = useState(40);
   const [qcSystemPrompt, setQcSystemPrompt] = useState('');
   const [disabledPipelineIds, setDisabledPipelineIds] = useState<number[]>([]);
 
@@ -82,7 +81,6 @@ export default function AiSettingsModal({
       setQcEnabled(settingsQuery.data.qcEnabled ?? false);
       setMinDuration(settingsQuery.data.qcMinDurationSec ?? 20);
       setMaxDuration(settingsQuery.data.qcMaxDurationSec ?? 600);
-      setRescueThreshold(settingsQuery.data.qcRescueThresholdScore ?? 40);
       setQcSystemPrompt(settingsQuery.data.qcSystemPrompt || '');
       setDisabledPipelineIds(settingsQuery.data.qcDisabledPipelineIds || []);
     }
@@ -140,7 +138,6 @@ export default function AiSettingsModal({
         qcEnabled: qcEnabled,
         qcMinDurationSec: Number(minDuration) || 20,
         qcMaxDurationSec: Number(maxDuration) || 600,
-        qcRescueThresholdScore: Number(rescueThreshold) || 40,
         qcSystemPrompt: qcSystemPrompt.trim() ? qcSystemPrompt.trim() : null,
         qcDisabledPipelineIds: disabledPipelineIds,
       };
@@ -410,7 +407,7 @@ export default function AiSettingsModal({
                     </div>
 
                     {qcEnabled && (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t border-slate-200 dark:border-slate-700/70">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-200 dark:border-slate-700/70">
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                             {lang === 'uz' ? 'Min. davomiylik (sek)' : 'Мин. длительность (сек)'}
@@ -441,22 +438,6 @@ export default function AiSettingsModal({
                           />
                           <span className="text-[10px] text-slate-400 mt-0.5 block">
                             {lang === 'uz' ? 'Tokenlarni tejash' : 'Защита бюджета токенов'}
-                          </span>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            {t('ai_qc_threshold_label')}
-                          </label>
-                          <input
-                            type="number"
-                            min={5}
-                            max={90}
-                            value={rescueThreshold}
-                            onChange={(e) => setRescueThreshold(Number(e.target.value))}
-                            className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-purple-500 focus:outline-none"
-                          />
-                          <span className="text-[10px] text-slate-400 mt-0.5 block">
-                            {t('ai_qc_threshold_hint')}
                           </span>
                         </div>
                       </div>
