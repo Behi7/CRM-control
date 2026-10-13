@@ -18,6 +18,9 @@ export {
 } from '../modules/analytics/api/analytics.api';
 export { predictionsApi as py3Api, type PredictionParams } from '../modules/03_ai_predictions/api/predictions.api';
 export { aiChatApi } from '../modules/ai_chat/api/ai-chat.api';
+export { crmNodesApi } from '../modules/crm_nodes/api/crmNodes.api';
+export { anomalyDealsApi } from '../modules/anomaly_deals/api/anomalyDeals.api';
+export { leadGeneratorApi } from '../modules/lead_generator/api/leadGenerator.api';
 
 export const userApi = {
   ...analyticsApi,

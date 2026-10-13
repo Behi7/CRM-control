@@ -15,6 +15,9 @@ from app.modules.analytics.router import router as analytics_router
 from app.modules.ai_chat.router import router as ai_router
 from app.modules.quality_control.router import router as qc_router
 from app.modules.quality_control.service import qc_background_worker
+from app.modules.crm_nodes.router import router as crm_nodes_router
+from app.modules.anomaly_deals.router import router as anomaly_deals_router
+from app.modules.lead_generator.router import router as lead_generator_router
 import asyncio
 
 @asynccontextmanager
@@ -75,7 +78,10 @@ def health():
         "status": "ok",
         "app": "unified_python_backend",
         "version": "2.0.0",
-        "modules": ["auth", "admin", "analytics", "ai_chat", "ai_predictions"]
+        "modules": [
+            "auth", "admin", "analytics", "ai_chat", "ai_predictions",
+            "quality_control", "crm_nodes", "anomaly_deals", "lead_generator"
+        ]
     }
 
 # Mount Routers directly
@@ -84,6 +90,9 @@ app.include_router(admin_router)
 app.include_router(analytics_router)
 app.include_router(ai_router)
 app.include_router(qc_router)
+app.include_router(crm_nodes_router)
+app.include_router(anomaly_deals_router)
+app.include_router(lead_generator_router)
 
 # Mount Routers under /api prefix as well (for direct proxying without url rewriting)
 app.include_router(auth_router, prefix="/api")
@@ -93,3 +102,6 @@ app.include_router(analytics_router, prefix="/api/py2")
 app.include_router(ai_router, prefix="/api")
 app.include_router(ai_router, prefix="/api/py3")
 app.include_router(qc_router, prefix="/api")
+app.include_router(crm_nodes_router, prefix="/api")
+app.include_router(anomaly_deals_router, prefix="/api")
+app.include_router(lead_generator_router, prefix="/api")

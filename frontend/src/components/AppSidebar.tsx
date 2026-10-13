@@ -15,6 +15,9 @@ import {
   Menu,
   X,
   Headphones,
+  Network,
+  AlertTriangle,
+  Magnet,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -130,6 +133,22 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
     role === 'admin' ? `/admin/qc/${activeAccountId}` : `/qc`;
   const isQcActive = isPathActive('/admin/qc') || isPathActive('/qc') || isPathActive('/admin/quality') || isPathActive('/quality');
 
+  const predictionsUrl =
+    role === 'admin' ? `/admin/predictions/${activeAccountId}` : `/predictions`;
+  const isPredictionsActive = isPathActive('/admin/predictions') || isPathActive('/predictions');
+
+  const crmNodesUrl =
+    role === 'admin' ? `/admin/crm-nodes/${activeAccountId}` : `/crm-nodes`;
+  const isCrmNodesActive = isPathActive('/admin/crm-nodes') || isPathActive('/crm-nodes');
+
+  const anomalyDealsUrl =
+    role === 'admin' ? `/admin/anomaly-deals/${activeAccountId}` : `/anomaly-deals`;
+  const isAnomalyDealsActive = isPathActive('/admin/anomaly-deals') || isPathActive('/anomaly-deals');
+
+  const leadGeneratorUrl =
+    role === 'admin' ? `/admin/lead-generator/${activeAccountId}` : `/lead-generator`;
+  const isLeadGeneratorActive = isPathActive('/admin/lead-generator') || isPathActive('/lead-generator');
+
   const currentAccObj = accounts.find((a: any) => a.id === activeAccountId) || accounts[0];
   const amoAccountName = currentAccObj?.subdomain || 'AmoCRM';
   const fullDomain = currentAccObj?.subdomain
@@ -141,7 +160,10 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
     appAnalyticsSub: lang === 'uz' ? 'Moliya, Vaqt, Voronka, UTM' : 'Финансы, Время, Воронка, UTM',
     qcApp: lang === 'uz' ? 'Sifat nazorati (QC)' : 'Контроль качества',
     search: lang === 'uz' ? 'Bitimlarni qidirish' : 'Поиск сделок',
-    app03: lang === 'uz' ? 'AI Prognoz (Tez kunda)' : 'AI-Прогнозы',
+    app03: lang === 'uz' ? 'AI-Prognozlar' : 'AI-Прогнозы',
+    crmNodes: lang === 'uz' ? 'CRM Tugunlari' : 'CRM Ноды',
+    anomalyDeals: lang === 'uz' ? 'Anomal bitimlar' : 'Аномальные сделки',
+    leadGenerator: lang === 'uz' ? 'Lidlar generatori' : 'Генератор лидов',
     clients: lang === 'uz' ? 'AmoCRM Mijozlar' : 'Клиенты AmoCRM',
     notifs: lang === 'uz' ? 'Bildirishnomalar' : 'Уведомления',
     activeAccount: lang === 'uz' ? 'Faol AmoCRM hisobi' : 'Активный аккаунт AmoCRM',
@@ -329,17 +351,101 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               )}
             </button>
 
-            <div
+            <button
+              onClick={() => {
+                setMobileOpen(false);
+                navigate(predictionsUrl);
+              }}
               className={`${
                 collapsed
                   ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
                   : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
-              } text-slate-500 cursor-not-allowed opacity-75`}
+              } transition-all cursor-pointer ${
+                isPredictionsActive
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-950/50'
+                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+              }`}
               title={labels.app03}
             >
               <Cpu size={20} className="shrink-0" />
-              {!collapsed && <span className="text-xs truncate">{labels.app03}</span>}
-            </div>
+              {!collapsed && (
+                <div className="overflow-hidden flex-1">
+                  <span className="text-xs font-semibold truncate">{labels.app03}</span>
+                </div>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                setMobileOpen(false);
+                navigate(crmNodesUrl);
+              }}
+              className={`${
+                collapsed
+                  ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
+                  : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
+              } transition-all cursor-pointer ${
+                isCrmNodesActive
+                  ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md shadow-teal-950/50'
+                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+              }`}
+              title={labels.crmNodes}
+            >
+              <Network size={20} className="shrink-0" />
+              {!collapsed && (
+                <div className="overflow-hidden flex-1">
+                  <span className="text-xs font-semibold truncate">{labels.crmNodes}</span>
+                </div>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                setMobileOpen(false);
+                navigate(anomalyDealsUrl);
+              }}
+              className={`${
+                collapsed
+                  ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
+                  : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
+              } transition-all cursor-pointer ${
+                isAnomalyDealsActive
+                  ? 'bg-gradient-to-r from-amber-600 to-rose-600 text-white shadow-md shadow-amber-950/50'
+                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+              }`}
+              title={labels.anomalyDeals}
+            >
+              <AlertTriangle size={20} className="shrink-0" />
+              {!collapsed && (
+                <div className="overflow-hidden flex-1">
+                  <span className="text-xs font-semibold truncate">{labels.anomalyDeals}</span>
+                </div>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                setMobileOpen(false);
+                navigate(leadGeneratorUrl);
+              }}
+              className={`${
+                collapsed
+                  ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
+                  : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
+              } transition-all cursor-pointer ${
+                isLeadGeneratorActive
+                  ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-md shadow-violet-950/50'
+                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+              }`}
+              title={labels.leadGenerator}
+            >
+              <Magnet size={20} className="shrink-0" />
+              {!collapsed && (
+                <div className="overflow-hidden flex-1">
+                  <span className="text-xs font-semibold truncate">{labels.leadGenerator}</span>
+                </div>
+              )}
+            </button>
           </nav>
         </div>
 
