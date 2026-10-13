@@ -79,6 +79,7 @@ async def evaluate_call_with_gemini(
     api_key: str,
     model_name: str,
     custom_prompt: Optional[str] = None,
+    company_context: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Отправляет аудио в Gemini API. Модель возвращает ТОЛЬКО факты и булевы флаги passed, без вычисления баллов."""
     try:
@@ -100,9 +101,13 @@ async def evaluate_call_with_gemini(
 Будь строгим, но объективным. Замечай перебивания клиента, уход от прямого ответа по ценам, пассивность, отсутствие инициативы."""
         )
 
+        company_section = ""
+        if company_context and company_context.strip():
+            company_section = f"\nКонтекст о компании и специфика бизнеса:\n{company_context.strip()}\n"
+
         system_instruction = f"""
 {base_instruction}
-
+{company_section}
 Законы регламента для проверки:
 {rules_formatted}
 
@@ -312,6 +317,7 @@ async def process_call_evaluation(session: AsyncSession, eval_id: int) -> bool:
         api_key=gemini_key,
         model_name=qc_settings.ai_model,
         custom_prompt=qc_settings.system_prompt,
+        company_context=acc.ai_company_context,
     )
 
     if not analysis:
