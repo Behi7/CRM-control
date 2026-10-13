@@ -13,7 +13,6 @@ import QualityControlPage from './modules/quality_control/pages/QualityControlPa
 import PredictionsPage from './modules/03_ai_predictions/pages/PredictionsPage';
 import CrmNodesPage from './modules/crm_nodes/pages/CrmNodesPage';
 import AnomalyDealsPage from './modules/anomaly_deals/pages/AnomalyDealsPage';
-import LeadGeneratorPage from './modules/lead_generator/pages/LeadGeneratorPage';
 import AppSidebarLayout from './components/AppSidebar';
 import { FilterProvider } from './shared/context/FilterContext';
 
@@ -55,7 +54,6 @@ export default function App() {
           <Route path="/admin/predictions/:accountId" element={<WithSidebar><PredictionsPage /></WithSidebar>} />
           <Route path="/admin/crm-nodes/:accountId" element={<WithSidebar><CrmNodesPage /></WithSidebar>} />
           <Route path="/admin/anomaly-deals/:accountId" element={<WithSidebar><AnomalyDealsPage /></WithSidebar>} />
-          <Route path="/admin/lead-generator/:accountId" element={<WithSidebar><LeadGeneratorPage /></WithSidebar>} />
         </>
       )}
       {role === 'viewer' && (
@@ -71,7 +69,6 @@ export default function App() {
           <Route path="/predictions" element={<WithSidebar><PredictionsPage /></WithSidebar>} />
           <Route path="/crm-nodes" element={<WithSidebar><CrmNodesPage /></WithSidebar>} />
           <Route path="/anomaly-deals" element={<WithSidebar><AnomalyDealsPage /></WithSidebar>} />
-          <Route path="/lead-generator" element={<WithSidebar><LeadGeneratorPage /></WithSidebar>} />
         </>
       )}
       <Route

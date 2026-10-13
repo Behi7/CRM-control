@@ -10,3 +10,4 @@ def get_crm_nodes_overview(account_id: int) -> CrmNodesOverviewDto:
         totalPipelines=0,
         totalStages=0,
     )
+
