@@ -1,5 +1,19 @@
 import { baseApi } from '../../../shared/api/base-client';
 
+export interface AnomalyManagerStat {
+  managerId: number | null;
+  managerName: string;
+  totalLost: number;
+  auditedCount: number;
+  criticalCount: number;
+  warningCount: number;
+  fairCount: number;
+  lostBudget: number;
+  avgScore: number;
+  compliancePercent: number;
+  topFactor?: string;
+}
+
 export interface AnomalyStats {
   totalLostLeads: number;
   totalAudited: number;
@@ -9,6 +23,7 @@ export interface AnomalyStats {
   topStatedReasons: Array<{ reason: string; count: number; budget: number }>;
   topRealReasons: Array<{ reason: string; count: number; budget: number }>;
   topSlipManagers: Array<{ name: string; criticalCount: number; lostBudget: number }>;
+  managersStats?: AnomalyManagerStat[];
 }
 
 export interface AnomalyDealItem {
@@ -90,8 +105,10 @@ export interface DealForensicDetail {
 }
 
 export const anomalyDealsApi = {
-  getStats: (accountId: number) =>
-    baseApi<AnomalyStats>(`/accounts/${accountId}/anomaly-deals/stats`),
+  getStats: (accountId: number, pipelineId?: number) => {
+    const qs = pipelineId ? `?pipelineId=${pipelineId}` : '';
+    return baseApi<AnomalyStats>(`/accounts/${accountId}/anomaly-deals/stats${qs}`);
+  },
 
   getList: (
     accountId: number,

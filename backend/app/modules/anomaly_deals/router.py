@@ -22,20 +22,22 @@ def check_account_access(user: dict, account_id: int):
 @router.get("/accounts/{account_id}/anomaly-deals/stats", response_model=AnomalyStatsDto)
 async def anomaly_stats_endpoint(
     account_id: int,
+    pipeline_id: Optional[int] = Query(None, alias="pipelineId"),
     session: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
     check_account_access(user, account_id)
-    return await get_anomaly_stats(session, account_id)
+    return await get_anomaly_stats(session, account_id, pipeline_id=pipeline_id)
 
 @router.get("/accounts/{account_id}/anomaly-deals/summary", response_model=AnomalyStatsDto)
 async def anomaly_summary_legacy(
     account_id: int,
+    pipeline_id: Optional[int] = Query(None, alias="pipelineId"),
     session: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
     check_account_access(user, account_id)
-    return await get_anomaly_stats(session, account_id)
+    return await get_anomaly_stats(session, account_id, pipeline_id=pipeline_id)
 
 @router.get("/accounts/{account_id}/anomaly-deals/list", response_model=AnomalyDealListResponseDto)
 async def anomaly_deals_list_endpoint(

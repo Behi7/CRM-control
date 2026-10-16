@@ -3,7 +3,7 @@ import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, desc, update
+from sqlalchemy import select, func, and_, or_, desc, update, case
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -14,7 +14,7 @@ from app.models import (
 )
 from app.core.security import decrypt_token
 from app.modules.anomaly_deals.schemas import (
-    AnomalyStatsDto, AnomalyDealListItemDto, AnomalyDealListResponseDto,
+    AnomalyStatsDto, AnomalyManagerStatDto, AnomalyDealListItemDto, AnomalyDealListResponseDto,
     DealForensicDetailDto, TimelineStageDto, CallEvaluationSummaryDto
 )
 from app.modules.anomaly_deals.engine import (
@@ -23,19 +23,24 @@ from app.modules.anomaly_deals.engine import (
 
 logger = logging.getLogger("AnomalyService")
 
-async def get_anomaly_stats(session: AsyncSession, account_id: int) -> AnomalyStatsDto:
+async def get_anomaly_stats(
+    session: AsyncSession,
+    account_id: int,
+    pipeline_id: Optional[int] = None
+) -> AnomalyStatsDto:
     """Возвращает сводные KPI потерь и сливов для РОПа."""
+    lead_filters = [Lead.account_id == account_id, Lead.status == "lost"]
+    audit_filters = [DealAnomalyAudit.account_id == account_id]
+    if pipeline_id:
+        lead_filters.append(Lead.pipeline_id == pipeline_id)
+        audit_filters.append(DealAnomalyAudit.pipeline_id == pipeline_id)
+
     # 1. Общее количество закрытых в отказ сделок
-    lost_count_stmt = select(func.count(Lead.id)).where(
-        Lead.account_id == account_id,
-        Lead.status == "lost"
-    )
+    lost_count_stmt = select(func.count(Lead.id)).where(and_(*lead_filters))
     total_lost = (await session.execute(lost_count_stmt)).scalar() or 0
 
     # 2. Количество проаудированных
-    audits_count_stmt = select(func.count(DealAnomalyAudit.id)).where(
-        DealAnomalyAudit.account_id == account_id
-    )
+    audits_count_stmt = select(func.count(DealAnomalyAudit.id)).where(and_(*audit_filters))
     total_audited = (await session.execute(audits_count_stmt)).scalar() or 0
 
     # 3. Критические сливы
@@ -46,8 +51,10 @@ async def get_anomaly_stats(session: AsyncSession, account_id: int) -> AnomalySt
         )
         .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
         .where(
-            DealAnomalyAudit.account_id == account_id,
-            DealAnomalyAudit.anomaly_level == "critical"
+            and_(
+                *audit_filters,
+                DealAnomalyAudit.anomaly_level == "critical"
+            )
         )
     )
     crit_res = (await session.execute(crit_stmt)).one_or_none()
@@ -64,7 +71,7 @@ async def get_anomaly_stats(session: AsyncSession, account_id: int) -> AnomalySt
             func.coalesce(func.sum(Lead.price), 0).label("budget")
         )
         .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
-        .where(DealAnomalyAudit.account_id == account_id)
+        .where(and_(*audit_filters))
         .group_by("reason")
         .order_by(desc("cnt"))
         .limit(5)
@@ -84,8 +91,10 @@ async def get_anomaly_stats(session: AsyncSession, account_id: int) -> AnomalySt
         )
         .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
         .where(
-            DealAnomalyAudit.account_id == account_id,
-            DealAnomalyAudit.anomaly_level.in_(["critical", "warning"])
+            and_(
+                *audit_filters,
+                DealAnomalyAudit.anomaly_level.in_(["critical", "warning"])
+            )
         )
         .group_by("reason")
         .order_by(desc("cnt"))
@@ -107,8 +116,10 @@ async def get_anomaly_stats(session: AsyncSession, account_id: int) -> AnomalySt
         .join(DealAnomalyAudit, DealAnomalyAudit.responsible_user_id == AmoUser.id)
         .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
         .where(
-            DealAnomalyAudit.account_id == account_id,
-            DealAnomalyAudit.anomaly_level == "critical"
+            and_(
+                *audit_filters,
+                DealAnomalyAudit.anomaly_level == "critical"
+            )
         )
         .group_by(AmoUser.id, AmoUser.name)
         .order_by(desc("lost_budget"))
@@ -120,6 +131,81 @@ async def get_anomaly_stats(session: AsyncSession, account_id: int) -> AnomalySt
         for r in mgr_rows
     ]
 
+    # 7. Детальная статистика по каждому менеджеру (для карточек в стиле Контроля Качества)
+    lost_by_mgr_stmt = (
+        select(Lead.responsible_user_id, func.count(Lead.id))
+        .where(and_(*lead_filters))
+        .group_by(Lead.responsible_user_id)
+    )
+    lost_by_mgr = dict((await session.execute(lost_by_mgr_stmt)).all())
+
+    top_factors_stmt = (
+        select(
+            DealAnomalyAudit.responsible_user_id,
+            func.coalesce(DealAnomalyAudit.real_loss_reason, "Нарушение регламента").label("reason"),
+            func.count(DealAnomalyAudit.id).label("cnt")
+        )
+        .where(
+            and_(
+                *audit_filters,
+                DealAnomalyAudit.anomaly_level.in_(["critical", "warning"])
+            )
+        )
+        .group_by(DealAnomalyAudit.responsible_user_id, "reason")
+        .order_by(DealAnomalyAudit.responsible_user_id, desc("cnt"))
+    )
+    factor_rows = (await session.execute(top_factors_stmt)).all()
+    top_factor_by_mgr: Dict[Optional[int], str] = {}
+    for r in factor_rows:
+        if r.responsible_user_id not in top_factor_by_mgr:
+            top_factor_by_mgr[r.responsible_user_id] = r.reason
+
+    mgr_stats_stmt = (
+        select(
+            DealAnomalyAudit.responsible_user_id,
+            func.coalesce(AmoUser.name, "Не назначен").label("manager_name"),
+            func.count(DealAnomalyAudit.id).label("audited_count"),
+            func.count(case((DealAnomalyAudit.anomaly_level == "critical", 1))).label("crit_count"),
+            func.count(case((DealAnomalyAudit.anomaly_level == "warning", 1))).label("warn_count"),
+            func.count(case((DealAnomalyAudit.anomaly_level == "fair", 1))).label("fair_count"),
+            func.coalesce(func.sum(case((DealAnomalyAudit.anomaly_level == "critical", Lead.price), else_=0)), 0).label("lost_budget"),
+            func.coalesce(func.avg(DealAnomalyAudit.anomaly_score), 0).label("avg_score")
+        )
+        .select_from(DealAnomalyAudit)
+        .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
+        .outerjoin(AmoUser, DealAnomalyAudit.responsible_user_id == AmoUser.id)
+        .where(and_(*audit_filters))
+        .group_by(DealAnomalyAudit.responsible_user_id, AmoUser.name)
+        .order_by(desc("lost_budget"), desc("crit_count"))
+    )
+    mgr_stats_res = await session.execute(mgr_stats_stmt)
+    managers_stats = []
+    for row in mgr_stats_res.all():
+        audited = row.audited_count or 0
+        crit = row.crit_count or 0
+        fair = row.fair_count or 0
+        warn = row.warn_count or 0
+        comp_pct = round((fair / audited * 100), 1) if audited > 0 else 0.0
+
+        top_f = top_factor_by_mgr.get(
+            row.responsible_user_id,
+            "Обоснованный отказ" if fair > 0 else "—"
+        )
+
+        managers_stats.append(AnomalyManagerStatDto(
+            managerId=row.responsible_user_id,
+            managerName=row.manager_name or "Не назначен",
+            totalLost=lost_by_mgr.get(row.responsible_user_id, audited),
+            auditedCount=audited,
+            criticalCount=crit,
+            warningCount=warn,
+            fairCount=fair,
+            lostBudget=float(row.lost_budget or 0),
+            avgScore=round(float(row.avg_score or 0), 1),
+            compliancePercent=comp_pct,
+            topFactor=top_f
+        ))
+
     return AnomalyStatsDto(
         totalLostLeads=total_lost,
         totalAudited=total_audited,
@@ -129,6 +215,7 @@ async def get_anomaly_stats(session: AsyncSession, account_id: int) -> AnomalySt
         topStatedReasons=top_stated,
         topRealReasons=top_real,
         topSlipManagers=top_managers,
+        managersStats=managers_stats,
     )
 
 

@@ -1,6 +1,19 @@
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
+class AnomalyManagerStatDto(BaseModel):
+    managerId: Optional[int] = None
+    managerName: str = "Не назначен"
+    totalLost: int = 0
+    auditedCount: int = 0
+    criticalCount: int = 0
+    warningCount: int = 0
+    fairCount: int = 0
+    lostBudget: float = 0.0
+    avgScore: float = 0.0
+    compliancePercent: float = 0.0
+    topFactor: Optional[str] = None
+
 class AnomalyStatsDto(BaseModel):
     totalLostLeads: int = 0
     totalAudited: int = 0
@@ -10,6 +23,7 @@ class AnomalyStatsDto(BaseModel):
     topStatedReasons: List[Dict[str, Any]] = []
     topRealReasons: List[Dict[str, Any]] = []
     topSlipManagers: List[Dict[str, Any]] = []
+    managersStats: List[AnomalyManagerStatDto] = []
 
 class AnomalyDealListItemDto(BaseModel):
     id: int
