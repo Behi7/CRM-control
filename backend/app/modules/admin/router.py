@@ -10,7 +10,7 @@ from app.core.security import (
     require_admin, hash_password, encrypt_token
 )
 from app.core.crm_client import CrmClient
-from app.models import Account, User, Notification, QcSettings
+from app.models import Account, User, Notification, QcSettings, CustomFieldDefinition
 from app.modules.admin.schemas import (
     CreateAccountDto, PatchAccountDto, UpdateAiSettingsDto, TestAiDto
 )
@@ -239,6 +239,29 @@ async def get_ai_settings(account_id: int, db: AsyncSession = Depends(get_db)):
     qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
     qc = (await db.execute(qc_stmt)).scalar_one_or_none()
 
+    # Load custom field definitions for this account (non-archived)
+    cf_stmt = (
+        select(CustomFieldDefinition)
+        .where(
+            CustomFieldDefinition.account_id == account_id,
+            CustomFieldDefinition.is_archived == False,
+        )
+        .order_by(CustomFieldDefinition.sort_order.asc(), CustomFieldDefinition.name.asc())
+    )
+    cfs = (await db.execute(cf_stmt)).scalars().all()
+    custom_fields = [
+        {
+            "id": cf.external_id,
+            "name": cf.name,
+            "code": cf.code,
+            "fieldType": cf.field_type,
+            "enums": cf.enums or [],
+        }
+        for cf in cfs
+    ]
+
+    anomaly_cfg = acc.anomaly_settings or {}
+
     return {
         "accountId": acc.id,
         "aiEnabled": acc.ai_enabled,
@@ -250,6 +273,10 @@ async def get_ai_settings(account_id: int, db: AsyncSession = Depends(get_db)):
         "qcMaxDurationSec": qc.max_duration_sec if qc else 600,
         "qcSystemPrompt": qc.system_prompt if qc else None,
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids if (qc and qc.disabled_pipeline_ids is not None) else [],
+        "anomalyLossReasonFieldId": anomaly_cfg.get("loss_reason_field_id"),
+        "anomalyIgnoredReasons": anomaly_cfg.get("ignored_reasons", []),
+        "anomalyDaysBack": anomaly_cfg.get("days_back", 30),
+        "customFields": custom_fields,
     }
 
 @router.patch("/accounts/{account_id}/ai-settings")
@@ -268,6 +295,16 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         acc.ai_company_context = dto.aiCompanyContext.strip()
     if dto.aiToken:
         acc.ai_encrypted_token = encrypt_token(dto.aiToken.strip())
+
+    # Anomaly Deals settings
+    cur_anomaly = dict(acc.anomaly_settings or {})
+    if dto.anomalyLossReasonFieldId is not None:
+        cur_anomaly["loss_reason_field_id"] = dto.anomalyLossReasonFieldId.strip() if dto.anomalyLossReasonFieldId else None
+    if dto.anomalyIgnoredReasons is not None:
+        cur_anomaly["ignored_reasons"] = dto.anomalyIgnoredReasons
+    if dto.anomalyDaysBack is not None:
+        cur_anomaly["days_back"] = max(1, min(365, dto.anomalyDaysBack))
+    acc.anomaly_settings = cur_anomaly
 
     # QC Settings
     qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
@@ -305,6 +342,9 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         "qcMaxDurationSec": qc.max_duration_sec,
         "qcSystemPrompt": qc.system_prompt,
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids or [],
+        "anomalyLossReasonFieldId": acc.anomaly_settings.get("loss_reason_field_id") if acc.anomaly_settings else None,
+        "anomalyIgnoredReasons": acc.anomaly_settings.get("ignored_reasons", []) if acc.anomaly_settings else [],
+        "anomalyDaysBack": acc.anomaly_settings.get("days_back", 30) if acc.anomaly_settings else 30,
     }
 
 @router.get("/notifications")

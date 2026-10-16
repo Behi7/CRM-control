@@ -30,6 +30,7 @@ class Account(Base):
     ai_model = Column(Text, nullable=True, default="gemini-2.5-flash")
     ai_encrypted_token = Column(Text, nullable=True)
     ai_company_context = Column(Text, nullable=True)
+    anomaly_settings = Column(JSONB, nullable=True, default=dict)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (

@@ -12,6 +12,13 @@ import {
   FileCheck,
   RotateCcw,
   GitBranch,
+  AlertTriangle,
+  ShieldCheck,
+  Check,
+  Plus,
+  Trash2,
+  Calendar,
+  Filter,
 } from 'lucide-react';
 import RulesSettingsTab from '../modules/quality_control/components/RulesSettingsTab';
 
@@ -19,7 +26,7 @@ interface AiSettingsModalProps {
   accountId: number;
   subdomain?: string;
   onClose: () => void;
-  initialTab?: 'general' | 'qc' | 'rules';
+  initialTab?: 'general' | 'qc' | 'rules' | 'anomalies';
 }
 
 const DEFAULT_QC_SYSTEM_PROMPT = `Ты — объективный и внимательный эксперт службы контроля качества звонков отдела продаж.
@@ -41,7 +48,7 @@ export default function AiSettingsModal({
   const qc = useQueryClient();
   const { t, lang } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'qc' | 'rules'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'general' | 'qc' | 'rules' | 'anomalies'>(initialTab);
 
   // General AI settings
   const [model, setModel] = useState('gemini-2.5-flash');
@@ -55,6 +62,12 @@ export default function AiSettingsModal({
   const [maxDuration, setMaxDuration] = useState(600);
   const [qcSystemPrompt, setQcSystemPrompt] = useState('');
   const [disabledPipelineIds, setDisabledPipelineIds] = useState<number[]>([]);
+
+  // Anomaly Deals settings
+  const [lossReasonFieldId, setLossReasonFieldId] = useState<string>('');
+  const [ignoredReasons, setIgnoredReasons] = useState<string[]>([]);
+  const [daysBack, setDaysBack] = useState<number>(30);
+  const [customReasonInput, setCustomReasonInput] = useState<string>('');
 
   // Status & tests
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -83,6 +96,23 @@ export default function AiSettingsModal({
       setMaxDuration(settingsQuery.data.qcMaxDurationSec ?? 600);
       setQcSystemPrompt(settingsQuery.data.qcSystemPrompt || '');
       setDisabledPipelineIds(settingsQuery.data.qcDisabledPipelineIds || []);
+
+      // Anomaly settings
+      const savedFieldId = settingsQuery.data.anomalyLossReasonFieldId || '';
+      setLossReasonFieldId(savedFieldId);
+      setIgnoredReasons(settingsQuery.data.anomalyIgnoredReasons || []);
+      setDaysBack(settingsQuery.data.anomalyDaysBack ?? 30);
+
+      // Auto-suggest rejection field if not set yet
+      if (!savedFieldId && settingsQuery.data.customFields) {
+        const candidate = settingsQuery.data.customFields.find((cf: any) => {
+          const n = (cf.name || '').toLowerCase();
+          return n.includes('rad') || n.includes('sabab') || n.includes('отказ') || n.includes('причин');
+        });
+        if (candidate) {
+          setLossReasonFieldId(candidate.id);
+        }
+      }
     }
   }, [settingsQuery.data]);
 
@@ -140,6 +170,9 @@ export default function AiSettingsModal({
         qcMaxDurationSec: Number(maxDuration) || 600,
         qcSystemPrompt: qcSystemPrompt.trim() ? qcSystemPrompt.trim() : null,
         qcDisabledPipelineIds: disabledPipelineIds,
+        anomalyLossReasonFieldId: lossReasonFieldId || null,
+        anomalyIgnoredReasons: ignoredReasons,
+        anomalyDaysBack: Number(daysBack) || 30,
       };
       if (token.trim()) {
         payload.aiToken = token.trim();
@@ -213,6 +246,19 @@ export default function AiSettingsModal({
           >
             <FileCheck size={14} />
             <span>{t('ai_tab_rules')}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('anomalies')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'anomalies'
+                ? 'bg-purple-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <AlertTriangle size={14} />
+            <span>{t('ai_tab_anomalies')}</span>
           </button>
         </div>
 
@@ -566,6 +612,245 @@ export default function AiSettingsModal({
                       pipelines={pipelines}
                     />
                   )}
+                </div>
+              )}
+
+              {/* TAB 4: ANOMALIES & LOSS REASONS */}
+              {activeTab === 'anomalies' && (
+                <div className="space-y-6">
+                  {/* Card 1: Custom Field Selector */}
+                  <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                          <Filter size={16} className="text-purple-600 dark:text-purple-400" />
+                          <span>{t('ai_anomalies_loss_field_label')}</span>
+                        </label>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                          {t('ai_anomalies_loss_field_desc')}
+                        </p>
+                      </div>
+                      {lossReasonFieldId && (
+                        <span className="px-2.5 py-1 text-[11px] font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 rounded-lg shrink-0 border border-purple-200 dark:border-purple-800/60">
+                          ID: {lossReasonFieldId}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="pt-1">
+                      <select
+                        value={lossReasonFieldId}
+                        onChange={(e) => setLossReasonFieldId(e.target.value)}
+                        className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      >
+                        <option value="">{t('ai_anomalies_loss_field_native')}</option>
+                        {(settingsQuery.data?.customFields || []).map((cf: any) => {
+                          const isRecommended = ['rad', 'sabab', 'отказ', 'причин'].some((k) =>
+                            (cf.name || '').toLowerCase().includes(k)
+                          );
+                          return (
+                            <option key={cf.id} value={cf.id}>
+                              {cf.name} {isRecommended ? `★ (${lang === 'uz' ? 'Tavsiya etiladi' : 'Рекомендуется'})` : ''} [ID: {cf.id}, {cf.fieldType}]
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Card 2: Ignored Technical Non-Deals / Enums Blacklist */}
+                  <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                          <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
+                          <span>{t('ai_anomalies_ignored_label')}</span>
+                        </label>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                          {t('ai_anomalies_ignored_desc')}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const curField = (settingsQuery.data?.customFields || []).find(
+                              (cf: any) => String(cf.id) === String(lossReasonFieldId)
+                            );
+                            const enumsList: string[] = (curField?.enums || []).map((e: any) => e.value);
+                            const typical = enumsList.filter((val) => {
+                              const v = val.toLowerCase();
+                              return ['dubl', 'дубл', 'sifat', 'нецелев', 'xodim', 'тест', 'adash', 'ошиб', 'spam'].some((k) =>
+                                v.includes(k)
+                              );
+                            });
+                            setIgnoredReasons(Array.from(new Set([...ignoredReasons, ...typical])));
+                          }}
+                          className="px-3 py-1.5 text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/50 hover:bg-purple-200 rounded-xl border border-purple-200 dark:border-purple-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Sparkles size={12} />
+                          <span>{t('ai_anomalies_ignored_select_all')}</span>
+                        </button>
+
+                        {ignoredReasons.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setIgnoredReasons([])}
+                            className="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
+                          >
+                            {t('ai_anomalies_ignored_clear')}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Enums List for Selected Field */}
+                    {(() => {
+                      const curField = (settingsQuery.data?.customFields || []).find(
+                        (cf: any) => String(cf.id) === String(lossReasonFieldId)
+                      );
+                      const enumsList: string[] = (curField?.enums || []).map((e: any) => e.value);
+
+                      if (enumsList.length === 0) {
+                        return (
+                          <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-center space-y-3">
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {t('ai_anomalies_ignored_empty')}
+                            </p>
+                            {/* Manual entry of custom reasons */}
+                            <div className="flex items-center gap-2 max-w-md mx-auto">
+                              <input
+                                type="text"
+                                value={customReasonInput}
+                                onChange={(e) => setCustomReasonInput(e.target.value)}
+                                placeholder={lang === 'uz' ? 'Yangi sabab nomi...' : 'Название причины (например, Дубль)...'}
+                                className="flex-1 px-3 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (customReasonInput.trim() && !ignoredReasons.includes(customReasonInput.trim())) {
+                                    setIgnoredReasons([...ignoredReasons, customReasonInput.trim()]);
+                                    setCustomReasonInput('');
+                                  }
+                                }}
+                                className="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-colors cursor-pointer"
+                              >
+                                {lang === 'uz' ? 'Qo‘shish' : 'Добавить'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                            {enumsList.map((val) => {
+                              const isChecked = ignoredReasons.includes(val);
+                              return (
+                                <button
+                                  key={val}
+                                  type="button"
+                                  onClick={() => {
+                                    setIgnoredReasons((prev) =>
+                                      prev.includes(val) ? prev.filter((r) => r !== val) : [...prev, val]
+                                    );
+                                  }}
+                                  className={`p-3 rounded-xl border text-left flex items-start justify-between gap-2 transition-all cursor-pointer ${
+                                    isChecked
+                                      ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700/80 shadow-xs ring-1 ring-amber-400/30'
+                                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700/70 hover:bg-slate-100/60 dark:hover:bg-slate-800/60'
+                                  }`}
+                                >
+                                  <div className="space-y-1 min-w-0">
+                                    <span
+                                      className={`text-xs font-semibold block truncate ${
+                                        isChecked ? 'text-amber-900 dark:text-amber-200' : 'text-slate-800 dark:text-slate-200'
+                                      }`}
+                                    >
+                                      {val}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 block">
+                                      {isChecked
+                                        ? (lang === 'uz' ? '✓ Istisno qilingan (jarimasiz)' : '✓ Исключен (без штрафа)')
+                                        : (lang === 'uz' ? 'Standart tekshiruv' : 'Учитывается при аудите')}
+                                    </span>
+                                  </div>
+                                  <div
+                                    className={`w-4 h-4 rounded-md flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                                      isChecked
+                                        ? 'bg-amber-600 text-white'
+                                        : 'border border-slate-300 dark:border-slate-600'
+                                    }`}
+                                  >
+                                    {isChecked && <Check size={12} strokeWidth={3} />}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Currently selected ignored tags summary */}
+                    {ignoredReasons.length > 0 && (
+                      <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mr-1">
+                          {lang === 'uz' ? 'Istisnolar:' : 'Исключено из вины менеджера:'}
+                        </span>
+                        {ignoredReasons.map((reason) => (
+                          <span
+                            key={reason}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/60"
+                          >
+                            <span>{reason}</span>
+                            <button
+                              type="button"
+                              onClick={() => setIgnoredReasons((prev) => prev.filter((r) => r !== reason))}
+                              className="text-amber-600 hover:text-amber-900 dark:hover:text-amber-100 cursor-pointer"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card 3: Days Back Window */}
+                  <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                          <Calendar size={16} className="text-purple-600 dark:text-purple-400" />
+                          <span>{t('ai_anomalies_days_label')}</span>
+                        </label>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                          {t('ai_anomalies_days_desc')}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {[7, 14, 30, 60, 90].map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => setDaysBack(d)}
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                              Number(daysBack) === d
+                                ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            {d} {lang === 'uz' ? 'kun' : 'дн.'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
