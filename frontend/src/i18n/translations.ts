@@ -204,8 +204,6 @@ export const translations = {
     ai_anomalies_ignored_select_all: 'Выбрать типовые (Дубль, Спам, Тест)',
     ai_anomalies_ignored_clear: 'Снять все',
     ai_anomalies_ignored_empty: 'В выбранном поле нет предустановленных вариантов (списков).',
-    ai_anomalies_days_label: 'Глубина ретроспективного анализа (дней)',
-    ai_anomalies_days_desc: 'Анализировать только закрытые сделки не старше указанного количества дней.',
   },
   uz: {
     // Common
@@ -410,8 +408,6 @@ export const translations = {
     ai_anomalies_ignored_select_all: 'Standartlarni belgilash (Dubl, Test, Sifatsiz)',
     ai_anomalies_ignored_clear: 'Barchasini tozalash',
     ai_anomalies_ignored_empty: 'Tanlangan maydonda oldindan belgilangan variantlar (ro‘yxat) mavjud emas.',
-    ai_anomalies_days_label: 'Tahlil chuqurligi (kunlar)',
-    ai_anomalies_days_desc: 'Faqat belgilangan kunlardan yangi bo‘lgan yopilgan bitimlarni tahlil qilish.',
   },
 } as const;
 

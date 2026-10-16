@@ -27,7 +27,6 @@ class UpdateAiSettingsDto(BaseModel):
     qcDisabledPipelineIds: Optional[list[int]] = None
     anomalyLossReasonFieldId: Optional[str] = None
     anomalyIgnoredReasons: Optional[list[str]] = None
-    anomalyDaysBack: Optional[int] = None
 
 class TestAiDto(BaseModel):
     model: str

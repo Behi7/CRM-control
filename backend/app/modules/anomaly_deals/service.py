@@ -650,7 +650,6 @@ async def run_batch_audit(
     pipeline_id: Optional[int] = None,
     limit: int = 25,
     force_reanalyze: bool = False,
-    days_back: int = 30,
 ) -> int:
     """Пакетный запуск аудита по закрытым в отказ сделкам (строго после бэкфила и вне периода 'Стоп')."""
     acc_stmt = select(Account).where(Account.id == account_id)

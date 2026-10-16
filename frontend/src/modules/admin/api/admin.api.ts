@@ -21,7 +21,6 @@ export interface AiSettingsResponse {
   qcDisabledPipelineIds?: number[];
   anomalyLossReasonFieldId?: string | null;
   anomalyIgnoredReasons?: string[];
-  anomalyDaysBack?: number;
   customFields?: CustomFieldDefinitionDto[];
 }
 
@@ -37,7 +36,6 @@ export interface PatchAiSettingsDto {
   qcDisabledPipelineIds?: number[];
   anomalyLossReasonFieldId?: string | null;
   anomalyIgnoredReasons?: string[];
-  anomalyDaysBack?: number;
 }
 
 export const adminApi = {

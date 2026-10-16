@@ -17,7 +17,6 @@ import {
   Check,
   Plus,
   Trash2,
-  Calendar,
   Filter,
 } from 'lucide-react';
 import RulesSettingsTab from '../modules/quality_control/components/RulesSettingsTab';
@@ -66,7 +65,6 @@ export default function AiSettingsModal({
   // Anomaly Deals settings
   const [lossReasonFieldId, setLossReasonFieldId] = useState<string>('');
   const [ignoredReasons, setIgnoredReasons] = useState<string[]>([]);
-  const [daysBack, setDaysBack] = useState<number>(30);
   const [customReasonInput, setCustomReasonInput] = useState<string>('');
 
   // Status & tests
@@ -101,7 +99,6 @@ export default function AiSettingsModal({
       const savedFieldId = settingsQuery.data.anomalyLossReasonFieldId || '';
       setLossReasonFieldId(savedFieldId);
       setIgnoredReasons(settingsQuery.data.anomalyIgnoredReasons || []);
-      setDaysBack(settingsQuery.data.anomalyDaysBack ?? 30);
 
       // Auto-suggest rejection field if not set yet
       if (!savedFieldId && settingsQuery.data.customFields) {
@@ -172,7 +169,6 @@ export default function AiSettingsModal({
         qcDisabledPipelineIds: disabledPipelineIds,
         anomalyLossReasonFieldId: lossReasonFieldId || null,
         anomalyIgnoredReasons: ignoredReasons,
-        anomalyDaysBack: Number(daysBack) || 30,
       };
       if (token.trim()) {
         payload.aiToken = token.trim();
@@ -818,38 +814,6 @@ export default function AiSettingsModal({
                         ))}
                       </div>
                     )}
-                  </div>
-
-                  {/* Card 3: Days Back Window */}
-                  <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <label className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                          <Calendar size={16} className="text-purple-600 dark:text-purple-400" />
-                          <span>{t('ai_anomalies_days_label')}</span>
-                        </label>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                          {t('ai_anomalies_days_desc')}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {[7, 14, 30, 60, 90].map((d) => (
-                          <button
-                            key={d}
-                            type="button"
-                            onClick={() => setDaysBack(d)}
-                            className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
-                              Number(daysBack) === d
-                                ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
-                            }`}
-                          >
-                            {d} {lang === 'uz' ? 'kun' : 'дн.'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                   </div>
                 </div>
               )}
