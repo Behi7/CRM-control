@@ -88,6 +88,7 @@ async def batch_analyze_endpoint(
         pipeline_id=payload.pipelineId,
         limit=payload.limit or 25,
         force_reanalyze=payload.forceReanalyze or False,
+        days_back=payload.daysBack or 30,
     )
     return {"status": "ok", "processed": processed}
 

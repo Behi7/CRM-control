@@ -1,6 +1,6 @@
 import logging
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc, update
 from sqlalchemy.dialects.postgresql import insert
@@ -256,13 +256,24 @@ async def get_deal_forensic_detail(
     )
     row = (await session.execute(stmt)).first()
 
-    # Если сделка еще не аудировалась — аудируем ее на лету!
+    # Если сделка еще не аудировалась — аудируем ее на лету с глубоким вердиктом ИИ!
     if not row:
         lead_stmt = select(Lead).where(Lead.account_id == account_id, Lead.id == lead_id)
         lead_obj = (await session.execute(lead_stmt)).scalar_one_or_none()
         if not lead_obj:
             return None
-        await run_single_deal_audit(session, account_id, lead_obj)
+        acc_stmt = select(Account).where(Account.id == account_id)
+        acc_obj = (await session.execute(acc_stmt)).scalar_one_or_none()
+        api_k = decrypt_token(acc_obj.ai_encrypted_token) if acc_obj and acc_obj.ai_encrypted_token else None
+        await run_single_deal_audit(
+            session=session,
+            account_id=account_id,
+            lead=lead_obj,
+            api_key=api_k,
+            model_name=acc_obj.ai_model if acc_obj else "gemini-2.5-flash",
+            company_context=acc_obj.ai_company_context if acc_obj else None,
+            force_ai=True,
+        )
         row = (await session.execute(stmt)).first()
         if not row:
             return None
@@ -378,6 +389,7 @@ async def run_single_deal_audit(
     api_key: Optional[str] = None,
     model_name: Optional[str] = "gemini-2.5-flash",
     company_context: Optional[str] = None,
+    force_ai: bool = False,
 ) -> DealAnomalyAudit:
     """Аудирует одну сделку (математический скоринг + вердикт ИИ)."""
     if benchmarks is None:
@@ -412,6 +424,12 @@ async def run_single_deal_audit(
         stage_names=stage_names,
     )
 
+    # Smart AI Cost-Saver:
+    # Если математический балл < 40 (сделка без грубых нарушений / честный отказ), не тратим токены LLM!
+    # Вердикт формируется эвристикой за 0ms и 0 токенов.
+    # В Gemini идем только при anomaly_score >= 40 (реальные нарушения) или если force_ai=True.
+    effective_api_key = api_key if (audit_math["anomaly_score"] >= 40 or force_ai) else None
+
     # Генерация вердикта
     timeline_preview = [
         {
@@ -438,7 +456,7 @@ async def run_single_deal_audit(
         audit_math=audit_math,
         stage_timeline=timeline_preview,
         calls_summary=calls_preview,
-        api_key=api_key,
+        api_key=effective_api_key,
         model_name=model_name,
         company_context=company_context,
     )
@@ -498,6 +516,7 @@ async def run_batch_audit(
     pipeline_id: Optional[int] = None,
     limit: int = 25,
     force_reanalyze: bool = False,
+    days_back: int = 30,
 ) -> int:
     """Пакетный запуск аудита по закрытым в отказ сделкам."""
     acc_stmt = select(Account).where(Account.id == account_id)
@@ -505,14 +524,27 @@ async def run_batch_audit(
     if not acc:
         return 0
 
+    # 1. Гейткипер админки: не запускаем, если интеграция выключена или на паузе
+    if acc.status != "connected" or acc.sync_status != "active":
+        logger.info(f"Account #{account_id}: Anomaly audit skipped (sync_status={acc.sync_status}, status={acc.status})")
+        return 0
+
+    # 2. Гейткипер бэкфила: не трогаем данные, пока идет первичная историческая синхронизация
+    if acc.backfill_status != "completed":
+        logger.info(f"Account #{account_id}: Anomaly audit skipped because backfill is not completed ({acc.backfill_status})")
+        return 0
+
     api_key = decrypt_token(acc.ai_encrypted_token) if acc.ai_encrypted_token else None
     model_name = acc.ai_model or "gemini-2.5-flash"
     company_context = acc.ai_company_context
 
-    # Ищем сделки со статусом lost
+    # 3. Ищем сделки со статусом lost с ограничением по дате (защита от старого архива)
     query = select(Lead).where(Lead.account_id == account_id, Lead.status == "lost")
     if pipeline_id:
         query = query.where(Lead.pipeline_id == pipeline_id)
+
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+    query = query.where(Lead.crm_closed_at >= cutoff_date)
 
     if not force_reanalyze:
         # Исключаем уже проаудированные
@@ -529,6 +561,18 @@ async def run_batch_audit(
     processed_count = 0
 
     for lead in leads:
+        # 4. Защита синхронизации с контролем качества (QC Dependency Guard):
+        # Если у сделки есть звонки в статусе 'pending', пропускаем сделку и ждем завершения аудита звонков в QC!
+        pending_qc_stmt = select(func.count(QcCallEvaluation.id)).where(
+            QcCallEvaluation.account_id == account_id,
+            QcCallEvaluation.lead_id == lead.id,
+            QcCallEvaluation.status == "pending"
+        )
+        pending_qc_count = (await session.execute(pending_qc_stmt)).scalar() or 0
+        if pending_qc_count > 0:
+            logger.info(f"Lead #{lead.id} has {pending_qc_count} pending QC call(s). Waiting for QC worker before anomaly audit.")
+            continue
+
         p_id = lead.pipeline_id or 0
         if p_id not in benchmarks_cache:
             benchmarks_cache[p_id] = await get_pipeline_stage_benchmarks(session, account_id, lead.pipeline_id)
@@ -541,6 +585,7 @@ async def run_batch_audit(
             api_key=api_key,
             model_name=model_name,
             company_context=company_context,
+            force_ai=False,
         )
         processed_count += 1
 

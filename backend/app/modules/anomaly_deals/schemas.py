@@ -88,6 +88,7 @@ class AnalyzeBatchRequestDto(BaseModel):
     pipelineId: Optional[int] = None
     limit: Optional[int] = 25
     forceReanalyze: Optional[bool] = False
+    daysBack: Optional[int] = 30
 
 class ReviewAuditRequestDto(BaseModel):
     isReviewed: bool = True
