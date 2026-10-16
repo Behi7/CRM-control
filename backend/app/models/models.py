@@ -366,3 +366,41 @@ class QcCallEvaluation(Base):
     lead = relationship("Lead")
     pipeline = relationship("Pipeline")
     responsible_user = relationship("AmoUser")
+
+class DealAnomalyAudit(Base):
+    __tablename__ = "deal_anomaly_audits"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), unique=True, nullable=False)
+    pipeline_id = Column(Integer, ForeignKey("pipelines.id", ondelete="SET NULL"), nullable=True)
+    responsible_user_id = Column(Integer, ForeignKey("amo_users.id", ondelete="SET NULL"), nullable=True)
+
+    anomaly_score = Column(Integer, nullable=False, default=0)
+    anomaly_level = Column(Text, nullable=False, default="fair")
+    manager_fault = Column(Text, nullable=False, default="none")
+
+    stated_loss_reason = Column(Text, nullable=True)
+    real_loss_reason = Column(Text, nullable=True)
+    pivot_point = Column(Text, nullable=True)
+    forensic_summary = Column(Text, nullable=True)
+    rop_recommendation = Column(Text, nullable=True)
+
+    score_breakdown = Column(JSONB, nullable=True)
+    ai_verdict = Column(JSONB, nullable=True)
+
+    is_reviewed = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_deal_anomaly_acc_level", "account_id", "anomaly_level"),
+        Index("idx_deal_anomaly_acc_score", "account_id", "anomaly_score"),
+        Index("idx_deal_anomaly_lead", "lead_id"),
+    )
+
+    account = relationship("Account")
+    lead = relationship("Lead")
+    pipeline = relationship("Pipeline")
+    responsible_user = relationship("AmoUser")
+

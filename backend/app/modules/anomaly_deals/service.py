@@ -1,11 +1,567 @@
-from typing import Optional, Dict, Any
-from app.modules.anomaly_deals.schemas import AnomalySummaryDto
+import logging
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timezone
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, and_, or_, desc, update
+from sqlalchemy.dialects.postgresql import insert
 
-def get_anomaly_summary(account_id: int) -> AnomalySummaryDto:
-    return AnomalySummaryDto(
-        status="ok",
-        module="anomaly_deals",
-        title="Аномальные сделки и Аудит рисков",
-        totalAnomalies=0,
-        items=[],
+from app.models import (
+    Account, Lead, Pipeline, Stage, AmoUser,
+    LeadStageHistory, LeadStageSkip, QcCallEvaluation, DealAnomalyAudit
+)
+from app.core.security import decrypt_token
+from app.modules.anomaly_deals.schemas import (
+    AnomalyStatsDto, AnomalyDealListItemDto, AnomalyDealListResponseDto,
+    DealForensicDetailDto, TimelineStageDto, CallEvaluationSummaryDto
+)
+from app.modules.anomaly_deals.engine import (
+    calculate_stage_benchmarks, audit_lead_math, generate_ai_forensic_verdict
+)
+
+logger = logging.getLogger("AnomalyService")
+
+async def get_anomaly_stats(session: AsyncSession, account_id: int) -> AnomalyStatsDto:
+    """Возвращает сводные KPI потерь и сливов для РОПа."""
+    # 1. Общее количество закрытых в отказ сделок
+    lost_count_stmt = select(func.count(Lead.id)).where(
+        Lead.account_id == account_id,
+        Lead.status == "lost"
     )
+    total_lost = (await session.execute(lost_count_stmt)).scalar() or 0
+
+    # 2. Количество проаудированных
+    audits_count_stmt = select(func.count(DealAnomalyAudit.id)).where(
+        DealAnomalyAudit.account_id == account_id
+    )
+    total_audited = (await session.execute(audits_count_stmt)).scalar() or 0
+
+    # 3. Критические сливы
+    crit_stmt = (
+        select(
+            func.count(DealAnomalyAudit.id),
+            func.coalesce(func.sum(Lead.price), 0)
+        )
+        .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
+        .where(
+            DealAnomalyAudit.account_id == account_id,
+            DealAnomalyAudit.anomaly_level == "critical"
+        )
+    )
+    crit_res = (await session.execute(crit_stmt)).one_or_none()
+    crit_count = crit_res[0] if crit_res else 0
+    crit_budget = float(crit_res[1]) if crit_res else 0.0
+
+    crit_pct = round((crit_count / total_audited * 100), 1) if total_audited > 0 else 0.0
+
+    # 4. Топ заявленных причин (отмазки менеджеров)
+    stated_reasons_stmt = (
+        select(
+            func.coalesce(DealAnomalyAudit.stated_loss_reason, "Не указана").label("reason"),
+            func.count(DealAnomalyAudit.id).label("cnt"),
+            func.coalesce(func.sum(Lead.price), 0).label("budget")
+        )
+        .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
+        .where(DealAnomalyAudit.account_id == account_id)
+        .group_by("reason")
+        .order_by(desc("cnt"))
+        .limit(5)
+    )
+    stated_rows = (await session.execute(stated_reasons_stmt)).all()
+    top_stated = [
+        {"reason": r[0], "count": r[1], "budget": float(r[2])}
+        for r in stated_rows
+    ]
+
+    # 5. Топ реальных причин (выявленных ИИ/алгоритмом)
+    real_reasons_stmt = (
+        select(
+            func.coalesce(DealAnomalyAudit.real_loss_reason, "Не определена").label("reason"),
+            func.count(DealAnomalyAudit.id).label("cnt"),
+            func.coalesce(func.sum(Lead.price), 0).label("budget")
+        )
+        .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
+        .where(
+            DealAnomalyAudit.account_id == account_id,
+            DealAnomalyAudit.anomaly_level.in_(["critical", "warning"])
+        )
+        .group_by("reason")
+        .order_by(desc("cnt"))
+        .limit(5)
+    )
+    real_rows = (await session.execute(real_reasons_stmt)).all()
+    top_real = [
+        {"reason": r[0], "count": r[1], "budget": float(r[2])}
+        for r in real_rows
+    ]
+
+    # 6. Топ менеджеров по слитому бюджету
+    managers_stmt = (
+        select(
+            AmoUser.name,
+            func.count(DealAnomalyAudit.id).label("crit_count"),
+            func.coalesce(func.sum(Lead.price), 0).label("lost_budget")
+        )
+        .join(DealAnomalyAudit, DealAnomalyAudit.responsible_user_id == AmoUser.id)
+        .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
+        .where(
+            DealAnomalyAudit.account_id == account_id,
+            DealAnomalyAudit.anomaly_level == "critical"
+        )
+        .group_by(AmoUser.id, AmoUser.name)
+        .order_by(desc("lost_budget"))
+        .limit(5)
+    )
+    mgr_rows = (await session.execute(managers_stmt)).all()
+    top_managers = [
+        {"name": r[0], "criticalCount": r[1], "lostBudget": float(r[2])}
+        for r in mgr_rows
+    ]
+
+    return AnomalyStatsDto(
+        totalLostLeads=total_lost,
+        totalAudited=total_audited,
+        criticalSlippedLeads=crit_count,
+        criticalLostBudget=crit_budget,
+        criticalPercent=crit_pct,
+        topStatedReasons=top_stated,
+        topRealReasons=top_real,
+        topSlipManagers=top_managers,
+    )
+
+
+async def get_anomaly_deals_list(
+    session: AsyncSession,
+    account_id: int,
+    pipeline_id: Optional[int] = None,
+    responsible_user_id: Optional[int] = None,
+    anomaly_level: Optional[str] = None,
+    min_price: Optional[float] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> AnomalyDealListResponseDto:
+    """Пагинированный список аномальных сделок с фильтрацией."""
+    filters = [DealAnomalyAudit.account_id == account_id]
+
+    if pipeline_id:
+        filters.append(DealAnomalyAudit.pipeline_id == pipeline_id)
+    if responsible_user_id:
+        filters.append(DealAnomalyAudit.responsible_user_id == responsible_user_id)
+    if anomaly_level:
+        filters.append(DealAnomalyAudit.anomaly_level == anomaly_level)
+    if min_price:
+        filters.append(Lead.price >= min_price)
+
+    # Общее число
+    count_stmt = (
+        select(func.count(DealAnomalyAudit.id))
+        .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
+        .where(and_(*filters))
+    )
+    total = (await session.execute(count_stmt)).scalar() or 0
+
+    # Данные
+    offset = (page - 1) * page_size
+    stmt = (
+        select(
+            DealAnomalyAudit,
+            Lead.name.label("lead_name"),
+            Lead.external_id.label("lead_external_id"),
+            Lead.price.label("lead_price"),
+            Lead.crm_closed_at.label("lead_closed_at"),
+            Pipeline.name.label("pipeline_name"),
+            AmoUser.name.label("manager_name")
+        )
+        .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
+        .outerjoin(Pipeline, DealAnomalyAudit.pipeline_id == Pipeline.id)
+        .outerjoin(AmoUser, DealAnomalyAudit.responsible_user_id == AmoUser.id)
+        .where(and_(*filters))
+        .order_by(
+            desc(DealAnomalyAudit.anomaly_score),
+            desc(Lead.price)
+        )
+        .offset(offset)
+        .limit(page_size)
+    )
+
+    rows = (await session.execute(stmt)).all()
+    items = []
+
+    for r in rows:
+        audit = r[0]
+        lead_name = r[1] or f"Сделка #{audit.lead_id}"
+        ext_id = r[2] or str(audit.lead_id)
+        price = float(r[3] or 0)
+        closed_at = r[4].isoformat() if r[4] else None
+        p_name = r[5]
+        mgr_name = r[6]
+
+        breakdown = audit.score_breakdown or {}
+        key_factor = breakdown.get("key_factor") or audit.real_loss_reason or "Требует проверки РОПа"
+
+        items.append(
+            AnomalyDealListItemDto(
+                id=audit.id,
+                leadId=audit.lead_id,
+                leadExternalId=ext_id,
+                leadName=lead_name,
+                price=price,
+                pipelineId=audit.pipeline_id,
+                pipelineName=p_name,
+                responsibleUserId=audit.responsible_user_id,
+                responsibleUserName=mgr_name,
+                closedAt=closed_at,
+                statedLossReason=audit.stated_loss_reason,
+                realLossReason=audit.real_loss_reason,
+                anomalyScore=audit.anomaly_score,
+                anomalyLevel=audit.anomaly_level,
+                managerFault=audit.manager_fault,
+                keyFactor=key_factor,
+                hasAiVerdict=bool(audit.ai_verdict),
+                isReviewed=audit.is_reviewed,
+            )
+        )
+
+    total_pages = max(1, (total + page_size - 1) // page_size)
+
+    return AnomalyDealListResponseDto(
+        items=items,
+        total=total,
+        page=page,
+        pageSize=page_size,
+        totalPages=total_pages,
+    )
+
+
+async def get_deal_forensic_detail(
+    session: AsyncSession,
+    account_id: int,
+    lead_id: int,
+) -> Optional[DealForensicDetailDto]:
+    """Возвращает полное досье расследования по конкретной сделке."""
+    # Проверяем наличие аудита
+    stmt = (
+        select(
+            DealAnomalyAudit,
+            Lead,
+            Pipeline.name.label("pipeline_name"),
+            AmoUser.name.label("manager_name")
+        )
+        .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
+        .outerjoin(Pipeline, DealAnomalyAudit.pipeline_id == Pipeline.id)
+        .outerjoin(AmoUser, DealAnomalyAudit.responsible_user_id == AmoUser.id)
+        .where(
+            DealAnomalyAudit.account_id == account_id,
+            DealAnomalyAudit.lead_id == lead_id
+        )
+    )
+    row = (await session.execute(stmt)).first()
+
+    # Если сделка еще не аудировалась — аудируем ее на лету!
+    if not row:
+        lead_stmt = select(Lead).where(Lead.account_id == account_id, Lead.id == lead_id)
+        lead_obj = (await session.execute(lead_stmt)).scalar_one_or_none()
+        if not lead_obj:
+            return None
+        await run_single_deal_audit(session, account_id, lead_obj)
+        row = (await session.execute(stmt)).first()
+        if not row:
+            return None
+
+    audit, lead, pipeline_name, manager_name = row[0], row[1], row[2], row[3]
+
+    # Загружаем этапы и историю
+    sh_stmt = (
+        select(LeadStageHistory, Stage.name, Stage.sort_order)
+        .join(Stage, LeadStageHistory.stage_id == Stage.id)
+        .where(LeadStageHistory.lead_id == lead_id)
+        .order_by(LeadStageHistory.entered_at.asc())
+    )
+    sh_rows = (await session.execute(sh_stmt)).all()
+
+    # Загружаем бенчмарки этапов воронки
+    benchmarks = await get_pipeline_stage_benchmarks(session, account_id, lead.pipeline_id)
+
+    stages_timeline = []
+    for sh, s_name, s_order in sh_rows:
+        dur_hrs = round((sh.duration_seconds or 0) / 3600.0, 1)
+        bench_hrs = benchmarks.get(sh.stage_id, 24.0)
+        is_stag = dur_hrs > 2 * bench_hrs and dur_hrs >= 24
+        stages_timeline.append(
+            TimelineStageDto(
+                stageId=sh.stage_id,
+                stageName=s_name,
+                sortOrder=s_order or 0,
+                durationHours=dur_hrs,
+                benchmarkHours=bench_hrs,
+                isStagnant=is_stag,
+                isSkipped=False,
+                enteredAt=sh.entered_at.isoformat() if sh.entered_at else "",
+                exitedAt=sh.exited_at.isoformat() if sh.exited_at else None,
+            )
+        )
+
+    # Загружаем звонки из Quality Control
+    calls_stmt = (
+        select(QcCallEvaluation)
+        .where(QcCallEvaluation.account_id == account_id, QcCallEvaluation.lead_id == lead_id)
+        .order_by(QcCallEvaluation.call_date.asc())
+    )
+    calls_rows = (await session.execute(calls_stmt)).scalars().all()
+    calls_summary = [
+        CallEvaluationSummaryDto(
+            id=c.id,
+            externalCallId=c.external_call_id,
+            callDate=c.call_date.isoformat(),
+            durationSeconds=c.duration_seconds,
+            qcScore=c.overall_score,
+            errorsList=c.errors_list if isinstance(c.errors_list, list) else None,
+            bottleneck=c.bottleneck,
+            summary=c.summary,
+        )
+        for c in calls_rows
+    ]
+
+    return DealForensicDetailDto(
+        auditId=audit.id,
+        leadId=lead.id,
+        leadExternalId=lead.external_id,
+        leadName=lead.name or f"Сделка #{lead.id}",
+        price=float(lead.price or 0),
+        pipelineId=lead.pipeline_id,
+        pipelineName=pipeline_name,
+        responsibleUserId=lead.responsible_user_id,
+        responsibleUserName=manager_name,
+        crmCreatedAt=lead.crm_created_at.isoformat() if lead.crm_created_at else "",
+        crmClosedAt=lead.crm_closed_at.isoformat() if lead.crm_closed_at else None,
+        statedLossReason=audit.stated_loss_reason,
+        realLossReason=audit.real_loss_reason,
+        anomalyScore=audit.anomaly_score,
+        anomalyLevel=audit.anomaly_level,
+        managerFault=audit.manager_fault,
+        pivotPoint=audit.pivot_point,
+        forensicSummary=audit.forensic_summary,
+        ropRecommendation=audit.rop_recommendation,
+        scoreBreakdown=audit.score_breakdown,
+        stagesTimeline=stages_timeline,
+        calls=calls_summary,
+        isReviewed=audit.is_reviewed,
+    )
+
+
+async def get_pipeline_stage_benchmarks(
+    session: AsyncSession,
+    account_id: int,
+    pipeline_id: Optional[int]
+) -> Dict[int, float]:
+    """Возвращает медианное время прохождения этапов для успешных сделок."""
+    if not pipeline_id:
+        return {}
+
+    won_history_stmt = (
+        select(LeadStageHistory)
+        .join(Lead, LeadStageHistory.lead_id == Lead.id)
+        .where(
+            Lead.account_id == account_id,
+            Lead.pipeline_id == pipeline_id,
+            Lead.status == "won"
+        )
+    )
+    won_hist = (await session.execute(won_history_stmt)).scalars().all()
+    return calculate_stage_benchmarks(won_hist)
+
+
+async def run_single_deal_audit(
+    session: AsyncSession,
+    account_id: int,
+    lead: Lead,
+    benchmarks: Optional[Dict[int, float]] = None,
+    api_key: Optional[str] = None,
+    model_name: Optional[str] = "gemini-2.5-flash",
+    company_context: Optional[str] = None,
+) -> DealAnomalyAudit:
+    """Аудирует одну сделку (математический скоринг + вердикт ИИ)."""
+    if benchmarks is None:
+        benchmarks = await get_pipeline_stage_benchmarks(session, account_id, lead.pipeline_id)
+
+    # Загружаем этапы
+    sh_stmt = select(LeadStageHistory).where(LeadStageHistory.lead_id == lead.id).order_by(LeadStageHistory.entered_at.asc())
+    stage_history = (await session.execute(sh_stmt)).scalars().all()
+
+    # Загружаем названия этапов
+    stages_stmt = select(Stage.id, Stage.name).where(Stage.pipeline_id == lead.pipeline_id) if lead.pipeline_id else None
+    stage_names = {}
+    if stages_stmt is not None:
+        for s_id, s_name in (await session.execute(stages_stmt)).all():
+            stage_names[s_id] = s_name
+
+    # Загружаем пропуски
+    skips_stmt = select(LeadStageSkip).where(LeadStageSkip.lead_id == lead.id)
+    skips = (await session.execute(skips_stmt)).scalars().all()
+
+    # Загружаем звонки
+    calls_stmt = select(QcCallEvaluation).where(QcCallEvaluation.account_id == account_id, QcCallEvaluation.lead_id == lead.id)
+    calls = (await session.execute(calls_stmt)).scalars().all()
+
+    # Математический аудит с правилом усилий
+    audit_math = audit_lead_math(
+        lead=lead,
+        stage_history=stage_history,
+        skips=skips,
+        calls=calls,
+        stage_benchmarks=benchmarks,
+        stage_names=stage_names,
+    )
+
+    # Генерация вердикта
+    timeline_preview = [
+        {
+            "stage": stage_names.get(sh.stage_id, f"Этап #{sh.stage_id}"),
+            "duration_hours": round((sh.duration_seconds or 0) / 3600.0, 1),
+            "benchmark_hours": benchmarks.get(sh.stage_id, 24.0)
+        }
+        for sh in stage_history
+    ]
+    calls_preview = [
+        {
+            "date": c.call_date.strftime("%Y-%m-%d %H:%M") if c.call_date else "",
+            "duration_sec": c.duration_seconds,
+            "qc_score": c.overall_score,
+            "errors": c.errors_list
+        }
+        for c in calls
+    ]
+
+    verdict = await generate_ai_forensic_verdict(
+        lead_name=lead.name or f"Сделка #{lead.id}",
+        price=float(lead.price or 0),
+        stated_reason=lead.loss_reason_name,
+        audit_math=audit_math,
+        stage_timeline=timeline_preview,
+        calls_summary=calls_preview,
+        api_key=api_key,
+        model_name=model_name,
+        company_context=company_context,
+    )
+
+    # Применяем корректировку от ИИ
+    final_score = max(0, min(100, audit_math["anomaly_score"] + verdict.get("score_adjustment", 0)))
+    if final_score >= 80:
+        final_level = "critical"
+    elif final_score >= 50:
+        final_level = "warning"
+    else:
+        final_level = "fair"
+
+    # Сохраняем/обновляем в БД
+    stmt = insert(DealAnomalyAudit).values(
+        account_id=account_id,
+        lead_id=lead.id,
+        pipeline_id=lead.pipeline_id,
+        responsible_user_id=lead.responsible_user_id,
+        anomaly_score=final_score,
+        anomaly_level=final_level,
+        manager_fault=verdict.get("manager_guilt") or audit_math["manager_fault"],
+        stated_loss_reason=lead.loss_reason_name,
+        real_loss_reason=verdict.get("real_loss_reason"),
+        pivot_point=verdict.get("pivot_point"),
+        forensic_summary=verdict.get("forensic_summary"),
+        rop_recommendation=verdict.get("rop_recommendation"),
+        score_breakdown=audit_math["breakdown"],
+        ai_verdict=verdict,
+        is_reviewed=False,
+        updated_at=datetime.now(timezone.utc),
+    ).on_conflict_do_update(
+        index_elements=["lead_id"],
+        set_={
+            "anomaly_score": final_score,
+            "anomaly_level": final_level,
+            "manager_fault": verdict.get("manager_guilt") or audit_math["manager_fault"],
+            "stated_loss_reason": lead.loss_reason_name,
+            "real_loss_reason": verdict.get("real_loss_reason"),
+            "pivot_point": verdict.get("pivot_point"),
+            "forensic_summary": verdict.get("forensic_summary"),
+            "rop_recommendation": verdict.get("rop_recommendation"),
+            "score_breakdown": audit_math["breakdown"],
+            "ai_verdict": verdict,
+            "updated_at": datetime.now(timezone.utc),
+        }
+    ).returning(DealAnomalyAudit)
+
+    res = await session.execute(stmt)
+    await session.commit()
+    return res.scalar_one()
+
+
+async def run_batch_audit(
+    session: AsyncSession,
+    account_id: int,
+    pipeline_id: Optional[int] = None,
+    limit: int = 25,
+    force_reanalyze: bool = False,
+) -> int:
+    """Пакетный запуск аудита по закрытым в отказ сделкам."""
+    acc_stmt = select(Account).where(Account.id == account_id)
+    acc = (await session.execute(acc_stmt)).scalar_one_or_none()
+    if not acc:
+        return 0
+
+    api_key = decrypt_token(acc.ai_encrypted_token) if acc.ai_encrypted_token else None
+    model_name = acc.ai_model or "gemini-2.5-flash"
+    company_context = acc.ai_company_context
+
+    # Ищем сделки со статусом lost
+    query = select(Lead).where(Lead.account_id == account_id, Lead.status == "lost")
+    if pipeline_id:
+        query = query.where(Lead.pipeline_id == pipeline_id)
+
+    if not force_reanalyze:
+        # Исключаем уже проаудированные
+        audited_leads = select(DealAnomalyAudit.lead_id).where(DealAnomalyAudit.account_id == account_id)
+        query = query.where(Lead.id.not_in(audited_leads))
+
+    query = query.order_by(desc(Lead.crm_closed_at), desc(Lead.id)).limit(limit)
+    leads = (await session.execute(query)).scalars().all()
+
+    if not leads:
+        return 0
+
+    benchmarks_cache: Dict[int, Dict[int, float]] = {}
+    processed_count = 0
+
+    for lead in leads:
+        p_id = lead.pipeline_id or 0
+        if p_id not in benchmarks_cache:
+            benchmarks_cache[p_id] = await get_pipeline_stage_benchmarks(session, account_id, lead.pipeline_id)
+
+        await run_single_deal_audit(
+            session=session,
+            account_id=account_id,
+            lead=lead,
+            benchmarks=benchmarks_cache[p_id],
+            api_key=api_key,
+            model_name=model_name,
+            company_context=company_context,
+        )
+        processed_count += 1
+
+    return processed_count
+
+
+async def set_audit_reviewed(
+    session: AsyncSession,
+    account_id: int,
+    lead_id: int,
+    is_reviewed: bool = True
+) -> bool:
+    """Отмечает сделку как разобранную РОПом."""
+    stmt = (
+        update(DealAnomalyAudit)
+        .where(
+            DealAnomalyAudit.account_id == account_id,
+            DealAnomalyAudit.lead_id == lead_id
+        )
+        .values(is_reviewed=is_reviewed, updated_at=datetime.now(timezone.utc))
+    )
+    res = await session.execute(stmt)
+    await session.commit()
+    return res.rowcount > 0
