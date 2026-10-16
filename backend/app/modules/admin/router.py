@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 from app.core.database import get_db
 from app.core.security import (
     require_admin, hash_password, encrypt_token
@@ -193,6 +194,19 @@ async def retry_backfill(account_id: int, db: AsyncSession = Depends(get_db)):
     acc.backfill_status = "pending"
     acc.backfill_error = None
     acc.backfill_error_at = None
+
+    # Сбрасываем курсор аномалий
+    cur_anomaly = dict(acc.anomaly_settings or {})
+    cur_anomaly["last_anomaly_audited_at"] = None
+    acc.anomaly_settings = cur_anomaly
+    flag_modified(acc, "anomaly_settings")
+
+    # Сбрасываем курсор контроля качества
+    qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
+    qc = (await db.execute(qc_stmt)).scalar_one_or_none()
+    if qc:
+        qc.last_call_synced_at = None
+
     await db.commit()
     return {"ok": True}
 
@@ -224,6 +238,12 @@ async def start_sync(account_id: int, db: AsyncSession = Depends(get_db)):
     qc = (await db.execute(qc_stmt)).scalar_one_or_none()
     if qc:
         qc.last_call_synced_at = None
+
+    # Сбрасываем курсор аномалий, чтобы закрытые во время "Стоп" сделки не отправлялись на анализ
+    cur_anomaly = dict(acc.anomaly_settings or {})
+    cur_anomaly["last_anomaly_audited_at"] = None
+    acc.anomaly_settings = cur_anomaly
+    flag_modified(acc, "anomaly_settings")
 
     await db.commit()
     return {"ok": True}
@@ -305,6 +325,7 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
     if dto.anomalyDaysBack is not None:
         cur_anomaly["days_back"] = max(1, min(365, dto.anomalyDaysBack))
     acc.anomaly_settings = cur_anomaly
+    flag_modified(acc, "anomaly_settings")
 
     # QC Settings
     qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)

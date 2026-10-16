@@ -17,6 +17,7 @@ from app.modules.quality_control.router import router as qc_router
 from app.modules.quality_control.service import qc_background_worker
 from app.modules.crm_nodes.router import router as crm_nodes_router
 from app.modules.anomaly_deals.router import router as anomaly_deals_router
+from app.modules.anomaly_deals.service import anomaly_background_worker
 import asyncio
 
 @asynccontextmanager
@@ -46,12 +47,20 @@ async def lifespan(app: FastAPI):
     # Launch QC processing worker in background
     qc_task = asyncio.create_task(qc_background_worker())
 
+    # Launch Anomaly Deals worker in background
+    anomaly_task = asyncio.create_task(anomaly_background_worker())
+
     yield
 
     # Shutdown
     qc_task.cancel()
+    anomaly_task.cancel()
     try:
         await qc_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await anomaly_task
     except asyncio.CancelledError:
         pass
 

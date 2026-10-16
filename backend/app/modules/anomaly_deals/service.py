@@ -1,10 +1,13 @@
+import asyncio
 import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm.attributes import flag_modified
 
+from app.core.database import AsyncSessionLocal
 from app.models import (
     Account, Lead, Pipeline, Stage, AmoUser,
     LeadStageHistory, LeadStageSkip, QcCallEvaluation, DealAnomalyAudit
@@ -649,51 +652,86 @@ async def run_batch_audit(
     force_reanalyze: bool = False,
     days_back: int = 30,
 ) -> int:
-    """Пакетный запуск аудита по закрытым в отказ сделкам."""
+    """Пакетный запуск аудита по закрытым в отказ сделкам (строго после бэкфила и вне периода 'Стоп')."""
     acc_stmt = select(Account).where(Account.id == account_id)
     acc = (await session.execute(acc_stmt)).scalar_one_or_none()
     if not acc:
         return 0
 
-    # 1. Гейткипер админки: не запускаем, если интеграция выключена или на паузе
+    # 1. Гейткипер админки: не запускаем, если интеграция выключена или на паузе ("Стоп")
     if acc.status != "connected" or acc.sync_status != "active":
         logger.info(f"Account #{account_id}: Anomaly audit skipped (sync_status={acc.sync_status}, status={acc.status})")
         return 0
 
     # 2. Гейткипер бэкфила: не трогаем данные, пока идет первичная историческая синхронизация
-    if acc.backfill_status != "completed":
+    if acc.backfill_status not in ("done", "completed"):
         logger.info(f"Account #{account_id}: Anomaly audit skipped because backfill is not completed ({acc.backfill_status})")
+        return 0
+
+    # 3. Базовый курсор времени (как в контроле качества):
+    now_utc = datetime.now(timezone.utc)
+    anomaly_cfg = dict(acc.anomaly_settings or {})
+    cursor_str = anomaly_cfg.get("last_anomaly_audited_at")
+
+    if not cursor_str:
+        # Первичная инициализация курсора сразу после бэкфила или после нажатия "Старт" в админке.
+        # Фиксируем точку отсчета на текущее время. Старый архив и период "Стоп" полностью отсекаются!
+        anomaly_cfg["last_anomaly_audited_at"] = now_utc.isoformat()
+        acc.anomaly_settings = anomaly_cfg
+        flag_modified(acc, "anomaly_settings")
+        await session.commit()
+        logger.info(f"Account #{account_id}: Anomaly baseline cursor initialized to {now_utc.isoformat()}. Past archive and stop-period skipped.")
+        return 0
+
+    try:
+        cursor_dt = datetime.fromisoformat(cursor_str)
+        if cursor_dt.tzinfo is None:
+            cursor_dt = cursor_dt.replace(tzinfo=timezone.utc)
+    except Exception as e:
+        logger.warning(f"Account #{account_id}: invalid cursor '{cursor_str}', resetting to now. Error: {e}")
+        cursor_dt = now_utc
+        anomaly_cfg["last_anomaly_audited_at"] = now_utc.isoformat()
+        acc.anomaly_settings = anomaly_cfg
+        flag_modified(acc, "anomaly_settings")
+        await session.commit()
         return 0
 
     api_key = decrypt_token(acc.ai_encrypted_token) if acc.ai_encrypted_token else None
     model_name = acc.ai_model or "gemini-2.5-flash"
     company_context = acc.ai_company_context
 
-    # 3. Ищем сделки со статусом lost с ограничением по дате (защита от старого архива)
-    query = select(Lead).where(Lead.account_id == account_id, Lead.status == "lost")
+    # 4. Ищем сделки со статусом lost, закрытые ПОСЛЕ курсора (строго после бэкфила и вне периода "Стоп")
+    query = select(Lead).where(
+        Lead.account_id == account_id,
+        Lead.status == "lost",
+        Lead.crm_closed_at >= cursor_dt
+    )
     if pipeline_id:
         query = query.where(Lead.pipeline_id == pipeline_id)
-
-    effective_days_back = (acc.anomaly_settings or {}).get("days_back", days_back)
-    cutoff_date = datetime.now(timezone.utc) - timedelta(days=effective_days_back)
-    query = query.where(Lead.crm_closed_at >= cutoff_date)
 
     if not force_reanalyze:
         # Исключаем уже проаудированные
         audited_leads = select(DealAnomalyAudit.lead_id).where(DealAnomalyAudit.account_id == account_id)
         query = query.where(Lead.id.not_in(audited_leads))
 
-    query = query.order_by(desc(Lead.crm_closed_at), desc(Lead.id)).limit(limit)
+    # Сортируем последовательно от более старых к новым в пределах активного окна
+    query = query.order_by(Lead.crm_closed_at.asc(), Lead.id.asc()).limit(limit)
     leads = (await session.execute(query)).scalars().all()
 
     if not leads:
+        # Все сделки в окне проаудированы — продвигаем курсор на текущее время
+        anomaly_cfg["last_anomaly_audited_at"] = now_utc.isoformat()
+        acc.anomaly_settings = anomaly_cfg
+        flag_modified(acc, "anomaly_settings")
+        await session.commit()
         return 0
 
     benchmarks_cache: Dict[int, Dict[int, float]] = {}
     processed_count = 0
+    earliest_pending_qc_time: Optional[datetime] = None
 
     for lead in leads:
-        # 4. Защита синхронизации с контролем качества (QC Dependency Guard):
+        # 5. Защита синхронизации с контролем качества (QC Dependency Guard):
         # Если у сделки есть звонки в статусе 'pending', пропускаем сделку и ждем завершения аудита звонков в QC!
         pending_qc_stmt = select(func.count(QcCallEvaluation.id)).where(
             QcCallEvaluation.account_id == account_id,
@@ -703,6 +741,9 @@ async def run_batch_audit(
         pending_qc_count = (await session.execute(pending_qc_stmt)).scalar() or 0
         if pending_qc_count > 0:
             logger.info(f"Lead #{lead.id} has {pending_qc_count} pending QC call(s). Waiting for QC worker before anomaly audit.")
+            if lead.crm_closed_at:
+                if earliest_pending_qc_time is None or lead.crm_closed_at < earliest_pending_qc_time:
+                    earliest_pending_qc_time = lead.crm_closed_at
             continue
 
         p_id = lead.pipeline_id or 0
@@ -722,7 +763,47 @@ async def run_batch_audit(
         )
         processed_count += 1
 
+    # Продвижение курсора:
+    # Если какие-то сделки ждали QC, курсор ставим на время самой ранней ожидающей сделки, чтобы не потерять её.
+    # Если все обработаны без ожидания, сдвигаем курсор на now_utc.
+    if earliest_pending_qc_time:
+        anomaly_cfg["last_anomaly_audited_at"] = earliest_pending_qc_time.isoformat()
+    elif processed_count > 0:
+        anomaly_cfg["last_anomaly_audited_at"] = now_utc.isoformat()
+
+    acc.anomaly_settings = anomaly_cfg
+    flag_modified(acc, "anomaly_settings")
+    await session.commit()
+
     return processed_count
+
+
+async def anomaly_background_worker():
+    """Фоновый воркер бэкенда для автоматического аудита аномалий по закрытым сделкам активных клиентов."""
+    logger.info("🚀 Anomaly Deals Background Worker started in Backend.")
+    while True:
+        try:
+            async with AsyncSessionLocal() as session:
+                acc_stmt = select(Account.id).where(
+                    Account.status == "connected",
+                    Account.sync_status == "active",
+                    Account.backfill_status.in_(["done", "completed"]),
+                )
+                acc_ids = (await session.execute(acc_stmt)).scalars().all()
+                for acc_id in acc_ids:
+                    try:
+                        processed = await run_batch_audit(session, acc_id, limit=10)
+                        if processed > 0:
+                            logger.info(f"Anomaly Worker: Account #{acc_id} audited {processed} deal(s).")
+                    except Exception as e:
+                        logger.error(f"Anomaly Worker error for account #{acc_id}: {e}")
+        except asyncio.CancelledError:
+            logger.info("Anomaly Deals Background Worker stopped.")
+            break
+        except Exception as e:
+            logger.error(f"Anomaly Deals Background Worker iteration error: {e}")
+
+        await asyncio.sleep(30)
 
 
 async def set_audit_reviewed(
