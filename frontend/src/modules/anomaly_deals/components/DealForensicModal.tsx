@@ -87,8 +87,8 @@ export default function DealForensicModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-3 sm:p-4 md:p-6 overflow-y-auto">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-5xl w-full h-[92vh] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="p-5 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between gap-4 bg-slate-50/50 dark:bg-slate-800/30">
           <div className="space-y-1">
@@ -160,69 +160,83 @@ export default function DealForensicModal({
           </button>
         </div>
 
-        {/* Навигация по вкладкам */}
-        <div className="px-5 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2 overflow-x-auto">
+        {/* Навигация по классам (вкладкам) */}
+        <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center gap-2 bg-slate-50/50 dark:bg-slate-800/30">
           <button
             onClick={() => setActiveTab('verdict')}
-            className={`py-3 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'verdict'
-                ? 'border-violet-600 text-violet-600 dark:text-violet-400'
-                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-violet-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
-            <Sparkles size={16} />
+            <Sparkles size={14} />
             <span>{lang === 'uz' ? 'AI Xulosasi' : 'Вердикт ИИ'}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('timeline')}
-            className={`py-3 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'timeline'
-                ? 'border-violet-600 text-violet-600 dark:text-violet-400'
-                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-violet-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
-            <Clock size={16} />
+            <Clock size={14} />
             <span>{lang === 'uz' ? 'Bosqichlar xronologiyasi' : 'Хронология воронки'}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('calls')}
-            className={`py-3 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'calls'
-                ? 'border-violet-600 text-violet-600 dark:text-violet-400'
-                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-violet-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
-            <PhoneCall size={16} />
-            <span>
-              {lang === 'uz' ? 'Qo‘ng‘iroqlar nazorati' : 'Звонки и Регламент QC'} ({detail.calls.length})
+            <PhoneCall size={14} />
+            <span>{lang === 'uz' ? 'Qo‘ng‘iroqlar nazorati' : 'Звонки и Регламент QC'}</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                activeTab === 'calls'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              {detail.calls.length}
             </span>
           </button>
 
           <button
             onClick={() => setActiveTab('tasks')}
-            className={`py-3 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'tasks'
-                ? 'border-violet-600 text-violet-600 dark:text-violet-400'
-                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-violet-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
-            <ListTodo size={16} />
-            <span>
-              {lang === 'uz' ? 'Vazifalar intizomi' : 'Дисциплина задач'} ({(detail.tasks || []).length})
+            <ListTodo size={14} />
+            <span>{lang === 'uz' ? 'Vazifalar intizomi' : 'Дисциплина задач'}</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                activeTab === 'tasks'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              {(detail.tasks || []).length}
             </span>
           </button>
 
           <button
             onClick={() => setActiveTab('penalty')}
-            className={`py-3 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'penalty'
-                ? 'border-violet-600 text-violet-600 dark:text-violet-400'
-                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-violet-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
-            <FileSpreadsheet size={16} />
+            <FileSpreadsheet size={14} />
             <span>{lang === 'uz' ? 'Jarima vedomosti' : 'Штрафная ведомость'}</span>
           </button>
         </div>
