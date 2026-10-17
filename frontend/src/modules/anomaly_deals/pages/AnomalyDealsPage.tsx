@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   ShieldAlert,
@@ -22,7 +22,6 @@ export default function AnomalyDealsPage() {
   const { lang } = useLanguage();
   const params = useParams<{ accountId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const queryClient = useQueryClient();
 
   const {
     effectiveAccountId,
@@ -106,20 +105,6 @@ export default function AnomalyDealsPage() {
     refetchInterval: 30_000,
   });
 
-  // Мутация запуска пакетного аудита
-  const analyzeMutation = useMutation({
-    mutationFn: () =>
-      anomalyDealsApi.batchAnalyze(accountId, {
-        pipelineId: applied.pipelineId || undefined,
-        limit: 30,
-        forceReanalyze: false,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['anomaly-stats', accountId] });
-      queryClient.invalidateQueries({ queryKey: ['anomaly-deals-list', accountId] });
-    },
-  });
-
   const selectedManagerName = statsQuery.data?.managersStats?.find(
     (m) => m.managerId === selectedManagerId
   )?.managerName;
@@ -180,11 +165,7 @@ export default function AnomalyDealsPage() {
       {/* 1. Класс: Обзор и KPI */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          <AnomalyKpiCards
-            stats={statsQuery.data}
-            isAnalyzing={analyzeMutation.isPending}
-            onTriggerAnalyze={() => analyzeMutation.mutate()}
-          />
+          <AnomalyKpiCards stats={statsQuery.data} />
           <AnomalyReasonsComparison stats={statsQuery.data} />
         </div>
       )}
@@ -227,7 +208,6 @@ export default function AnomalyDealsPage() {
               setSelectedManagerId(null);
               setPage(1);
             }}
-            onTriggerAnalyze={() => analyzeMutation.mutate()}
           />
         </div>
       )}

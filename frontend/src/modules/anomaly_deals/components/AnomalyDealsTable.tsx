@@ -27,7 +27,6 @@ interface AnomalyDealsTableProps {
   onSelectLead: (leadId: number) => void;
   selectedManagerName?: string | null;
   onResetManager?: () => void;
-  onTriggerAnalyze?: () => void;
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
 }
@@ -44,7 +43,6 @@ export default function AnomalyDealsTable({
   onSelectLead,
   selectedManagerName,
   onResetManager,
-  onTriggerAnalyze,
   searchQuery = '',
   onSearchChange,
 }: AnomalyDealsTableProps) {

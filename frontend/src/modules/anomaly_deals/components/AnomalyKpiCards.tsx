@@ -1,19 +1,13 @@
 import React from 'react';
-import { AlertOctagon, TrendingDown, ShieldCheck, Play, Loader2 } from 'lucide-react';
+import { AlertOctagon, TrendingDown, ShieldCheck } from 'lucide-react';
 import { AnomalyStats } from '../api/anomalyDeals.api';
 import { useLanguage } from '../../../i18n/LanguageContext';
 
 interface AnomalyKpiCardsProps {
   stats?: AnomalyStats;
-  isAnalyzing: boolean;
-  onTriggerAnalyze: () => void;
 }
 
-export default function AnomalyKpiCards({
-  stats,
-  isAnalyzing,
-  onTriggerAnalyze,
-}: AnomalyKpiCardsProps) {
+export default function AnomalyKpiCards({ stats }: AnomalyKpiCardsProps) {
   const { lang } = useLanguage();
 
   const formatCurrency = (val: number) => {
@@ -21,7 +15,7 @@ export default function AnomalyKpiCards({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {/* Карточка 1: Потери бюджета из-за сливов менеджеров */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs relative overflow-hidden">
         <div className="flex items-center justify-between mb-3">
@@ -87,37 +81,6 @@ export default function AnomalyKpiCards({
             ? 'Reglament va qo‘ng‘iroqlar qoidasi to‘liq bajarilgan'
             : 'Регламент соблюден: вина менеджеров снята'}
         </div>
-      </div>
-
-      {/* Карточка 4: Действие - Экспресс аудит */}
-      <div className="bg-gradient-to-br from-violet-600 to-indigo-700 rounded-2xl p-5 text-white shadow-md flex flex-col justify-between">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-violet-200">
-            {lang === 'uz' ? 'AI Tahlilni ishga tushirish' : 'Запуск цифрового аудита'}
-          </div>
-          <div className="text-sm text-violet-100 mt-1 leading-snug">
-            {lang === 'uz'
-              ? 'Yangi rad etilgan bitimlarni AI tekshiruvidan o‘tkazish'
-              : 'Проверить историю звонков и этапов нереализованных сделок'}
-          </div>
-        </div>
-        <button
-          onClick={onTriggerAnalyze}
-          disabled={isAnalyzing}
-          className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-violet-900 hover:bg-violet-50 font-bold rounded-xl text-xs transition-all shadow-sm disabled:opacity-75 cursor-pointer"
-        >
-          {isAnalyzing ? (
-            <>
-              <Loader2 size={16} className="animate-spin text-violet-700" />
-              <span>{lang === 'uz' ? 'Tahlil qilinmoqda...' : 'Идет анализ сделок...'}</span>
-            </>
-          ) : (
-            <>
-              <Play size={16} className="text-violet-700 fill-violet-700" />
-              <span>{lang === 'uz' ? 'Auditingni boshlash' : 'Запустить аудит (AI)'}</span>
-            </>
-          )}
-        </button>
       </div>
     </div>
   );
