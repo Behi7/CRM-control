@@ -227,10 +227,11 @@ async def get_anomaly_deals_list(
     responsible_user_id: Optional[int] = None,
     anomaly_level: Optional[str] = None,
     min_price: Optional[float] = None,
+    search: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
 ) -> AnomalyDealListResponseDto:
-    """Пагинированный список аномальных сделок с фильтрацией."""
+    """Пагинированный список аномальных сделок с фильтрацией и поиском."""
     filters = [DealAnomalyAudit.account_id == account_id]
 
     if pipeline_id:
@@ -241,11 +242,24 @@ async def get_anomaly_deals_list(
         filters.append(DealAnomalyAudit.anomaly_level == anomaly_level)
     if min_price:
         filters.append(Lead.price >= min_price)
+    if search and search.strip():
+        q = search.strip()
+        search_terms = [
+            Lead.name.ilike(f"%{q}%"),
+            Lead.external_id.ilike(f"%{q}%"),
+            AmoUser.name.ilike(f"%{q}%"),
+            DealAnomalyAudit.stated_loss_reason.ilike(f"%{q}%"),
+            DealAnomalyAudit.real_loss_reason.ilike(f"%{q}%"),
+        ]
+        if q.isdigit():
+            search_terms.append(DealAnomalyAudit.lead_id == int(q))
+        filters.append(or_(*search_terms))
 
     # Общее число
     count_stmt = (
         select(func.count(DealAnomalyAudit.id))
         .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
+        .outerjoin(AmoUser, DealAnomalyAudit.responsible_user_id == AmoUser.id)
         .where(and_(*filters))
     )
     total = (await session.execute(count_stmt)).scalar() or 0

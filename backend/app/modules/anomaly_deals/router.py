@@ -46,6 +46,7 @@ async def anomaly_deals_list_endpoint(
     responsible_user_id: Optional[int] = Query(None, alias="managerId"),
     anomaly_level: Optional[str] = Query(None, alias="level"),
     min_price: Optional[float] = Query(None, alias="minPrice"),
+    search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100, alias="pageSize"),
     session: AsyncSession = Depends(get_db),
@@ -59,6 +60,7 @@ async def anomaly_deals_list_endpoint(
         responsible_user_id=responsible_user_id,
         anomaly_level=anomaly_level,
         min_price=min_price,
+        search=search,
         page=page,
         page_size=page_size,
     )

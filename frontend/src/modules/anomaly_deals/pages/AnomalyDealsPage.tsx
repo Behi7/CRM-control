@@ -17,7 +17,7 @@ import AnomalyManagerCards from '../components/AnomalyManagerCards';
 import AnomalyDealsTable from '../components/AnomalyDealsTable';
 import DealForensicModal from '../components/DealForensicModal';
 
-type AnomalyTab = 'overview' | 'managers' | 'deals' | 'reasons';
+type AnomalyTab = 'overview' | 'deals' | 'reasons';
 
 export default function AnomalyDealsPage() {
   const { lang } = useLanguage();
@@ -34,12 +34,18 @@ export default function AnomalyDealsPage() {
   const accountId = params.accountId ? parseInt(params.accountId, 10) : (effectiveAccountId || storedAccountId);
 
   // Табы (классы функционала)
-  const paramTab = searchParams.get('tab') as AnomalyTab | null;
-  const [activeTab, setActiveTab] = useState<AnomalyTab>(() => paramTab || 'overview');
+  const paramTab = searchParams.get('tab');
+  const normalizedParamTab: AnomalyTab = paramTab === 'managers' ? 'deals' : (paramTab as AnomalyTab);
+  const [activeTab, setActiveTab] = useState<AnomalyTab>(() =>
+    normalizedParamTab && ['overview', 'deals', 'reasons'].includes(normalizedParamTab) ? normalizedParamTab : 'overview'
+  );
 
   useEffect(() => {
-    if (paramTab && paramTab !== activeTab) {
-      setActiveTab(paramTab);
+    if (paramTab) {
+      const norm = paramTab === 'managers' ? 'deals' : (paramTab as AnomalyTab);
+      if (norm !== activeTab && ['overview', 'deals', 'reasons'].includes(norm)) {
+        setActiveTab(norm);
+      }
     }
   }, [paramTab]);
 
@@ -52,9 +58,19 @@ export default function AnomalyDealsPage() {
 
   // Локальные фильтры
   const [levelFilter, setLevelFilter] = useState<'all' | 'critical' | 'warning' | 'fair'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
   const [selectedManagerId, setSelectedManagerId] = useState<number | null>(null);
+
+  // Дебаунс поискового запроса
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Эффективный менеджер для списка сделок
   const effectiveManagerId = selectedManagerId !== null
@@ -68,7 +84,7 @@ export default function AnomalyDealsPage() {
     refetchInterval: 30_000,
   });
 
-  // Запрос списка сделок
+  // Запрос списка сделок с поиском
   const listQuery = useQuery({
     queryKey: [
       'anomaly-deals-list',
@@ -77,6 +93,7 @@ export default function AnomalyDealsPage() {
       levelFilter,
       applied.pipelineId,
       effectiveManagerId,
+      debouncedSearch,
     ],
     queryFn: () =>
       anomalyDealsApi.getList(accountId, {
@@ -85,6 +102,7 @@ export default function AnomalyDealsPage() {
         level: levelFilter !== 'all' ? levelFilter : undefined,
         pipelineId: applied.pipelineId || undefined,
         managerId: effectiveManagerId,
+        search: debouncedSearch || undefined,
       }),
     refetchInterval: 30_000,
   });
@@ -112,12 +130,8 @@ export default function AnomalyDealsPage() {
       label: lang === 'uz' ? 'Umumiy va KPI' : 'Обзор и KPI',
       icon: LayoutDashboard,
     },
-    managers: {
-      label: lang === 'uz' ? 'Menejerlar' : 'Менеджеры',
-      icon: Award,
-    },
     deals: {
-      label: lang === 'uz' ? 'Bitimlar ro‘yxati' : 'Реестр сделок',
+      label: lang === 'uz' ? 'Bitimlar va menejerlar' : 'Реестр и менеджеры',
       icon: ShieldAlert,
     },
     reasons: {
@@ -131,7 +145,7 @@ export default function AnomalyDealsPage() {
       {/* Панель фильтров */}
       <FilterBar showStatus={false} />
 
-      {/* Навигационные классы (табы как в аналитике продаж) */}
+      {/* Навигационные классы */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         {(Object.keys(tabLabels) as AnomalyTab[]).map((tabId) => {
           const { label, icon: Icon } = tabLabels[tabId];
@@ -159,17 +173,6 @@ export default function AnomalyDealsPage() {
                   {listQuery.data?.total}
                 </span>
               )}
-              {tabId === 'managers' && (statsQuery.data?.managersStats?.length ?? 0) > 0 && (
-                <span
-                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                    active
-                      ? 'bg-white/20 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                  }`}
-                >
-                  {statsQuery.data?.managersStats?.length}
-                </span>
-              )}
             </button>
           );
         })}
@@ -187,9 +190,10 @@ export default function AnomalyDealsPage() {
         </div>
       )}
 
-      {/* 2. Класс: Менеджеры (карточки как в контроле качества) */}
-      {activeTab === 'managers' && (
-        <div className="space-y-4">
+      {/* 2. Класс: Объединенный реестр сделок и менеджеры */}
+      {activeTab === 'deals' && (
+        <div className="space-y-6">
+          {/* Сводные карточки менеджеров по срывам сделок (с возможностью фильтрации) */}
           <AnomalyManagerCards
             managers={statsQuery.data?.managersStats}
             selectedManagerId={selectedManagerId}
@@ -199,31 +203,37 @@ export default function AnomalyDealsPage() {
             }}
             isLoading={statsQuery.isLoading}
           />
+
+          {/* Реестр расследований сливов с поиском */}
+          <AnomalyDealsTable
+            deals={listQuery.data?.items}
+            total={listQuery.data?.total || 0}
+            page={page}
+            totalPages={listQuery.data?.totalPages || 1}
+            isLoading={listQuery.isLoading}
+            searchQuery={searchQuery}
+            onSearchChange={(q) => {
+              setSearchQuery(q);
+              setPage(1);
+            }}
+            levelFilter={levelFilter}
+            onLevelFilterChange={(lvl) => {
+              setLevelFilter(lvl);
+              setPage(1);
+            }}
+            onPageChange={(p) => setPage(p)}
+            onSelectLead={(leadId) => setSelectedLeadId(leadId)}
+            selectedManagerName={selectedManagerName}
+            onResetManager={() => {
+              setSelectedManagerId(null);
+              setPage(1);
+            }}
+            onTriggerAnalyze={() => analyzeMutation.mutate()}
+          />
         </div>
       )}
 
-      {/* 3. Класс: Реестр расследований сливов */}
-      {activeTab === 'deals' && (
-        <AnomalyDealsTable
-          deals={listQuery.data?.items}
-          total={listQuery.data?.total || 0}
-          page={page}
-          totalPages={listQuery.data?.totalPages || 1}
-          isLoading={listQuery.isLoading}
-          levelFilter={levelFilter}
-          onLevelFilterChange={(lvl) => {
-            setLevelFilter(lvl);
-            setPage(1);
-          }}
-          onPageChange={(p) => setPage(p)}
-          onSelectLead={(leadId) => setSelectedLeadId(leadId)}
-          selectedManagerName={selectedManagerName}
-          onResetManager={() => setSelectedManagerId(null)}
-          onTriggerAnalyze={() => analyzeMutation.mutate()}
-        />
-      )}
-
-      {/* 4. Класс: Отмазки менеджеров vs Реальность */}
+      {/* 3. Класс: Отмазки менеджеров vs Реальность */}
       {activeTab === 'reasons' && (
         <div className="space-y-6">
           <AnomalyReasonsComparison stats={statsQuery.data} />

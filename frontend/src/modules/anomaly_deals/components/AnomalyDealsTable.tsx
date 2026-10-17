@@ -8,7 +8,9 @@ import {
   ChevronRight,
   Eye,
   UserX,
-  Clock
+  Clock,
+  Search,
+  X,
 } from 'lucide-react';
 import { AnomalyDealItem } from '../api/anomalyDeals.api';
 import { useLanguage } from '../../../i18n/LanguageContext';
@@ -26,6 +28,8 @@ interface AnomalyDealsTableProps {
   selectedManagerName?: string | null;
   onResetManager?: () => void;
   onTriggerAnalyze?: () => void;
+  searchQuery?: string;
+  onSearchChange?: (val: string) => void;
 }
 
 export default function AnomalyDealsTable({
@@ -41,6 +45,8 @@ export default function AnomalyDealsTable({
   selectedManagerName,
   onResetManager,
   onTriggerAnalyze,
+  searchQuery = '',
+  onSearchChange,
 }: AnomalyDealsTableProps) {
   const { lang } = useLanguage();
 
@@ -113,54 +119,80 @@ export default function AnomalyDealsTable({
           )}
         </div>
 
-        {/* Быстрые фильтры по степени критичности */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold">
-          <button
-            onClick={() => onLevelFilterChange('all')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-              levelFilter === 'all'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            {lang === 'uz' ? 'Barchasi' : 'Все'}
-          </button>
+        {/* Правая часть: Поиск + Фильтры по степени критичности */}
+        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+          {/* Поле поиска */}
+          {onSearchChange && (
+            <div className="relative flex-1 sm:w-64">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder={lang === 'uz' ? 'Bitim, ID, xodim, sabab...' : 'Поиск: сделка, ID, причина...'}
+                className="w-full pl-8 pr-7 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 transition-all"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => onSearchChange('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          )}
 
-          <button
-            onClick={() => onLevelFilterChange('critical')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
-              levelFilter === 'critical'
-                ? 'bg-rose-500 text-white shadow-xs'
-                : 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
-            }`}
-          >
-            <Flame size={12} />
-            <span>{lang === 'uz' ? 'Kritik (80%+)' : 'Критические (80%+)'}</span>
-          </button>
+          {/* Быстрые фильтры по степени критичности */}
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold shrink-0">
+            <button
+              onClick={() => onLevelFilterChange('all')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                levelFilter === 'all'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              {lang === 'uz' ? 'Barchasi' : 'Все'}
+            </button>
 
-          <button
-            onClick={() => onLevelFilterChange('warning')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
-              levelFilter === 'warning'
-                ? 'bg-amber-500 text-white shadow-xs'
-                : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
-            }`}
-          >
-            <AlertTriangle size={12} />
-            <span>{lang === 'uz' ? 'Xatarlar (50-79%)' : 'Нарушения (50-79%)'}</span>
-          </button>
+            <button
+              onClick={() => onLevelFilterChange('critical')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                levelFilter === 'critical'
+                  ? 'bg-rose-500 text-white shadow-xs'
+                  : 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+              }`}
+            >
+              <Flame size={12} />
+              <span>{lang === 'uz' ? 'Kritik (80%+)' : 'Критические (80%+)'}</span>
+            </button>
 
-          <button
-            onClick={() => onLevelFilterChange('fair')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
-              levelFilter === 'fair'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
-            }`}
-          >
-            <CheckCircle2 size={12} />
-            <span>{lang === 'uz' ? 'Oqlangan (<50%)' : 'Обоснованные (<50%)'}</span>
-          </button>
+            <button
+              onClick={() => onLevelFilterChange('warning')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                levelFilter === 'warning'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
+              }`}
+            >
+              <AlertTriangle size={12} />
+              <span>{lang === 'uz' ? 'Xatarlar (50-79%)' : 'Нарушения (50-79%)'}</span>
+            </button>
+
+            <button
+              onClick={() => onLevelFilterChange('fair')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                levelFilter === 'fair'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
+              }`}
+            >
+              <CheckCircle2 size={12} />
+              <span>{lang === 'uz' ? 'Oqlangan (<50%)' : 'Обоснованные (<50%)'}</span>
+            </button>
+          </div>
         </div>
       </div>
 
