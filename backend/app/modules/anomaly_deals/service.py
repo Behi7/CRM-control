@@ -838,8 +838,20 @@ async def run_single_deal_audit(
         custom_system_prompt=custom_system_prompt,
     )
 
-    # Применяем корректировку от ИИ
-    final_score = max(0, min(100, audit_math["anomaly_score"] + verdict.get("score_adjustment", 0)))
+    # Детерминированная математика Python (корректировка балла по степени вины менеджера):
+    ai_fault = verdict.get("manager_guilt") or audit_math.get("manager_fault", "medium")
+    if ai_fault == "none":
+        # Менеджер старался, отказ объективен со стороны клиента / внешних обстоятельств
+        score_adjustment = -25
+    elif ai_fault == "high":
+        # Грубый обман или прямая халатность менеджера
+        score_adjustment = 20
+    else:
+        # Средняя степень (упущение, затягивание сроков без злого умысла)
+        score_adjustment = 0
+
+    verdict["score_adjustment"] = score_adjustment
+    final_score = max(0, min(100, audit_math["anomaly_score"] + score_adjustment))
     if final_score >= 80:
         final_level = "critical"
     elif final_score >= 50:

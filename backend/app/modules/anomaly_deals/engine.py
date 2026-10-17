@@ -367,25 +367,21 @@ def audit_lead_math(
 DEFAULT_ANOMALY_SYSTEM_PROMPT = """Ты — беспристрастный и опытный цифровой аудитор (следователь) отдела продаж для РОПа.
 Твоя задача — изучить досье слитой сделки из AmoCRM и вскрыть ПРАВДУ: кто виноват в потере сделки (клиент или менеджер) и почему.
 
-Контекст бизнеса:
-{company_context}
-
 ПРАВИЛА АРБИТРАЖА:
 1. Если менеджер указал отмазку ('Недозвон', 'Клиент передумал', 'Дорого'), но по факту не звонил или сделка неделями висела без движения — прямо разоблачи отмазку.
 2. ЕСЛИ по результатам Контроля Качества (QC) видно, что в разговоре менеджер допустил критические ошибки, проигнорировал возражения клиента или упустил инициативу — зафиксируй вину менеджера, даже если позже совершались звонки по уже потерянному клиенту.
 3. ЕСЛИ клиент объективно отказался сам (нет потребности, уехал, форс-мажор) или действительно не выходил на связь при добросовестных попытках менеджера (звонки в разные дни без нарушений регламента) — встань на защиту менеджера и сними с него вину.
 4. ОБРАТИ ВНИМАНИЕ НА ДИСЦИПЛИНУ ЗАДАЧ (tasks_metrics): если сделка провела большую часть времени без задач (tasks_idle_percent > 50%), укажи это как причину утери контакта и халатности менеджера.
 5. Укажи конкретную поворотную точку (pivot_point) — где и когда сделка фактически умерла.
-6. Дай РОПу четкую рекомендацию: стоит ли попытаться спасти лида другим менеджером или списать в архив.
+6. Дай РОПу четкую рекомендацию: стоит ли попытаться спасти лида другим менеджером или списать в архив."""
 
-Верни ответ СТРОГО в формате JSON со следующими полями:
+ANOMALY_JSON_CONTRACT = """Верни ответ СТРОГО в формате JSON со следующими полями:
 {
   "real_loss_reason": "краткая формулировка реальной причины слива (до 10 слов)",
   "manager_guilt": "high" | "medium" | "none",
   "pivot_point": "конкретная дата или момент потери сделки (1 предложение)",
   "forensic_summary": "подробный аргументированный вердикт для РОПа (2-3 предложения)",
-  "rop_recommendation": "конкретное управленческое действие для РОПа (1-2 предложения)",
-  "score_adjustment": число (0 если согласен с математикой, -20 если менеджер старался и отказ объективен, +15 если вскрылся грубый обман или халатность)
+  "rop_recommendation": "конкретное управленческое действие для РОПа (1-2 предложения)"
 }"""
 
 
@@ -459,7 +455,6 @@ async def generate_ai_forensic_verdict(
             "pivot_point": pivot,
             "forensic_summary": summary,
             "rop_recommendation": rec,
-            "score_adjustment": 0
         }
 
     if not api_key:
@@ -490,13 +485,17 @@ async def generate_ai_forensic_verdict(
             "qc_insights": qc_insights,
         }
 
-        base_prompt = (custom_system_prompt or "").strip() or DEFAULT_ANOMALY_SYSTEM_PROMPT
-        ctx_text = company_context or "Стандартный B2B/B2C отдел продаж"
-        if "{company_context}" in base_prompt:
-            system_prompt = base_prompt.replace("{company_context}", ctx_text)
-        else:
-            system_prompt = f"{base_prompt}\n\nКонтекст бизнеса:\n{ctx_text}"
+        base_rules = (custom_system_prompt or "").strip() or DEFAULT_ANOMALY_SYSTEM_PROMPT
+        # Очищаем от старого технического JSON-контракта, если он сохранился в БД
+        if "Верни ответ СТРОГО в формате JSON" in base_rules:
+            base_rules = base_rules.split("Верни ответ СТРОГО в формате JSON")[0].strip()
 
+        ctx_text = company_context or "Стандартный B2B/B2C отдел продаж"
+        if "{company_context}" in base_rules:
+            base_rules = base_rules.replace("{company_context}", ctx_text)
+            system_prompt = f"{base_rules}\n\n{ANOMALY_JSON_CONTRACT}"
+        else:
+            system_prompt = f"{base_rules}\n\nКонтекст бизнеса:\n{ctx_text}\n\n{ANOMALY_JSON_CONTRACT}"
 
         req_body = {
             "contents": [
@@ -525,7 +524,6 @@ async def generate_ai_forensic_verdict(
                     "pivot_point": parsed.get("pivot_point") or fallback_verdict()["pivot_point"],
                     "forensic_summary": parsed.get("forensic_summary") or fallback_verdict()["forensic_summary"],
                     "rop_recommendation": parsed.get("rop_recommendation") or fallback_verdict()["rop_recommendation"],
-                    "score_adjustment": int(parsed.get("score_adjustment") or 0)
                 }
             else:
                 logger.warning(f"Gemini API returned status {resp.status_code}: {resp.text}")
