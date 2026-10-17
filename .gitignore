@@ -44,3 +44,16 @@ venv/
 
 # Звонки AmoCRM
 call/
+
+# Pytest / Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
+# Pytest / Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+call/

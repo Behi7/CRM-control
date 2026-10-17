@@ -288,3 +288,79 @@ async def test_crm_client_unexpected_exception():
         )
         assert status == 500
         assert data == {"error": "Catastrophic error"}
+
+async def test_crm_client_rate_limit_invalid_retry_after_header():
+    client = CrmClient(rps=100)
+    resp_429 = MagicMock()
+    resp_429.status_code = 429
+    resp_429.headers = {"Retry-After": "not-a-number"}
+
+    resp_200 = MagicMock()
+    resp_200.status_code = 200
+    resp_200.json.return_value = {"ok": True}
+
+    with patch.object(client, "_get_client", new_callable=AsyncMock) as mock_get:
+        mock_http = AsyncMock()
+        mock_http.request.side_effect = [resp_429, resp_200]
+        mock_get.return_value = mock_http
+
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            status, data = await client.request(
+                subdomain="validcrm",
+                base_domain="amocrm.ru",
+                token="token",
+                method="GET",
+                path="/test",
+                max_retries=2,
+            )
+            assert status == 200
+            assert mock_sleep.called
+
+async def test_crm_client_error_response_non_json_text():
+    client = CrmClient(rps=100)
+    resp_500 = MagicMock()
+    resp_500.status_code = 500
+    resp_500.json.side_effect = ValueError("Not JSON")
+    resp_500.text = "Internal Server Error HTML page"
+
+    with patch.object(client, "_get_client", new_callable=AsyncMock) as mock_get:
+        mock_http = AsyncMock()
+        mock_http.request.return_value = resp_500
+        mock_get.return_value = mock_http
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            status, data = await client.request(
+                subdomain="validcrm",
+                base_domain="amocrm.ru",
+                token="token",
+                method="GET",
+                path="/test",
+                max_retries=1,
+            )
+            assert status == 500
+            assert data == "Internal Server Error HTML page"
+
+async def test_crm_client_max_retries_loop_exhaustion():
+    client = CrmClient(rps=100)
+    resp_502 = MagicMock()
+    resp_502.status_code = 502
+
+    with patch.object(client, "_get_client", new_callable=AsyncMock) as mock_get:
+        mock_http = AsyncMock()
+        mock_http.request.return_value = resp_502
+        mock_get.return_value = mock_http
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            # force loop to finish without returning by setting max_retries
+            # where 502 always continues if attempt < max_retries - 1
+            # so with max_retries=0 it doesn't loop
+            status, data = await client.request(
+                subdomain="validcrm",
+                base_domain="amocrm.ru",
+                token="token",
+                method="GET",
+                path="/test",
+                max_retries=0,
+            )
+            assert status == 500
+            assert data == {"error": "Max retries exceeded"}

@@ -138,3 +138,52 @@ def test_main_entrypoint():
 def test_top_level_worker_import():
     import worker
     assert hasattr(worker, "main")
+
+async def test_worker_periodic_timers_and_inactive_account(db_session, sample_account):
+    sample_account.status = "disconnected"
+    await db_session.commit()
+
+    async def get_accs_and_stop():
+        worker_module.running = False
+        return [{"id": sample_account.id, "subdomain": "test", "base_domain": "amocrm.ru", "backfill_status": "done"}]
+
+    with patch("app.worker.run_pipelines_pass", new_callable=AsyncMock) as mock_pipes, \
+         patch("app.worker.cleanup_old_events", new_callable=AsyncMock) as mock_cleanup, \
+         patch("app.worker.get_active_accounts", new=get_accs_and_stop), \
+         patch("app.worker.crm_client.close", new_callable=AsyncMock):
+
+        worker_module.running = True
+        await sync_loop()
+        worker_module.running = True
+
+        assert mock_pipes.called
+        assert mock_cleanup.called
+
+async def test_worker_backfill_retry_when_err_time_is_none(db_session, sample_account):
+    sample_account.backfill_status = "error"
+    sample_account.backfill_error_at = None
+    await db_session.commit()
+
+    with patch("app.worker.run_pipelines_pass", new_callable=AsyncMock), \
+         patch("app.worker.cleanup_old_events", new_callable=AsyncMock), \
+         patch("app.worker.run_backfill", new_callable=AsyncMock) as mock_backfill, \
+         patch("app.worker.crm_client.close", new_callable=AsyncMock), \
+         patch("app.worker.settings.SYNC_INTERVAL_MINUTES", 0):
+
+        async def stop_after_backfill(*args, **kwargs):
+            worker_module.running = False
+            return True
+
+        mock_backfill.side_effect = stop_after_backfill
+        worker_module.running = True
+        await sync_loop()
+        assert mock_backfill.called
+        worker_module.running = True
+
+async def test_worker_pipeline_pass_exceptions_handled(db_session, sample_account):
+    sample_account.encrypted_token = None
+    await db_session.commit()
+
+    with patch("app.worker.sync_pipelines_and_stages", side_effect=RuntimeError("Sync fail")):
+        # Should complete without raising
+        await run_pipelines_pass()

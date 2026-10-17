@@ -184,3 +184,113 @@ async def test_run_backfill_resume_from_cursor(db_session, sample_account):
 
         await db_session.refresh(sample_account)
         assert sample_account.backfill_status == "done"
+
+async def test_run_backfill_401_and_error_on_events(db_session, sample_account):
+    now = datetime.now(timezone.utc)
+    # Cursor at events stage
+    sample_account.backfill_cursor = {"stage": "events", "window_from": int((now - timedelta(days=5)).timestamp())}
+    await db_session.commit()
+
+    # 1. Test 401 on events
+    async def mock_401(*args, **kwargs):
+        path = kwargs.get("path", "")
+        if path == "/api/v4/account":
+            return 200, {"timezone": "UTC"}
+        elif "/api/v4/leads/pipelines" in path:
+            return 200, {"_embedded": {"pipelines": []}}
+        elif "/api/v4/events" in path:
+            return 401, None
+        return 204, None
+
+    with patch("app.sync.backfill_sync.crm_client.request", side_effect=mock_401), \
+         patch("app.sync.pipeline_sync.crm_client.request", side_effect=mock_401):
+        ok = await run_backfill(db_session, sample_account.id)
+        assert ok is False
+        await db_session.refresh(sample_account)
+        assert sample_account.token_status == "expired"
+        assert sample_account.backfill_status == "error"
+
+    # 2. Test 500 on events
+    sample_account.token_status = "active"
+    sample_account.backfill_status = "pending"
+    await db_session.commit()
+
+    async def mock_500(*args, **kwargs):
+        path = kwargs.get("path", "")
+        if path == "/api/v4/account":
+            return 200, {"timezone": "UTC"}
+        elif "/api/v4/leads/pipelines" in path:
+            return 200, {"_embedded": {"pipelines": []}}
+        elif "/api/v4/events" in path:
+            return 500, {"error": "Fail"}
+        return 204, None
+
+    with patch("app.sync.backfill_sync.crm_client.request", side_effect=mock_500), \
+         patch("app.sync.pipeline_sync.crm_client.request", side_effect=mock_500):
+        ok = await run_backfill(db_session, sample_account.id)
+        assert ok is False
+        await db_session.refresh(sample_account)
+        assert sample_account.backfill_status == "error"
+
+async def test_run_backfill_loops_and_delete_restore(db_session, sample_account):
+    now = datetime.now(timezone.utc)
+    pipe = Pipeline(account_id=sample_account.id, external_id="10", name="Main")
+    db_session.add(pipe)
+    await db_session.commit()
+    await db_session.refresh(pipe)
+
+    st = Stage(pipeline_id=pipe.id, external_id="101", name="Stage 1", sort_order=1)
+    db_session.add(st)
+    await db_session.commit()
+    await db_session.refresh(st)
+
+    # Lead that will be deleted and restored
+    lead = Lead(
+        account_id=sample_account.id,
+        external_id="lead_bf_dr",
+        pipeline_id=pipe.id,
+        current_stage_id=st.id,
+        crm_created_at=now - timedelta(days=2),
+    )
+    db_session.add(lead)
+    await db_session.commit()
+
+    leads_page = {"_embedded": {"leads": [{"id": 999, "name": "L999", "status_id": "101", "created_at": 1000}]}}
+    events_page = {
+        "_embedded": {
+            "events": [
+                {"id": "ev_bf_d", "type": "lead_deleted", "entity_id": "lead_bf_dr", "created_at": int(now.timestamp())},
+                {"id": "ev_bf_r", "type": "lead_restored", "entity_id": "lead_bf_dr", "created_at": int((now + timedelta(seconds=10)).timestamp())},
+            ]
+        }
+    }
+
+    call_counts = {"leads": 0, "events": 0}
+
+    async def mock_request(*args, **kwargs):
+        path = kwargs.get("path", "")
+        if path == "/api/v4/account":
+            return 200, {"timezone": "UTC"}
+        elif "/api/v4/leads/pipelines" in path:
+            return 200, {"_embedded": {"pipelines": []}}
+        elif "/api/v4/leads" in path:
+            call_counts["leads"] += 1
+            return 200, leads_page  # repeat to trigger loop detection
+        elif "/api/v4/events" in path:
+            call_counts["events"] += 1
+            if call_counts["events"] == 1:
+                return 200, events_page
+            return 200, events_page  # repeat to trigger loop detection
+        return 204, None
+
+    with patch("app.sync.backfill_sync.crm_client.request", side_effect=mock_request), \
+         patch("app.sync.pipeline_sync.crm_client.request", side_effect=mock_request):
+        ok = await run_backfill(db_session, sample_account.id)
+        assert ok is True
+
+async def test_run_backfill_general_exception(db_session, sample_account):
+    with patch("app.sync.backfill_sync.build_sync_context", side_effect=RuntimeError("Fatal error")):
+        ok = await run_backfill(db_session, sample_account.id)
+        assert ok is False
+        await db_session.refresh(sample_account)
+        assert sample_account.backfill_status == "error"

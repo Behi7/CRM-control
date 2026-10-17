@@ -281,3 +281,73 @@ async def test_sync_custom_fields_401(db_session, sample_account):
         assert ok is False
         await db_session.refresh(sample_account)
         assert sample_account.token_status == "expired"
+
+async def test_sync_pipelines_users_or_fields_failure(db_session, sample_account):
+    acc_id = sample_account.id
+    sub = sample_account.subdomain
+    base = sample_account.base_domain
+    api_pipelines = {
+        "_embedded": {
+            "pipelines": [{"id": 1, "name": "Pipe"}]
+        }
+    }
+    # Users return False
+    with patch("app.sync.pipeline_sync.crm_client.request", return_value=(200, api_pipelines)), \
+         patch("app.sync.pipeline_sync.sync_amo_users", return_value=False):
+        ok = await sync_pipelines_and_stages(
+            db_session, acc_id, sub, base, "token"
+        )
+        assert ok is False
+
+    # Fields return False
+    with patch("app.sync.pipeline_sync.crm_client.request", return_value=(200, api_pipelines)), \
+         patch("app.sync.pipeline_sync.sync_amo_users", return_value=True), \
+         patch("app.sync.pipeline_sync.sync_custom_fields", return_value=False):
+        ok = await sync_pipelines_and_stages(
+            db_session, acc_id, sub, base, "token"
+        )
+        assert ok is False
+
+async def test_sync_pipelines_exceptions(db_session, sample_account):
+    acc_id = sample_account.id
+    sub = sample_account.subdomain
+    base = sample_account.base_domain
+
+    with patch("app.sync.pipeline_sync.crm_client.request", side_effect=RuntimeError("Pipe error")):
+        ok = await sync_pipelines_and_stages(
+            db_session, acc_id, sub, base, "token"
+        )
+        assert ok is False
+
+    with patch("app.sync.pipeline_sync.crm_client.request", side_effect=RuntimeError("Users error")):
+        ok = await sync_amo_users(
+            db_session, acc_id, sub, base, "token"
+        )
+        assert ok is False
+
+    with patch("app.sync.pipeline_sync.crm_client.request", side_effect=RuntimeError("Fields error")):
+        ok = await sync_custom_fields(
+            db_session, acc_id, sub, base, "token"
+        )
+        assert ok is False
+
+async def test_sync_custom_fields_pagination_loop_and_non_200(db_session, sample_account):
+    fields_page = {"_embedded": {"custom_fields": [{"id": 99, "name": "CF"}]}}
+
+    # 1. Loop detection
+    with patch("app.sync.pipeline_sync.crm_client.request", new_callable=AsyncMock) as mock_req:
+        mock_req.side_effect = [(200, fields_page), (200, fields_page)]
+        ok = await sync_custom_fields(
+            db_session, sample_account.id, sample_account.subdomain,
+            sample_account.base_domain, "token"
+        )
+        assert ok is True
+
+    # 2. Non-200
+    with patch("app.sync.pipeline_sync.crm_client.request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = (500, {"error": "Internal"})
+        ok = await sync_custom_fields(
+            db_session, sample_account.id, sample_account.subdomain,
+            sample_account.base_domain, "token"
+        )
+        assert ok is False

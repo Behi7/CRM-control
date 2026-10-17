@@ -14,10 +14,9 @@ if not os.environ.get("TOKEN_ENCRYPTION_KEY"):
 
 def get_test_db_host():
     try:
-        socket.gethostbyname("postgres")
-        return "postgres"
+        return socket.gethostbyname("postgres")
     except Exception:
-        return "localhost"
+        return "127.0.0.1"
 
 TEST_DB_HOST = get_test_db_host()
 TEST_DB_URL = f"postgresql+asyncpg://postgres:postgres@{TEST_DB_HOST}:5432/amocrm_analytics_test"
@@ -37,9 +36,11 @@ from app.core.security import encrypt_token
 from sqlalchemy.pool import NullPool
 
 # Configure test database engine with NullPool so connections are created in current event loop
+# Disable SSL on local Docker network to prevent asyncpg SSL negotiation segfaults
 test_async_engine = create_async_engine(
     TEST_DB_URL,
     poolclass=NullPool,
+    connect_args={"ssl": False},
 )
 
 TestAsyncSessionLocal = async_sessionmaker(

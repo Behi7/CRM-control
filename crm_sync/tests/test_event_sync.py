@@ -583,3 +583,70 @@ async def test_cleanup_old_events(db_session, sample_account):
     remaining = (await db_session.execute(select(ProcessedCrmEvent))).scalars().all()
     assert len(remaining) == 1
     assert remaining[0].external_event_id == "ev_fresh"
+
+async def test_upsert_lead_db_lookups_without_context_cache(db_session, sample_account):
+    pipe = Pipeline(account_id=sample_account.id, external_id="300", name="P300")
+    db_session.add(pipe)
+    await db_session.commit()
+    await db_session.refresh(pipe)
+
+    st = Stage(pipeline_id=pipe.id, external_id="3001", name="S3001")
+    db_session.add(st)
+    await db_session.commit()
+    await db_session.refresh(st)
+
+    # Empty context to force DB lookup for pipeline and stage
+    empty_ctx = SyncContext()
+
+    amo_data = {
+        "id": 8877,
+        "name": "DB Lookup Lead",
+        "pipeline_id": "300",
+        "status_id": "3001",
+        "price": 1000,
+    }
+    lead = await upsert_lead(db_session, sample_account.id, amo_data, empty_ctx)
+    assert lead.pipeline_id == pipe.id
+    assert lead.current_stage_id == st.id
+
+async def test_process_status_changed_skipped_unknown_lead(db_session, sample_account):
+    ctx = await build_sync_context(db_session, sample_account.id)
+    event = {
+        "id": "ev_404_lead",
+        "entity_id": "ghost_404",
+        "created_at": 1000,
+        "value_after": [{"lead_status": {"id": 142}}],
+    }
+    # 404 from API
+    with patch("app.sync.event_sync.crm_client.request", return_value=(404, None)):
+        await process_status_changed(
+            db_session, sample_account.id, sample_account.subdomain,
+            sample_account.base_domain, "token", event, ctx
+        )
+        ev_row = (await db_session.execute(
+            select(ProcessedCrmEvent).where(ProcessedCrmEvent.external_event_id == "ev_404_lead")
+        )).scalar_one()
+        assert ev_row.result == "skipped_unknown_lead"
+
+async def test_process_status_changed_exception_handling(db_session, sample_account):
+    ctx = await build_sync_context(db_session, sample_account.id)
+    event = {
+        "id": "ev_error_1",
+        "entity_id": "lead_err_1",
+        "created_at": 1000,
+        "value_after": [{"lead_status": {"id": 142}}],
+    }
+    with patch("app.sync.event_sync.select", side_effect=RuntimeError("SQL Error")):
+        await process_status_changed(
+            db_session, sample_account.id, sample_account.subdomain,
+            sample_account.base_domain, "token", event, ctx
+        )
+        # Exception caught cleanly without crashing
+
+async def test_process_lead_restored_unknown_lead(db_session, sample_account):
+    ev = {"id": "ev_res_unk", "entity_id": "ghost_restore", "created_at": 1000}
+    await process_lead_restored(db_session, sample_account.id, ev)
+    res = (await db_session.execute(
+        select(ProcessedCrmEvent).where(ProcessedCrmEvent.external_event_id == "ev_res_unk")
+    )).scalar_one()
+    assert res.result == "restored_unknown_lead"

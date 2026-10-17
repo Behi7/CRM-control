@@ -161,3 +161,76 @@ async def test_run_enrich_account_stopped_account(db_session, sample_account):
 
     ok = await run_enrich_account(db_session, sample_account.id)
     assert ok is False
+
+async def test_run_delta_sync_pagination_loops_and_delete_restore(db_session, sample_account):
+    now = datetime.now(timezone.utc)
+    pipe = Pipeline(account_id=sample_account.id, external_id="10", name="Main")
+    db_session.add(pipe)
+    await db_session.commit()
+    await db_session.refresh(pipe)
+
+    st = Stage(pipeline_id=pipe.id, external_id="101", name="Stage 1", sort_order=1)
+    db_session.add(st)
+    await db_session.commit()
+    await db_session.refresh(st)
+
+    lead = Lead(
+        account_id=sample_account.id,
+        external_id="lead_dr",
+        pipeline_id=pipe.id,
+        current_stage_id=st.id,
+        crm_created_at=now,
+    )
+    db_session.add(lead)
+    await db_session.commit()
+
+    # Repeated first ID in leads to trigger pagination loop
+    leads_page = {"_embedded": {"leads": [{"id": 100, "name": "L1", "status_id": "101", "created_at": 1000}]}}
+    events_page = {
+        "_embedded": {
+            "events": [
+                {"id": "ev_d1", "type": "lead_deleted", "entity_id": "lead_dr", "created_at": int(now.timestamp())},
+                {"id": "ev_r1", "type": "lead_restored", "entity_id": "lead_dr", "created_at": int((now + timedelta(seconds=10)).timestamp())},
+            ]
+        }
+    }
+
+    call_counts = {"leads": 0, "events": 0}
+
+    async def mock_request(*args, **kwargs):
+        path = kwargs.get("path", "")
+        if "/api/v4/leads" in path:
+            call_counts["leads"] += 1
+            # Return same item twice to trigger loop detection
+            return 200, leads_page
+        elif "/api/v4/events" in path:
+            call_counts["events"] += 1
+            if call_counts["events"] == 1:
+                return 200, events_page
+            return 200, events_page  # triggers event loop detection
+        return 204, None
+
+    with patch("app.sync.delta_sync.crm_client.request", side_effect=mock_request):
+        ok = await run_delta_sync(db_session, sample_account.id)
+        assert ok is True
+
+async def test_run_delta_sync_general_exception(db_session, sample_account):
+    with patch("app.sync.delta_sync.build_sync_context", side_effect=RuntimeError("DB explosion")):
+        ok = await run_delta_sync(db_session, sample_account.id)
+        assert ok is False
+
+async def test_run_enrich_account_pagination_loop_and_exception(db_session, sample_account):
+    # Test loop detection
+    leads_page = {"_embedded": {"leads": [{"id": 200, "name": "Loop Lead"}]}}
+
+    async def mock_request(*args, **kwargs):
+        return 200, leads_page
+
+    with patch("app.sync.delta_sync.crm_client.request", side_effect=mock_request):
+        ok = await run_enrich_account(db_session, sample_account.id)
+        assert ok is True
+
+    # Test exception
+    with patch("app.sync.delta_sync.build_sync_context", side_effect=RuntimeError("Enrich error")):
+        ok = await run_enrich_account(db_session, sample_account.id)
+        assert ok is False

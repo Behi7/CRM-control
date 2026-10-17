@@ -225,3 +225,62 @@ async def test_run_calls_sync_deduplication(db_session, sample_account):
             select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "call_dup_1")
         )).scalars().all()
         assert len(all_calls) == 1
+
+async def test_run_calls_sync_skip_non_call_and_old_call_and_bad_call_status(db_session, sample_account):
+    now = datetime.now(timezone.utc)
+    qc = QcSettings(account_id=sample_account.id, is_enabled=True, last_call_synced_at=now - timedelta(minutes=5))
+    db_session.add(qc)
+    await db_session.commit()
+
+    notes_data = {
+        "_embedded": {
+            "notes": [
+                # 1. non call
+                {"id": 5001, "note_type": "common", "created_at": int(now.timestamp())},
+                # 2. old call prior to window
+                {
+                    "id": 5002,
+                    "note_type": "call_in",
+                    "created_at": int((now - timedelta(days=2)).timestamp()),
+                    "params": {"duration": 60, "link": "https://rec.mp3"},
+                },
+                # 3. invalid call status string (e.g. "not-an-int")
+                {
+                    "id": 5003,
+                    "note_type": "call_in",
+                    "created_at": int(now.timestamp()),
+                    "params": {"duration": 60, "link": "https://rec.mp3", "call_status": "abc"},
+                },
+            ]
+        }
+    }
+
+    with patch("app.sync.calls_sync.crm_client.request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = (200, notes_data)
+        ok = await run_calls_sync(db_session, sample_account.id)
+        assert ok is True
+
+        c5003 = (await db_session.execute(
+            select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "5003")
+        )).scalar_one()
+        assert c5003.status == "pending"
+
+async def test_run_calls_sync_notes_api_non_200(db_session, sample_account):
+    now = datetime.now(timezone.utc)
+    qc = QcSettings(account_id=sample_account.id, is_enabled=True, last_call_synced_at=now - timedelta(minutes=5))
+    db_session.add(qc)
+    await db_session.commit()
+
+    with patch("app.sync.calls_sync.crm_client.request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = (500, {"error": "API error"})
+        ok = await run_calls_sync(db_session, sample_account.id)
+        assert ok is True
+
+async def test_run_calls_sync_general_exception(db_session, sample_account):
+    qc = QcSettings(account_id=sample_account.id, is_enabled=True, last_call_synced_at=datetime.now(timezone.utc))
+    db_session.add(qc)
+    await db_session.commit()
+
+    with patch("app.sync.calls_sync.decrypt_token", side_effect=RuntimeError("Token error")):
+        ok = await run_calls_sync(db_session, sample_account.id)
+        assert ok is False
