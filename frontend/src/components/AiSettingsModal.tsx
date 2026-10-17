@@ -38,6 +38,30 @@ const DEFAULT_QC_SYSTEM_PROMPT = `Ты — объективный и внима�
 - Для каждого несоблюденного правила предложи эталонный вариант ответа менеджера (improvement).
 - Зафиксируй ключевые поворотные точки диалога (хронологию timeline).`;
 
+const DEFAULT_ANOMALY_SYSTEM_PROMPT = `Ты — беспристрастный и опытный цифровой аудитор (следователь) отдела продаж для РОПа.
+Твоя задача — изучить досье слитой сделки из AmoCRM и вскрыть ПРАВДУ: кто виноват в потере сделки (клиент или менеджер) и почему.
+
+Контекст бизнеса:
+{company_context}
+
+ПРАВИЛА АРБИТРАЖА:
+1. Если менеджер указал отмазку ('Недозвон', 'Клиент передумал', 'Дорого'), но по факту не звонил или сделка неделями висела без движения — прямо разоблачи отмазку.
+2. ЕСЛИ по результатам Контроля Качества (QC) видно, что в разговоре менеджер допустил критические ошибки, проигнорировал возражения клиента или упустил инициативу — зафиксируй вину менеджера, даже если позже совершались звонки по уже потерянному клиенту.
+3. ЕСЛИ клиент объективно отказался сам (нет потребности, уехал, форс-мажор) или действительно не выходил на связь при добросовестных попытках менеджера (звонки в разные дни без нарушений регламента) — встань на защиту менеджера и сними с него вину.
+4. ОБРАТИ ВНИМАНИЕ НА ДИСЦИПЛИНУ ЗАДАЧ (tasks_metrics): если сделка провела большую часть времени без задач (tasks_idle_percent > 50%), укажи это как причину утери контакта и халатности менеджера.
+5. Укажи конкретную поворотную точку (pivot_point) — где и когда сделка фактически умерла.
+6. Дай РОПу четкую рекомендацию: стоит ли попытаться спасти лида другим менеджером или списать в архив.
+
+Верни ответ СТРОГО в формате JSON со следующими полями:
+{
+  "real_loss_reason": "краткая формулировка реальной причины слива (до 10 слов)",
+  "manager_guilt": "high" | "medium" | "none",
+  "pivot_point": "конкретная дата или момент потери сделки (1 предложение)",
+  "forensic_summary": "подробный аргументированный вердикт для РОПа (2-3 предложения)",
+  "rop_recommendation": "конкретное управленческое действие для РОПа (1-2 предложения)",
+  "score_adjustment": число (0 если согласен с математикой, -20 если менеджер старался и отказ объективен, +15 если вскрылся грубый обман или халатность)
+}`;
+
 export default function AiSettingsModal({
   accountId,
   subdomain = 'amoCRM',
@@ -66,6 +90,7 @@ export default function AiSettingsModal({
   const [lossReasonFieldId, setLossReasonFieldId] = useState<string>('');
   const [ignoredReasons, setIgnoredReasons] = useState<string[]>([]);
   const [customReasonInput, setCustomReasonInput] = useState<string>('');
+  const [anomalySystemPrompt, setAnomalySystemPrompt] = useState<string>('');
 
   // Status & tests
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -99,6 +124,7 @@ export default function AiSettingsModal({
       const savedFieldId = settingsQuery.data.anomalyLossReasonFieldId || '';
       setLossReasonFieldId(savedFieldId);
       setIgnoredReasons(settingsQuery.data.anomalyIgnoredReasons || []);
+      setAnomalySystemPrompt(settingsQuery.data.anomalySystemPrompt || '');
 
       // Auto-suggest rejection field if not set yet
       if (!savedFieldId && settingsQuery.data.customFields) {
@@ -169,6 +195,7 @@ export default function AiSettingsModal({
         qcDisabledPipelineIds: disabledPipelineIds,
         anomalyLossReasonFieldId: lossReasonFieldId || null,
         anomalyIgnoredReasons: ignoredReasons,
+        anomalySystemPrompt: anomalySystemPrompt.trim() ? anomalySystemPrompt.trim() : null,
       };
       if (token.trim()) {
         payload.aiToken = token.trim();
@@ -814,6 +841,47 @@ export default function AiSettingsModal({
                         ))}
                       </div>
                     )}
+                  </div>
+
+                  {/* Card 3: AI Forensic Investigator Prompt */}
+                  <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <label className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                          <Sparkles size={16} className="text-purple-600 dark:text-purple-400" />
+                          <span>{lang === 'uz' ? 'Raqamli tergovchi prompti (Anomaliyalar)' : 'Промпт цифрового следователя (Аномалии)'}</span>
+                        </label>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                          {lang === 'uz'
+                            ? 'Yo‘qotilgan bitimlarni tahlil qilish, menejer aybini aniqlash va xulosalar chiqarish qoidalarini sozlang.'
+                            : 'Инструкции для нейросети по арбитражу слитых сделок, правилам определения вины и формированию рекомендаций РОПу.'}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setAnomalySystemPrompt(DEFAULT_ANOMALY_SYSTEM_PROMPT)}
+                        className="px-3 py-1.5 text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/50 hover:bg-purple-200 rounded-xl border border-purple-200 dark:border-purple-800 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
+                      >
+                        <RotateCcw size={12} />
+                        <span>{lang === 'uz' ? 'Standart holatga qaytarish' : 'Сбросить на эталонный'}</span>
+                      </button>
+                    </div>
+
+                    <div className="pt-1">
+                      <textarea
+                        rows={10}
+                        value={anomalySystemPrompt}
+                        onChange={(e) => setAnomalySystemPrompt(e.target.value)}
+                        placeholder={DEFAULT_ANOMALY_SYSTEM_PROMPT}
+                        className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      />
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                        {lang === 'uz'
+                          ? 'Bo‘sh qoldirilsa, tizim standart etalon promptdan foydalanadi.'
+                          : 'Если оставить пустым, будет использоваться проверенный системный промпт по умолчанию.'}
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}

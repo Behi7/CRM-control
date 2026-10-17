@@ -295,6 +295,7 @@ async def get_ai_settings(account_id: int, db: AsyncSession = Depends(get_db)):
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids if (qc and qc.disabled_pipeline_ids is not None) else [],
         "anomalyLossReasonFieldId": anomaly_cfg.get("loss_reason_field_id"),
         "anomalyIgnoredReasons": anomaly_cfg.get("ignored_reasons", []),
+        "anomalySystemPrompt": anomaly_cfg.get("system_prompt"),
         "customFields": custom_fields,
     }
 
@@ -321,6 +322,8 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         cur_anomaly["loss_reason_field_id"] = dto.anomalyLossReasonFieldId.strip() if dto.anomalyLossReasonFieldId else None
     if dto.anomalyIgnoredReasons is not None:
         cur_anomaly["ignored_reasons"] = dto.anomalyIgnoredReasons
+    if dto.anomalySystemPrompt is not None:
+        cur_anomaly["system_prompt"] = dto.anomalySystemPrompt.strip() if dto.anomalySystemPrompt else None
     acc.anomaly_settings = cur_anomaly
     flag_modified(acc, "anomaly_settings")
 
@@ -362,6 +365,7 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids or [],
         "anomalyLossReasonFieldId": acc.anomaly_settings.get("loss_reason_field_id") if acc.anomaly_settings else None,
         "anomalyIgnoredReasons": acc.anomaly_settings.get("ignored_reasons", []) if acc.anomaly_settings else [],
+        "anomalySystemPrompt": acc.anomaly_settings.get("system_prompt") if acc.anomaly_settings else None,
     }
 
 @router.get("/notifications")

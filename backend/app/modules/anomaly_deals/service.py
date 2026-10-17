@@ -788,35 +788,40 @@ async def run_single_deal_audit(
     # В Gemini идем только при anomaly_score >= 40 (реальные нарушения) или если force_ai=True.
     effective_api_key = api_key if (audit_math["anomaly_score"] >= 40 or force_ai) else None
 
-    # Генерация вердикта
-    timeline_preview = [
-        {
-            "stage": stage_names.get(sh.stage_id, f"Этап #{sh.stage_id}"),
-            "duration_hours": round((sh.duration_seconds or 0) / 3600.0, 1),
-            "benchmark_hours": benchmarks.get(sh.stage_id, 24.0)
-        }
-        for sh in stage_history
-    ]
-    calls_preview = [
-        {
-            "date": c.call_date.strftime("%Y-%m-%d %H:%M") if c.call_date else "",
-            "duration_sec": c.duration_seconds,
-            "qc_score": c.overall_score,
-            "errors": c.errors_list
-        }
-        for c in calls
-    ]
+    # Извлекаем содержательные инсайты из Контроля Качества (QC)
+    qc_insights = []
+    for c in calls:
+        if c.summary or c.bottleneck or c.errors_list:
+            item = {
+                "date": c.call_date.strftime("%Y-%m-%d %H:%M") if c.call_date else "",
+                "duration_sec": c.duration_seconds,
+            }
+            if c.summary:
+                item["summary"] = c.summary
+            if c.bottleneck:
+                item["bottleneck"] = c.bottleneck
+            if c.errors_list:
+                item["errors"] = c.errors_list
+            qc_insights.append(item)
+        elif c.duration_seconds and c.duration_seconds >= 30:
+            qc_insights.append({
+                "date": c.call_date.strftime("%Y-%m-%d %H:%M") if c.call_date else "",
+                "duration_sec": c.duration_seconds,
+                "status": "Разговор состоялся, но не анализировался нейросетью в КК"
+            })
+        if len(qc_insights) >= 5:
+            break
+
+    custom_system_prompt = (anomaly_settings or {}).get("system_prompt")
 
     verdict = await generate_ai_forensic_verdict(
-        lead_name=lead.name or f"Сделка #{lead.id}",
-        price=float(lead.price or 0),
         stated_reason=stated_reason,
         audit_math=audit_math,
-        stage_timeline=timeline_preview,
-        calls_summary=calls_preview,
+        qc_insights=qc_insights,
         api_key=effective_api_key,
         model_name=model_name,
         company_context=company_context,
+        custom_system_prompt=custom_system_prompt,
     )
 
     # Применяем корректировку от ИИ

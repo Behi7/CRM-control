@@ -364,20 +364,43 @@ def audit_lead_math(
     }
 
 
+DEFAULT_ANOMALY_SYSTEM_PROMPT = """Ты — беспристрастный и опытный цифровой аудитор (следователь) отдела продаж для РОПа.
+Твоя задача — изучить досье слитой сделки из AmoCRM и вскрыть ПРАВДУ: кто виноват в потере сделки (клиент или менеджер) и почему.
+
+Контекст бизнеса:
+{company_context}
+
+ПРАВИЛА АРБИТРАЖА:
+1. Если менеджер указал отмазку ('Недозвон', 'Клиент передумал', 'Дорого'), но по факту не звонил или сделка неделями висела без движения — прямо разоблачи отмазку.
+2. ЕСЛИ по результатам Контроля Качества (QC) видно, что в разговоре менеджер допустил критические ошибки, проигнорировал возражения клиента или упустил инициативу — зафиксируй вину менеджера, даже если позже совершались звонки по уже потерянному клиенту.
+3. ЕСЛИ клиент объективно отказался сам (нет потребности, уехал, форс-мажор) или действительно не выходил на связь при добросовестных попытках менеджера (звонки в разные дни без нарушений регламента) — встань на защиту менеджера и сними с него вину.
+4. ОБРАТИ ВНИМАНИЕ НА ДИСЦИПЛИНУ ЗАДАЧ (tasks_metrics): если сделка провела большую часть времени без задач (tasks_idle_percent > 50%), укажи это как причину утери контакта и халатности менеджера.
+5. Укажи конкретную поворотную точку (pivot_point) — где и когда сделка фактически умерла.
+6. Дай РОПу четкую рекомендацию: стоит ли попытаться спасти лида другим менеджером или списать в архив.
+
+Верни ответ СТРОГО в формате JSON со следующими полями:
+{
+  "real_loss_reason": "краткая формулировка реальной причины слива (до 10 слов)",
+  "manager_guilt": "high" | "medium" | "none",
+  "pivot_point": "конкретная дата или момент потери сделки (1 предложение)",
+  "forensic_summary": "подробный аргументированный вердикт для РОПа (2-3 предложения)",
+  "rop_recommendation": "конкретное управленческое действие для РОПа (1-2 предложения)",
+  "score_adjustment": число (0 если согласен с математикой, -20 если менеджер старался и отказ объективен, +15 если вскрылся грубый обман или халатность)
+}"""
+
+
 async def generate_ai_forensic_verdict(
-    lead_name: str,
-    price: float,
     stated_reason: Optional[str],
     audit_math: Dict[str, Any],
-    stage_timeline: List[Dict[str, Any]],
-    calls_summary: List[Dict[str, Any]],
+    qc_insights: List[Dict[str, Any]],
     api_key: Optional[str] = None,
     model_name: Optional[str] = "gemini-2.5-flash",
     company_context: Optional[str] = None,
+    custom_system_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Генерирует интеллектуальный вердикт следователя (AI Forensic Verdict).
-    Если API ключ доступен — использует Gemini 2.5 Flash.
+    Если API ключ доступен — использует Gemini.
     Если недоступен — формирует высокоточный фактологический вердикт на основе эвристики.
     """
     # Fallback генератор (на случай отсутствия AI-токена)
@@ -446,40 +469,34 @@ async def generate_ai_forensic_verdict(
         clean_model = (model_name or "gemini-2.5-flash").strip().removeprefix("models/")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}"
 
+        breakdown = audit_math.get("breakdown", {})
         payload_context = {
-            "deal_name": lead_name,
-            "budget": price,
             "stated_reason": stated_reason or "Не указано",
             "anomaly_score": audit_math["anomaly_score"],
             "manager_fault_level": audit_math["manager_fault"],
             "effort_shield_active": audit_math.get("effort_shield_active", False),
-            "breakdown": audit_math.get("breakdown", {}),
-            "timeline": stage_timeline[:8],
-            "calls": calls_summary[:5],
+            "activity": {
+                "total_calls": breakdown.get("total_calls", 0),
+                "answered_calls": breakdown.get("answered_calls", 0),
+                "unique_call_days": breakdown.get("unique_call_days", 0),
+                "tasks_idle_percent": breakdown.get("tasks_metrics", {}).get("tasks_idle_percent", 0),
+                "max_idle_gap_hours": breakdown.get("tasks_metrics", {}).get("max_idle_gap_hours", 0),
+            },
+            "bottlenecks": [
+                f"Зависание на этапе '{s['stage_name']}': {s['duration_hours']} ч. (норма {s['benchmark_hours']} ч., превышение в {s['factor']} раз)"
+                for s in breakdown.get("stagnant_stages", [])
+            ],
+            "skipped_stages_count": breakdown.get("skipped_stages_count", 0),
+            "qc_insights": qc_insights,
         }
 
-        system_prompt = f"""Ты — беспристрастный и опытный цифровой аудитор (следователь) отдела продаж для РОПа.
-Твоя задача — изучить досье слитой сделки из AmoCRM и вскрыть ПРАВДУ: кто виноват в потере сделки (клиент или менеджер) и почему.
+        base_prompt = (custom_system_prompt or "").strip() or DEFAULT_ANOMALY_SYSTEM_PROMPT
+        ctx_text = company_context or "Стандартный B2B/B2C отдел продаж"
+        if "{company_context}" in base_prompt:
+            system_prompt = base_prompt.replace("{company_context}", ctx_text)
+        else:
+            system_prompt = f"{base_prompt}\n\nКонтекст бизнеса:\n{ctx_text}"
 
-Контекст бизнеса:
-{company_context or 'Стандартный B2B/B2C отдел продаж'}
-
-ПРАВИЛА АРБИТРАЖА:
-1. Если менеджер указал 'Дорого' / 'Клиент передумал', но по факту не звонил или сделка висела неделями без движения — прямо разоблачи отмазку.
-2. ЕСЛИ менеджер проявил добросовестность (сделал 4+ звонков в разные дни, но клиент не брал трубку) — ОБЯЗАТЕЛЬНО встань на защиту менеджера, сними с него вину и напиши, что отказ объективен.
-3. ОБРАТИ ВНИМАНИЕ НА ДИСЦИПЛИНУ ЗАДАЧ (tasks_metrics в breakdown): если сделка провела большую часть времени без задач (tasks_idle_percent > 50%), укажи это как причину утери контакта и халатности менеджера.
-4. Укажи конкретную поворотную точку (pivot_point) — где и когда сделка фактически умерла.
-5. Дай РОПу четкую рекомендацию: стоит ли попытаться спасти лида другим менеджером или списать в архив.
-
-Верни ответ СТРОГО в формате JSON со следующими полями:
-{{
-  "real_loss_reason": "краткая формулировка реальной причины слива (до 10 слов)",
-  "manager_guilt": "high" | "medium" | "none",
-  "pivot_point": "конкретная дата или момент потери сделки (1 предложение)",
-  "forensic_summary": "подробный аргументированный вердикт для РОПа (2-3 предложения)",
-  "rop_recommendation": "конкретное управленческое действие для РОПа (1-2 предложения)",
-  "score_adjustment": число (0 если согласен с математикой, -20 если менеджер старался и нужно смягчить, +15 если вскрылся грубый обман)
-}}"""
 
         req_body = {
             "contents": [
