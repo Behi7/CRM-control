@@ -44,6 +44,7 @@ class AnomalyDealListItemDto(BaseModel):
     keyFactor: str
     hasAiVerdict: bool
     isReviewed: bool
+    auditedAt: Optional[str] = None
 
 class AnomalyDealListResponseDto(BaseModel):
     items: List[AnomalyDealListItemDto]
@@ -107,6 +108,7 @@ class DealForensicDetailDto(BaseModel):
     calls: List[CallEvaluationSummaryDto] = []
     tasks: List[LeadTaskSummaryDto] = []
     isReviewed: bool
+    auditedAt: Optional[str] = None
 
 class AnalyzeBatchRequestDto(BaseModel):
     pipelineId: Optional[int] = None

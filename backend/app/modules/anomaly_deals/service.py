@@ -308,6 +308,7 @@ async def get_anomaly_deals_list(
                 keyFactor=key_factor,
                 hasAiVerdict=bool(audit.ai_verdict),
                 isReviewed=audit.is_reviewed,
+                auditedAt=audit.created_at.isoformat() if audit.created_at else None,
             )
         )
 
@@ -468,6 +469,7 @@ async def get_deal_forensic_detail(
         calls=calls_summary,
         tasks=tasks_summary,
         isReviewed=audit.is_reviewed,
+        auditedAt=audit.created_at.isoformat() if audit.created_at else None,
     )
 
 

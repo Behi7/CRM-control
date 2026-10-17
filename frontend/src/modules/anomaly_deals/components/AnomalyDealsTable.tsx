@@ -7,7 +7,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  UserX
+  UserX,
+  Clock
 } from 'lucide-react';
 import { AnomalyDealItem } from '../api/anomalyDeals.api';
 import { useLanguage } from '../../../i18n/LanguageContext';
@@ -45,6 +46,17 @@ export default function AnomalyDealsTable({
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('ru-RU').format(Math.round(val));
+  };
+
+  const formatAuditDate = (dateStr?: string) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    return d.toLocaleString(lang === 'uz' ? 'uz-UZ' : 'ru-RU', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const getScoreBadge = (score: number, level: string) => {
@@ -201,12 +213,24 @@ export default function AnomalyDealsTable({
                     >
                       {item.leadName}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500">
+                    <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[11px] text-slate-500">
                       <span className="font-semibold text-slate-700 dark:text-slate-300">
                         {formatCurrency(item.price)}
                       </span>
                       <span>•</span>
                       <span>{item.pipelineName || 'Основная воронка'}</span>
+                      {item.auditedAt && (
+                        <>
+                          <span>•</span>
+                          <span
+                            className="inline-flex items-center gap-1 text-slate-400 dark:text-slate-500"
+                            title={lang === 'uz' ? 'Tahlil qilingan vaqt' : 'Время проведения анализа'}
+                          >
+                            <Clock size={11} className="text-violet-500 dark:text-violet-400" />
+                            <span>{formatAuditDate(item.auditedAt)}</span>
+                          </span>
+                        </>
+                      )}
                     </div>
                   </td>
 

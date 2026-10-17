@@ -45,6 +45,7 @@ export interface AnomalyDealItem {
   keyFactor: string;
   hasAiVerdict: boolean;
   isReviewed: boolean;
+  auditedAt?: string;
 }
 
 export interface AnomalyDealListResponse {
@@ -113,6 +114,7 @@ export interface DealForensicDetail {
   calls: CallEvaluationSummary[];
   tasks?: LeadTaskSummary[];
   isReviewed: boolean;
+  auditedAt?: string;
 }
 
 export const anomalyDealsApi = {

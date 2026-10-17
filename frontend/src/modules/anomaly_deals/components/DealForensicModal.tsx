@@ -130,6 +130,25 @@ export default function DealForensicModal({
               <span>
                 {lang === 'uz' ? 'Voronka:' : 'Воронка:'} <b>{detail.pipelineName || '—'}</b>
               </span>
+              {detail.auditedAt && (
+                <>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1 text-slate-500">
+                    <Clock size={12} className="text-violet-500" />
+                    <span>
+                      {lang === 'uz' ? 'Tahlil vaqti:' : 'Проанализирована:'}{' '}
+                      <b className="text-slate-700 dark:text-slate-300">
+                        {new Date(detail.auditedAt).toLocaleString(lang === 'uz' ? 'uz-UZ' : 'ru-RU', {
+                          day: 'numeric',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </b>
+                    </span>
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
