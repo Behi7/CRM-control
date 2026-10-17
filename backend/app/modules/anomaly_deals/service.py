@@ -228,6 +228,7 @@ async def get_anomaly_deals_list(
     anomaly_level: Optional[str] = None,
     min_price: Optional[float] = None,
     search: Optional[str] = None,
+    sort_by: Optional[str] = "newest",
     page: int = 1,
     page_size: int = 20,
 ) -> AnomalyDealListResponseDto:
@@ -281,8 +282,18 @@ async def get_anomaly_deals_list(
         .outerjoin(AmoUser, DealAnomalyAudit.responsible_user_id == AmoUser.id)
         .where(and_(*filters))
         .order_by(
-            desc(DealAnomalyAudit.anomaly_score),
-            desc(Lead.price)
+            *(
+                [desc(DealAnomalyAudit.anomaly_score), desc(Lead.price), desc(DealAnomalyAudit.id)]
+                if sort_by == "score"
+                else (
+                    [desc(Lead.price), desc(DealAnomalyAudit.anomaly_score), desc(DealAnomalyAudit.id)]
+                    if sort_by == "price"
+                    else [
+                        desc(func.coalesce(DealAnomalyAudit.updated_at, DealAnomalyAudit.created_at)),
+                        desc(DealAnomalyAudit.id)
+                    ]
+                )
+            )
         )
         .offset(offset)
         .limit(page_size)
@@ -302,6 +313,7 @@ async def get_anomaly_deals_list(
 
         breakdown = audit.score_breakdown or {}
         key_factor = breakdown.get("key_factor") or audit.real_loss_reason or "Требует проверки РОПа"
+        audited_dt = audit.updated_at or audit.created_at
 
         items.append(
             AnomalyDealListItemDto(
@@ -323,7 +335,7 @@ async def get_anomaly_deals_list(
                 keyFactor=key_factor,
                 hasAiVerdict=bool(audit.ai_verdict),
                 isReviewed=audit.is_reviewed,
-                auditedAt=audit.created_at.isoformat() if audit.created_at else None,
+                auditedAt=audited_dt.isoformat() if audited_dt else None,
             )
         )
 

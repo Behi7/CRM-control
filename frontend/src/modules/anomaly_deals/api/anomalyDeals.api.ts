@@ -131,6 +131,7 @@ export const anomalyDealsApi = {
       level?: string;
       minPrice?: number;
       search?: string;
+      sortBy?: 'newest' | 'score' | 'price';
       page?: number;
       pageSize?: number;
     } = {}
@@ -141,6 +142,7 @@ export const anomalyDealsApi = {
     if (params.level && params.level !== 'all') query.set('level', params.level);
     if (params.minPrice) query.set('minPrice', String(params.minPrice));
     if (params.search && params.search.trim()) query.set('search', params.search.trim());
+    if (params.sortBy) query.set('sortBy', params.sortBy);
     if (params.page) query.set('page', String(params.page));
     if (params.pageSize) query.set('pageSize', String(params.pageSize));
 

@@ -11,6 +11,7 @@ import {
   Clock,
   Search,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { AnomalyDealItem } from '../api/anomalyDeals.api';
 import { useLanguage } from '../../../i18n/LanguageContext';
@@ -23,6 +24,8 @@ interface AnomalyDealsTableProps {
   isLoading: boolean;
   levelFilter: 'all' | 'critical' | 'warning' | 'fair';
   onLevelFilterChange: (level: 'all' | 'critical' | 'warning' | 'fair') => void;
+  sortBy?: 'newest' | 'score' | 'price';
+  onSortByChange?: (val: 'newest' | 'score' | 'price') => void;
   onPageChange: (page: number) => void;
   onSelectLead: (leadId: number) => void;
   selectedManagerName?: string | null;
@@ -39,6 +42,8 @@ export default function AnomalyDealsTable({
   isLoading,
   levelFilter,
   onLevelFilterChange,
+  sortBy = 'newest',
+  onSortByChange,
   onPageChange,
   onSelectLead,
   selectedManagerName,
@@ -55,6 +60,26 @@ export default function AnomalyDealsTable({
   const formatAuditDate = (dateStr?: string) => {
     if (!dateStr) return null;
     const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const isToday = d.toDateString() === now.toDateString();
+
+    if (diffMins >= 0 && diffMins < 60) {
+      return diffMins <= 1
+        ? (lang === 'uz' ? 'Hozirgina' : 'Только что')
+        : `${diffMins} ${lang === 'uz' ? 'daq. oldin' : 'мин. назад'}`;
+    }
+
+    const timeStr = d.toLocaleTimeString(lang === 'uz' ? 'uz-UZ' : 'ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    if (isToday) {
+      return (lang === 'uz' ? 'Bugun, ' : 'Сегодня, ') + timeStr;
+    }
+
     return d.toLocaleString(lang === 'uz' ? 'uz-UZ' : 'ru-RU', {
       day: 'numeric',
       month: 'short',
@@ -139,6 +164,37 @@ export default function AnomalyDealsTable({
                   <X size={13} />
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Переключатель сортировки (Свежие / Критичность) */}
+          {onSortByChange && (
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold shrink-0">
+              <button
+                onClick={() => onSortByChange('newest')}
+                className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  sortBy === 'newest'
+                    ? 'bg-white dark:bg-slate-900 text-violet-600 dark:text-violet-400 shadow-xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+                title={lang === 'uz' ? 'Eng yangi tahlillar yuqorida' : 'Сначала самые свежие анализы'}
+              >
+                <Sparkles size={13} className={sortBy === 'newest' ? 'text-violet-600 dark:text-violet-400' : 'text-slate-400'} />
+                <span>{lang === 'uz' ? 'Yangi' : 'Свежие (AI)'}</span>
+              </button>
+
+              <button
+                onClick={() => onSortByChange('score')}
+                className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  sortBy === 'score'
+                    ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+                title={lang === 'uz' ? 'Anomaliya darajasi bo‘yicha' : 'По уровню аномалии'}
+              >
+                <Flame size={13} className={sortBy === 'score' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'} />
+                <span>{lang === 'uz' ? 'Xatar' : 'Критичность'}</span>
+              </button>
             </div>
           )}
 
@@ -253,10 +309,10 @@ export default function AnomalyDealsTable({
                         <>
                           <span>•</span>
                           <span
-                            className="inline-flex items-center gap-1 text-slate-400 dark:text-slate-500"
-                            title={lang === 'uz' ? 'Tahlil qilingan vaqt' : 'Время проведения анализа'}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20"
+                            title={lang === 'uz' ? 'AI tahlil qilingan vaqt' : 'Время проведения AI анализа'}
                           >
-                            <Clock size={11} className="text-violet-500 dark:text-violet-400" />
+                            <Sparkles size={10} className="text-violet-500 shrink-0" />
                             <span>{formatAuditDate(item.auditedAt)}</span>
                           </span>
                         </>

@@ -56,6 +56,7 @@ export default function AnomalyDealsPage() {
 
   // Локальные фильтры
   const [levelFilter, setLevelFilter] = useState<'all' | 'critical' | 'warning' | 'fair'>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'score' | 'price'>('newest');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -82,7 +83,7 @@ export default function AnomalyDealsPage() {
     refetchInterval: 30_000,
   });
 
-  // Запрос списка сделок с поиском
+  // Запрос списка сделок с поиском и сортировкой
   const listQuery = useQuery({
     queryKey: [
       'anomaly-deals-list',
@@ -92,6 +93,7 @@ export default function AnomalyDealsPage() {
       applied.pipelineId,
       effectiveManagerId,
       debouncedSearch,
+      sortBy,
     ],
     queryFn: () =>
       anomalyDealsApi.getList(accountId, {
@@ -101,6 +103,7 @@ export default function AnomalyDealsPage() {
         pipelineId: applied.pipelineId || undefined,
         managerId: effectiveManagerId,
         search: debouncedSearch || undefined,
+        sortBy,
       }),
     refetchInterval: 30_000,
   });
@@ -199,6 +202,11 @@ export default function AnomalyDealsPage() {
             levelFilter={levelFilter}
             onLevelFilterChange={(lvl) => {
               setLevelFilter(lvl);
+              setPage(1);
+            }}
+            sortBy={sortBy}
+            onSortByChange={(s) => {
+              setSortBy(s);
               setPage(1);
             }}
             onPageChange={(p) => setPage(p)}
