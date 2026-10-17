@@ -10,7 +10,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.database import AsyncSessionLocal
 from app.models import (
-    Account, Lead, Pipeline, Stage, AmoUser,
+    Account, Lead, Pipeline, Stage, AmoUser, Tag, LeadTag,
     LeadStageHistory, LeadStageSkip, QcCallEvaluation, DealAnomalyAudit, LeadTask
 )
 from app.core.security import decrypt_token
@@ -24,24 +24,88 @@ from app.modules.anomaly_deals.engine import (
 
 logger = logging.getLogger("AnomalyService")
 
+
+def parse_date_param(d_str: Optional[str], is_end: bool = False) -> Optional[datetime]:
+    if not d_str:
+        return None
+    d_clean = d_str.strip()
+    if not d_clean:
+        return None
+    try:
+        if "T" in d_clean:
+            dt = datetime.fromisoformat(d_clean.replace("Z", "+00:00"))
+        else:
+            time_part = "23:59:59+00:00" if is_end else "00:00:00+00:00"
+            dt = datetime.fromisoformat(f"{d_clean}T{time_part}")
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def parse_ids_list(ids_str: Optional[str]) -> List[int]:
+    if not ids_str:
+        return []
+    res = []
+    for x in ids_str.split(","):
+        x = x.strip()
+        if x.isdigit():
+            res.append(int(x))
+    return res
+
+
 async def get_anomaly_stats(
     session: AsyncSession,
     account_id: int,
-    pipeline_id: Optional[int] = None
+    pipeline_id: Optional[int] = None,
+    managers: Optional[str] = None,
+    manager_id: Optional[int] = None,
+    tags: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> AnomalyStatsDto:
-    """Возвращает сводные KPI потерь и сливов для РОПа."""
+    """Возвращает сводные KPI потерь и сливов для РОПа с учетом фильтров."""
+    m_ids = parse_ids_list(managers)
+    if not m_ids and manager_id:
+        m_ids = [manager_id]
+    t_ids = parse_ids_list(tags)
+    d_from = parse_date_param(date_from, is_end=False)
+    d_to = parse_date_param(date_to, is_end=True)
+
     lead_filters = [Lead.account_id == account_id, Lead.status == "lost"]
     audit_filters = [DealAnomalyAudit.account_id == account_id]
+
     if pipeline_id:
         lead_filters.append(Lead.pipeline_id == pipeline_id)
         audit_filters.append(DealAnomalyAudit.pipeline_id == pipeline_id)
+
+    if m_ids:
+        lead_filters.append(Lead.responsible_user_id.in_(m_ids))
+        audit_filters.append(DealAnomalyAudit.responsible_user_id.in_(m_ids))
+
+    if t_ids:
+        tag_subq = select(LeadTag.lead_id).where(LeadTag.tag_id.in_(t_ids))
+        lead_filters.append(Lead.id.in_(tag_subq))
+        audit_filters.append(DealAnomalyAudit.lead_id.in_(tag_subq))
+
+    if d_from:
+        lead_filters.append(func.coalesce(Lead.crm_closed_at, Lead.crm_created_at) >= d_from)
+        audit_filters.append(func.coalesce(Lead.crm_closed_at, DealAnomalyAudit.created_at) >= d_from)
+    if d_to:
+        lead_filters.append(func.coalesce(Lead.crm_closed_at, Lead.crm_created_at) <= d_to)
+        audit_filters.append(func.coalesce(Lead.crm_closed_at, DealAnomalyAudit.created_at) <= d_to)
 
     # 1. Общее количество закрытых в отказ сделок
     lost_count_stmt = select(func.count(Lead.id)).where(and_(*lead_filters))
     total_lost = (await session.execute(lost_count_stmt)).scalar() or 0
 
     # 2. Количество проаудированных
-    audits_count_stmt = select(func.count(DealAnomalyAudit.id)).where(and_(*audit_filters))
+    audits_count_stmt = (
+        select(func.count(DealAnomalyAudit.id))
+        .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
+        .where(and_(*audit_filters))
+    )
     total_audited = (await session.execute(audits_count_stmt)).scalar() or 0
 
     # 3. Критические сливы
@@ -146,6 +210,7 @@ async def get_anomaly_stats(
             func.coalesce(DealAnomalyAudit.real_loss_reason, "Нарушение регламента").label("reason"),
             func.count(DealAnomalyAudit.id).label("cnt")
         )
+        .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
         .where(
             and_(
                 *audit_filters,
@@ -225,6 +290,10 @@ async def get_anomaly_deals_list(
     account_id: int,
     pipeline_id: Optional[int] = None,
     responsible_user_id: Optional[int] = None,
+    managers: Optional[str] = None,
+    tags: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     anomaly_level: Optional[str] = None,
     min_price: Optional[float] = None,
     search: Optional[str] = None,
@@ -237,8 +306,26 @@ async def get_anomaly_deals_list(
 
     if pipeline_id:
         filters.append(DealAnomalyAudit.pipeline_id == pipeline_id)
-    if responsible_user_id:
-        filters.append(DealAnomalyAudit.responsible_user_id == responsible_user_id)
+
+    m_ids = parse_ids_list(managers)
+    if not m_ids and responsible_user_id:
+        m_ids = [responsible_user_id]
+    if m_ids:
+        filters.append(DealAnomalyAudit.responsible_user_id.in_(m_ids))
+
+    t_ids = parse_ids_list(tags)
+    if t_ids:
+        tag_subq = select(LeadTag.lead_id).where(LeadTag.tag_id.in_(t_ids))
+        filters.append(Lead.id.in_(tag_subq))
+
+    d_from = parse_date_param(date_from, is_end=False)
+    if d_from:
+        filters.append(func.coalesce(Lead.crm_closed_at, DealAnomalyAudit.created_at) >= d_from)
+
+    d_to = parse_date_param(date_to, is_end=True)
+    if d_to:
+        filters.append(func.coalesce(Lead.crm_closed_at, DealAnomalyAudit.created_at) <= d_to)
+
     if anomaly_level:
         filters.append(DealAnomalyAudit.anomaly_level == anomaly_level)
     if min_price:

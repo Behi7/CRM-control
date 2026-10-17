@@ -23,17 +23,35 @@ def check_account_access(user: dict, account_id: int):
 async def anomaly_stats_endpoint(
     account_id: int,
     pipeline_id: Optional[int] = Query(None, alias="pipelineId"),
+    managers: Optional[str] = Query(None),
+    manager_id: Optional[int] = Query(None, alias="managerId"),
+    tags: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None, alias="dateFrom"),
+    date_to: Optional[str] = Query(None, alias="dateTo"),
     session: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
     check_account_access(user, account_id)
-    return await get_anomaly_stats(session, account_id, pipeline_id=pipeline_id)
+    return await get_anomaly_stats(
+        session=session,
+        account_id=account_id,
+        pipeline_id=pipeline_id,
+        managers=managers,
+        manager_id=manager_id,
+        tags=tags,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 @router.get("/accounts/{account_id}/anomaly-deals/list", response_model=AnomalyDealListResponseDto)
 async def anomaly_deals_list_endpoint(
     account_id: int,
     pipeline_id: Optional[int] = Query(None, alias="pipelineId"),
     responsible_user_id: Optional[int] = Query(None, alias="managerId"),
+    managers: Optional[str] = Query(None),
+    tags: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None, alias="dateFrom"),
+    date_to: Optional[str] = Query(None, alias="dateTo"),
     anomaly_level: Optional[str] = Query(None, alias="level"),
     min_price: Optional[float] = Query(None, alias="minPrice"),
     search: Optional[str] = Query(None),
@@ -49,6 +67,10 @@ async def anomaly_deals_list_endpoint(
         account_id=account_id,
         pipeline_id=pipeline_id,
         responsible_user_id=responsible_user_id,
+        managers=managers,
+        tags=tags,
+        date_from=date_from,
+        date_to=date_to,
         anomaly_level=anomaly_level,
         min_price=min_price,
         search=search,

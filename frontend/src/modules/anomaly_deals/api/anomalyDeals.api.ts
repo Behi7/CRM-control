@@ -118,9 +118,27 @@ export interface DealForensicDetail {
 }
 
 export const anomalyDealsApi = {
-  getStats: (accountId: number, pipelineId?: number) => {
-    const qs = pipelineId ? `?pipelineId=${pipelineId}` : '';
-    return baseApi<AnomalyStats>(`/accounts/${accountId}/anomaly-deals/stats${qs}`);
+  getStats: (
+    accountId: number,
+    params: {
+      pipelineId?: number;
+      managers?: number[];
+      tags?: number[];
+      dateFrom?: string;
+      dateTo?: string;
+    } = {}
+  ) => {
+    const query = new URLSearchParams();
+    if (params.pipelineId) query.set('pipelineId', String(params.pipelineId));
+    if (params.managers && params.managers.length > 0) query.set('managers', params.managers.join(','));
+    if (params.tags && params.tags.length > 0) query.set('tags', params.tags.join(','));
+    if (params.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params.dateTo) query.set('dateTo', params.dateTo);
+
+    const qs = query.toString();
+    return baseApi<AnomalyStats>(
+      `/accounts/${accountId}/anomaly-deals/stats${qs ? `?${qs}` : ''}`
+    );
   },
 
   getList: (
@@ -128,6 +146,10 @@ export const anomalyDealsApi = {
     params: {
       pipelineId?: number;
       managerId?: number;
+      managers?: number[];
+      tags?: number[];
+      dateFrom?: string;
+      dateTo?: string;
       level?: string;
       minPrice?: number;
       search?: string;
@@ -139,6 +161,10 @@ export const anomalyDealsApi = {
     const query = new URLSearchParams();
     if (params.pipelineId) query.set('pipelineId', String(params.pipelineId));
     if (params.managerId) query.set('managerId', String(params.managerId));
+    if (params.managers && params.managers.length > 0) query.set('managers', params.managers.join(','));
+    if (params.tags && params.tags.length > 0) query.set('tags', params.tags.join(','));
+    if (params.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params.dateTo) query.set('dateTo', params.dateTo);
     if (params.level && params.level !== 'all') query.set('level', params.level);
     if (params.minPrice) query.set('minPrice', String(params.minPrice));
     if (params.search && params.search.trim()) query.set('search', params.search.trim());

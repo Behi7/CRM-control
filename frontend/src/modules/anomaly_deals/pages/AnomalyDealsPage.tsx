@@ -71,15 +71,44 @@ export default function AnomalyDealsPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Эффективный менеджер для списка сделок
-  const effectiveManagerId = selectedManagerId !== null
-    ? selectedManagerId
-    : (applied.managerIds.length === 1 ? applied.managerIds[0] : undefined);
+  // Сброс страницы при смене глобальных фильтров
+  useEffect(() => {
+    setPage(1);
+  }, [applied.pipelineId, applied.managerIds, applied.tagIds, applied.dateFrom, applied.dateTo]);
+
+  // Если выбранный на карточке менеджер был исключен из верхнего фильтра — сбрасываем локальный выбор
+  useEffect(() => {
+    if (selectedManagerId !== null && applied.managerIds.length > 0 && !applied.managerIds.includes(selectedManagerId)) {
+      setSelectedManagerId(null);
+    }
+  }, [applied.managerIds]);
+
+  // Эффективный список менеджеров для таблицы сделок:
+  // Если кликнули по карточке конкретного менеджера внизу — фильтруем по нему.
+  // Иначе берем выборку менеджеров из верхнего FilterBar.
+  const effectiveManagerIds = selectedManagerId !== null
+    ? [selectedManagerId]
+    : (applied.managerIds.length > 0 ? applied.managerIds : undefined);
 
   // Запрос сводных KPI и статистики
   const statsQuery = useQuery({
-    queryKey: ['anomaly-stats', accountId, applied.pipelineId],
-    queryFn: () => anomalyDealsApi.getStats(accountId, applied.pipelineId || undefined),
+    queryKey: [
+      'anomaly-stats',
+      accountId,
+      applied.pipelineId,
+      applied.managerIds,
+      applied.tagIds,
+      applied.dateFrom,
+      applied.dateTo,
+    ],
+    queryFn: () =>
+      anomalyDealsApi.getStats(accountId, {
+        pipelineId: applied.pipelineId || undefined,
+        managers: applied.managerIds.length > 0 ? applied.managerIds : undefined,
+        tags: applied.tagIds.length > 0 ? applied.tagIds : undefined,
+        dateFrom: applied.dateFrom || undefined,
+        dateTo: applied.dateTo || undefined,
+      }),
     refetchInterval: 30_000,
   });
 
@@ -91,7 +120,10 @@ export default function AnomalyDealsPage() {
       page,
       levelFilter,
       applied.pipelineId,
-      effectiveManagerId,
+      effectiveManagerIds,
+      applied.tagIds,
+      applied.dateFrom,
+      applied.dateTo,
       debouncedSearch,
       sortBy,
     ],
@@ -101,7 +133,10 @@ export default function AnomalyDealsPage() {
         pageSize: 15,
         level: levelFilter !== 'all' ? levelFilter : undefined,
         pipelineId: applied.pipelineId || undefined,
-        managerId: effectiveManagerId,
+        managers: effectiveManagerIds,
+        tags: applied.tagIds.length > 0 ? applied.tagIds : undefined,
+        dateFrom: applied.dateFrom || undefined,
+        dateTo: applied.dateTo || undefined,
         search: debouncedSearch || undefined,
         sortBy,
       }),
