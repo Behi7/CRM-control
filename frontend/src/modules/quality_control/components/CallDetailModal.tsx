@@ -25,7 +25,7 @@ interface CallDetailModalProps {
 
 export default function CallDetailModal({ accountId, callId, onClose }: CallDetailModalProps) {
   const { lang } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'verdict' | 'checklist' | 'transcript'>('verdict');
+  const [activeTab, setActiveTab] = useState<'verdict' | 'checklist'>('verdict');
 
   const { data: call, isLoading } = useQuery({
     queryKey: ['qc-call-detail', accountId, callId],
@@ -155,22 +155,12 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
             }`}
           >
-            {lang === 'uz' ? 'Reglament tekshiruvi' : 'Чек-лист регламента'}
+            {lang === 'uz' ? 'Reglament va xronologiya' : 'Чек-лист и хронология'}
             {call.rulesBreakdown && (
               <span className="px-1.5 py-0.2 rounded-full text-xs bg-slate-100 dark:bg-slate-800 text-slate-600">
                 {call.rulesBreakdown.length}
               </span>
             )}
-          </button>
-          <button
-            onClick={() => setActiveTab('transcript')}
-            className={`py-3 font-semibold border-b-2 cursor-pointer transition-colors ${
-              activeTab === 'transcript'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
-            }`}
-          >
-            {lang === 'uz' ? 'Xronologiya (Timeline)' : 'Хронология диалога'}
           </button>
         </div>
 
@@ -307,44 +297,6 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
             </div>
           )}
 
-          {activeTab === 'transcript' && (
-            <div>
-              {call.transcript ? (
-                <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800 font-sans text-xs text-slate-800 dark:text-slate-200 leading-relaxed max-h-[450px] overflow-y-auto space-y-2.5">
-                  {call.transcript.split('\n').filter(Boolean).map((line, idx) => {
-                    const match = line.match(/^\[(.*?)\]\s*(.*?):\s*(.*)$/);
-                    if (match) {
-                      const [, time, stage, event] = match;
-                      return (
-                        <div key={idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800">
-                          <span className="px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 shrink-0">
-                            {time}
-                          </span>
-                          <div className="min-w-0">
-                            <span className="font-semibold text-slate-900 dark:text-slate-100 mr-1.5">
-                              {stage}:
-                            </span>
-                            <span className="text-slate-600 dark:text-slate-300">
-                              {event}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return (
-                      <p key={idx} className="whitespace-pre-wrap">
-                        {line}
-                      </p>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-sm text-slate-400">
-                  {lang === 'uz' ? 'Xronologiya ma\'lumotlari yo\'q' : 'Хронология для этого звонка отсутствует'}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>
