@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import httpx
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -323,6 +324,104 @@ async def get_anomaly_deals_list(
     )
 
 
+async def ensure_lead_calls_synced(
+    session: AsyncSession,
+    account_id: int,
+    lead: Lead
+) -> None:
+    """
+    On-Demand подгрузка звонков по конкретной сделке из AmoCRM,
+    если в локальной БД пока 0 звонков.
+    """
+    if not lead or not lead.external_id:
+        return
+
+    try:
+        acc_stmt = select(Account).where(Account.id == account_id)
+        acc = (await session.execute(acc_stmt)).scalar_one_or_none()
+        if not acc or not acc.encrypted_token or acc.status != "connected":
+            return
+
+        token = decrypt_token(acc.encrypted_token)
+        if not token:
+            return
+
+        headers = {"Authorization": f"Bearer {token}"}
+        url = f"https://{acc.subdomain}.{acc.base_domain}/api/v4/leads/{lead.external_id}/notes"
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                url,
+                headers=headers,
+                params={"filter[note_type]": "call_in,call_out", "limit": 250}
+            )
+            if resp.status_code != 200 or not resp.text:
+                return
+
+            notes = resp.json().get("_embedded", {}).get("notes", [])
+            if not notes:
+                return
+
+            call_notes = [n for n in notes if n.get("note_type") in ("call_in", "call_out")]
+            if not call_notes:
+                return
+
+            now_utc = datetime.now(timezone.utc)
+            records = []
+            for n in call_notes:
+                note_id = str(n.get("id"))
+                params = n.get("params") or {}
+                duration = int(params.get("duration") or 0)
+                raw_link = params.get("link")
+                link = raw_link.strip() if isinstance(raw_link, str) and raw_link.strip().startswith("http") else None
+                phone = str(params.get("phone") or "")
+                direction = "in" if n.get("note_type") == "call_in" else "out"
+                ts = n.get("created_at") or int(now_utc.timestamp())
+                call_date = datetime.fromtimestamp(ts, tz=timezone.utc)
+                call_status = params.get("call_status")
+
+                status = "skipped_historical"
+                skip_reason = "Архивный звонок"
+                if call_status is not None:
+                    try:
+                        cs_int = int(call_status)
+                        if cs_int != 4:
+                            status = "skipped_not_answered"
+                            skip_reason = "Разговор не состоялся"
+                    except (ValueError, TypeError):
+                        pass
+                if status != "skipped_not_answered" and not link:
+                    status = "skipped_no_audio"
+                    skip_reason = "Нет ссылки на аудиозапись"
+
+                records.append({
+                    "account_id": account_id,
+                    "external_call_id": note_id,
+                    "lead_id": lead.id,
+                    "pipeline_id": lead.pipeline_id,
+                    "amo_user_id": lead.responsible_user_id,
+                    "phone": phone,
+                    "call_direction": direction,
+                    "call_date": call_date,
+                    "duration_seconds": duration,
+                    "recording_url": link,
+                    "status": status,
+                    "skip_reason": skip_reason,
+                    "created_at": now_utc,
+                })
+
+            if records:
+                insert_stmt = insert(QcCallEvaluation).values(records).on_conflict_do_nothing(
+                    index_elements=["account_id", "external_call_id"]
+                )
+                await session.execute(insert_stmt)
+                await session.commit()
+                logger.info(f"On-demand synced {len(records)} calls for lead #{lead.id} ({lead.name})")
+
+    except Exception as e:
+        logger.warning(f"Failed on-demand call sync for lead #{lead.id}: {e}")
+
+
 async def get_deal_forensic_detail(
     session: AsyncSession,
     account_id: int,
@@ -410,6 +509,9 @@ async def get_deal_forensic_detail(
         .order_by(QcCallEvaluation.call_date.asc())
     )
     calls_rows = (await session.execute(calls_stmt)).scalars().all()
+    if not calls_rows:
+        await ensure_lead_calls_synced(session, account_id, lead)
+        calls_rows = (await session.execute(calls_stmt)).scalars().all()
     calls_summary = [
         CallEvaluationSummaryDto(
             id=c.id,
@@ -657,6 +759,9 @@ async def run_single_deal_audit(
     # Загружаем звонки
     calls_stmt = select(QcCallEvaluation).where(QcCallEvaluation.account_id == account_id, QcCallEvaluation.lead_id == lead.id)
     calls = (await session.execute(calls_stmt)).scalars().all()
+    if not calls:
+        await ensure_lead_calls_synced(session, account_id, lead)
+        calls = (await session.execute(calls_stmt)).scalars().all()
 
     # Загружаем задачи по сделке
     tasks_stmt = (

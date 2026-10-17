@@ -308,6 +308,15 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
             )
             await session.commit()
 
+        # 4.1 Sync historical calls and tasks
+        try:
+            from app.sync.calls_sync import run_calls_sync
+            from app.sync.tasks_sync import run_tasks_sync
+            await run_calls_sync(session, account_id)
+            await run_tasks_sync(session, account_id)
+        except Exception as e:
+            logger.warning(f"Non-critical: calls/tasks sync during backfill failed: {e}")
+
         # 5. Mark backfill complete
         await session.execute(
             update(Account)

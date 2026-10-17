@@ -12,27 +12,64 @@ def test_call_status_descriptions_mapping():
     assert "Не дозвонился" in CALL_STATUS_DESCRIPTIONS[6]
 
 async def test_run_calls_sync_disabled_qc(db_session, sample_account):
-    qc = QcSettings(account_id=sample_account.id, is_enabled=False)
+    now = datetime.now(timezone.utc)
+    qc = QcSettings(account_id=sample_account.id, is_enabled=False, last_call_synced_at=now - timedelta(minutes=10))
+    sample_account.anomaly_settings = {"calls_backfill_done": True}
     db_session.add(qc)
     await db_session.commit()
 
-    ok = await run_calls_sync(db_session, sample_account.id)
-    assert ok is False
+    notes_data = {
+        "_embedded": {
+            "notes": [
+                {
+                    "id": 9901,
+                    "note_type": "call_in",
+                    "created_at": int(now.timestamp()),
+                    "params": {"duration": 65, "link": "https://rec.mp3", "call_status": 4},
+                }
+            ]
+        }
+    }
+
+    with patch("app.sync.calls_sync.crm_client.request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = (200, notes_data)
+        ok = await run_calls_sync(db_session, sample_account.id)
+        assert ok is True
+
+        call = (await db_session.execute(
+            select(QcCallEvaluation).where(
+                QcCallEvaluation.account_id == sample_account.id,
+                QcCallEvaluation.external_call_id == "9901",
+            )
+        )).scalar_one()
+        assert call.status == "skipped_qc_disabled"
 
 async def test_run_calls_sync_missing_qc_settings(db_session, sample_account):
-    ok = await run_calls_sync(db_session, sample_account.id)
-    assert ok is False
+    sample_account.anomaly_settings = {"calls_backfill_done": True}
+    await db_session.commit()
+
+    with patch("app.sync.calls_sync.crm_client.request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = (204, None)
+        ok = await run_calls_sync(db_session, sample_account.id)
+        assert ok is True
+
+        qc = (await db_session.execute(
+            select(QcSettings).where(QcSettings.account_id == sample_account.id)
+        )).scalar_one_or_none()
+        assert qc is not None
 
 async def test_run_calls_sync_baseline_initialization(db_session, sample_account):
     qc = QcSettings(account_id=sample_account.id, is_enabled=True, last_call_synced_at=None)
     db_session.add(qc)
     await db_session.commit()
 
-    ok = await run_calls_sync(db_session, sample_account.id)
-    assert ok is True
+    with patch("app.sync.calls_sync.crm_client.request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = (204, None)
+        ok = await run_calls_sync(db_session, sample_account.id)
+        assert ok is True
 
-    await db_session.refresh(qc)
-    assert qc.last_call_synced_at is not None
+        await db_session.refresh(qc)
+        assert qc.last_call_synced_at is not None
 
 async def test_run_calls_sync_success_pending_call(db_session, sample_account):
     now = datetime.now(timezone.utc)
@@ -44,6 +81,7 @@ async def test_run_calls_sync_success_pending_call(db_session, sample_account):
         last_call_synced_at=now - timedelta(minutes=10),
     )
     pipe = Pipeline(account_id=sample_account.id, external_id="10", name="Sales")
+    sample_account.anomaly_settings = {"calls_backfill_done": True}
     db_session.add_all([qc, pipe])
     await db_session.commit()
     await db_session.refresh(pipe)
@@ -101,6 +139,7 @@ async def test_run_calls_sync_success_pending_call(db_session, sample_account):
 async def test_run_calls_sync_filter_reasons(db_session, sample_account):
     now = datetime.now(timezone.utc)
     pipe_disabled = Pipeline(account_id=sample_account.id, external_id="999", name="Disabled Pipe")
+    sample_account.anomaly_settings = {"calls_backfill_done": True}
     db_session.add(pipe_disabled)
     await db_session.commit()
     await db_session.refresh(pipe_disabled)
@@ -192,6 +231,7 @@ async def test_run_calls_sync_filter_reasons(db_session, sample_account):
 async def test_run_calls_sync_deduplication(db_session, sample_account):
     now = datetime.now(timezone.utc)
     qc = QcSettings(account_id=sample_account.id, is_enabled=True, last_call_synced_at=now - timedelta(minutes=5))
+    sample_account.anomaly_settings = {"calls_backfill_done": True}
     existing_call = QcCallEvaluation(
         account_id=sample_account.id,
         external_call_id="call_dup_1",
@@ -229,6 +269,7 @@ async def test_run_calls_sync_deduplication(db_session, sample_account):
 async def test_run_calls_sync_skip_non_call_and_old_call_and_bad_call_status(db_session, sample_account):
     now = datetime.now(timezone.utc)
     qc = QcSettings(account_id=sample_account.id, is_enabled=True, last_call_synced_at=now - timedelta(minutes=5))
+    sample_account.anomaly_settings = {"calls_backfill_done": True}
     db_session.add(qc)
     await db_session.commit()
 
@@ -237,12 +278,12 @@ async def test_run_calls_sync_skip_non_call_and_old_call_and_bad_call_status(db_
             "notes": [
                 # 1. non call
                 {"id": 5001, "note_type": "common", "created_at": int(now.timestamp())},
-                # 2. old call prior to window
+                # 2. old call prior to window (saved as skipped_historical)
                 {
                     "id": 5002,
                     "note_type": "call_in",
-                    "created_at": int((now - timedelta(days=2)).timestamp()),
-                    "params": {"duration": 60, "link": "https://rec.mp3"},
+                    "created_at": int((now - timedelta(days=5)).timestamp()),
+                    "params": {"duration": 60, "link": "https://rec.mp3", "call_status": 4},
                 },
                 # 3. invalid call status string (e.g. "not-an-int")
                 {
@@ -260,6 +301,11 @@ async def test_run_calls_sync_skip_non_call_and_old_call_and_bad_call_status(db_
         ok = await run_calls_sync(db_session, sample_account.id)
         assert ok is True
 
+        c5002 = (await db_session.execute(
+            select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "5002")
+        )).scalar_one()
+        assert c5002.status == "skipped_historical"
+
         c5003 = (await db_session.execute(
             select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "5003")
         )).scalar_one()
@@ -268,6 +314,7 @@ async def test_run_calls_sync_skip_non_call_and_old_call_and_bad_call_status(db_
 async def test_run_calls_sync_notes_api_non_200(db_session, sample_account):
     now = datetime.now(timezone.utc)
     qc = QcSettings(account_id=sample_account.id, is_enabled=True, last_call_synced_at=now - timedelta(minutes=5))
+    sample_account.anomaly_settings = {"calls_backfill_done": True}
     db_session.add(qc)
     await db_session.commit()
 

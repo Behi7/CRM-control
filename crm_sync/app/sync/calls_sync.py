@@ -3,6 +3,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.models import (
     Account, Lead, Pipeline, AmoUser,
@@ -23,17 +25,14 @@ CALL_STATUS_DESCRIPTIONS = {
 }
 
 async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
-    """Синхронизирует недавние звонки из AmoCRM и сохраняет их в БД (для последующего анализа бэкендом)."""
+    """
+    Синхронизирует все звонки из AmoCRM и сохраняет их в БД (таблицу qc_call_evaluations).
+    Все звонки сохраняются в БД для модуля аномалий и аналитики.
+    Контроль качества (статус 'pending' для анализа нейросетью) активируется только
+    для свежих целевых звонков и только при включенном тумблере КК (is_enabled == True).
+    """
     try:
-        # 1. Проверяем настройки контроля качества для аккаунта
-        qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
-        qc_res = await session.execute(qc_stmt)
-        qc_settings = qc_res.scalar_one_or_none()
-
-        if not qc_settings or not qc_settings.is_enabled:
-            return False
-
-        # 2. Проверяем сам аккаунт и наличие токенов
+        # 1. Проверяем сам аккаунт и наличие токенов
         acc_stmt = select(Account).where(Account.id == account_id)
         acc_res = await session.execute(acc_stmt)
         acc = acc_res.scalar_one_or_none()
@@ -41,41 +40,67 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
         if not acc or not acc.encrypted_token or acc.status != "connected" or acc.sync_status == "stopped":
             return False
 
-        amo_token = decrypt_token(acc.encrypted_token)
+        try:
+            amo_token = decrypt_token(acc.encrypted_token)
+        except Exception as e:
+            logger.error(f"Cannot decrypt token for account #{account_id}: {e}")
+            return False
 
-        # 3. Фиксируем временное окно
-        job_started_at = datetime.now(timezone.utc)
-        if not qc_settings.last_call_synced_at:
-            qc_settings.last_call_synced_at = job_started_at
+        if not amo_token:
+            return False
+
+        # 2. Получаем или создаем настройки контроля качества (для порогов длительности и курсора)
+        qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
+        qc_res = await session.execute(qc_stmt)
+        qc_settings = qc_res.scalar_one_or_none()
+        if not qc_settings:
+            qc_settings = QcSettings(account_id=account_id, is_enabled=False)
+            session.add(qc_settings)
             await session.commit()
-            logger.info(f"Account #{account_id}: QC activated. Baseline cursor initialized to {job_started_at.isoformat()}.")
-            return True
+            await session.refresh(qc_settings)
 
-        # Оверлап в 2 минуты для гарантии отсутствия потерь
-        window_from = qc_settings.last_call_synced_at - timedelta(minutes=2)
-        window_from_sec = int(window_from.timestamp())
+        # 3. Фиксируем временное окно и параметры синхронизации
+        job_started_at = datetime.now(timezone.utc)
+        anomaly_cfg = dict(acc.anomaly_settings or {})
+        calls_backfill_done = anomaly_cfg.get("calls_backfill_done", False)
 
-        logger.info(f"Starting calls sync for account #{account_id} ({acc.subdomain}) from {window_from.isoformat()}...")
+        filter_params: Dict[str, Any] = {
+            "filter[note_type]": "call_in,call_out",
+            "limit": 250,
+        }
 
-        # 4. Выкачиваем примечания-звонки из AmoCRM
+        # Если бэкфилл уже выполнен и есть курсор — берем инкрементальную дельту
+        is_backfill = not calls_backfill_done
+        if not is_backfill and qc_settings.last_call_synced_at:
+            window_from = qc_settings.last_call_synced_at - timedelta(minutes=5)
+            filter_params["filter[updated_at][from]"] = max(0, int(window_from.timestamp()))
+            logger.info(f"Starting incremental calls sync for account #{account_id} ({acc.subdomain}) from {window_from.isoformat()}...")
+        else:
+            logger.info(f"Starting full historical calls backfill for account #{account_id} ({acc.subdomain})...")
+
+        # 4. Постраничная выгрузка
         page = 1
-        MAX_CALL_PAGES = 5
+        MAX_CALL_PAGES = 500 if is_backfill else 50
         total_found = 0
+        total_saved = 0
         total_pending = 0
 
+        leads_cache: Dict[str, Optional[tuple]] = {}  # ext_id -> (id, pipeline_id, resp_user_id)
+        users_cache: Dict[str, Optional[int]] = {}
+
+        disabled_pipeline_ids = set(qc_settings.disabled_pipeline_ids or [])
+        min_duration = qc_settings.min_duration_sec or 20
+        max_duration = qc_settings.max_duration_sec or 600
+
         while page <= MAX_CALL_PAGES:
+            filter_params["page"] = page
             status, data = await crm_client.request(
                 subdomain=acc.subdomain,
                 base_domain=acc.base_domain,
                 token=amo_token,
                 method="GET",
                 path="/api/v4/leads/notes",
-                params={
-                    "filter[note_type]": "call_in,call_out",
-                    "filter[updated_at][from]": window_from_sec,
-                    "limit": 100,
-                    "page": page,
-                },
+                params=filter_params,
             )
 
             if status == 204 or (status == 200 and not data):
@@ -89,89 +114,73 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
             if not notes:
                 break
 
-            for note in notes:
-                # 1. Фильтруем строго только звонки
-                note_type = note.get("note_type")
-                if note_type not in ("call_in", "call_out"):
-                    continue
+            call_notes = [n for n in notes if n.get("note_type") in ("call_in", "call_out")]
+            if not call_notes:
+                if len(notes) < 250:
+                    break
+                page += 1
+                continue
 
+            note_ids = [str(n.get("id")) for n in call_notes if n.get("id")]
+            existing_ids_stmt = select(QcCallEvaluation.external_call_id).where(
+                QcCallEvaluation.account_id == account_id,
+                QcCallEvaluation.external_call_id.in_(note_ids)
+            )
+            existing_ids = set((await session.execute(existing_ids_stmt)).scalars().all())
+
+            batch_evals = []
+
+            for note in call_notes:
                 total_found += 1
                 note_id = str(note.get("id"))
+                if note_id in existing_ids:
+                    continue
+
                 lead_ext_id = str(note.get("entity_id") or "")
                 params = note.get("params") or {}
                 duration = int(params.get("duration") or 0)
 
-                # Безопасное извлечение ссылки (исключаем словари связей и не-URL)
                 raw_link = params.get("link")
                 link = raw_link.strip() if isinstance(raw_link, str) and raw_link.strip().startswith("http") else None
 
                 phone = str(params.get("phone") or "")
-                direction = "in" if note_type == "call_in" else "out"
+                direction = "in" if note.get("note_type") == "call_in" else "out"
                 call_created_ts = note.get("created_at") or int(job_started_at.timestamp())
                 call_date = datetime.fromtimestamp(call_created_ts, tz=timezone.utc)
 
-                # Игнорируем звонки, совершенные ранее границы временного окна (защита от архивных обновленных звонков)
-                if call_date < window_from:
-                    continue
-
-                responsible_user_ext_id = str(note.get("responsible_user_id") or "")
-
-                # Дедупликация: проверяем, не сохранен ли уже этот звонок
-                existing_eval = (await session.execute(
-                    select(QcCallEvaluation.id).where(
-                        QcCallEvaluation.account_id == account_id,
-                        QcCallEvaluation.external_call_id == note_id,
-                    )
-                )).scalar_one_or_none()
-                if existing_eval:
-                    continue
-
-                # Ищем сделку
-                lead_row = None
+                # Кешированный поиск сделки
+                lead_id = None
+                pipeline_id = None
+                lead_resp_id = None
                 if lead_ext_id:
-                    lead_row = (await session.execute(
-                        select(Lead).where(
-                            Lead.account_id == account_id,
-                            Lead.external_id == lead_ext_id,
-                        )
-                    )).scalar_one_or_none()
+                    if lead_ext_id not in leads_cache:
+                        l_row = (await session.execute(
+                            select(Lead.id, Lead.pipeline_id, Lead.responsible_user_id).where(
+                                Lead.account_id == account_id,
+                                Lead.external_id == lead_ext_id,
+                            )
+                        )).first()
+                        leads_cache[lead_ext_id] = (l_row[0], l_row[1], l_row[2]) if l_row else None
+                    if leads_cache[lead_ext_id]:
+                        lead_id, pipeline_id, lead_resp_id = leads_cache[lead_ext_id]
 
-                lead_id = lead_row.id if lead_row else None
-                pipeline_id = lead_row.pipeline_id if lead_row else None
-
-                # Ищем менеджера
-                amo_user_row = None
+                # Кешированный поиск менеджера
+                responsible_user_ext_id = str(note.get("responsible_user_id") or "")
+                amo_user_id = None
                 if responsible_user_ext_id:
-                    amo_user_row = (await session.execute(
-                        select(AmoUser).where(
-                            AmoUser.account_id == account_id,
-                            AmoUser.external_id == responsible_user_ext_id,
-                        )
-                    )).scalar_one_or_none()
-                amo_user_id = amo_user_row.id if amo_user_row else (lead_row.responsible_user_id if lead_row else None)
+                    if responsible_user_ext_id not in users_cache:
+                        u_row = (await session.execute(
+                            select(AmoUser.id).where(
+                                AmoUser.account_id == account_id,
+                                AmoUser.external_id == responsible_user_ext_id,
+                            )
+                        )).scalar_one_or_none()
+                        users_cache[responsible_user_ext_id] = u_row
+                    amo_user_id = users_cache[responsible_user_ext_id]
+                if not amo_user_id:
+                    amo_user_id = lead_resp_id
 
-                # Проверка исключения воронки из анализа контроля качества
-                disabled_pipeline_ids = set(qc_settings.disabled_pipeline_ids or [])
-                if pipeline_id and pipeline_id in disabled_pipeline_ids:
-                    skip_eval = QcCallEvaluation(
-                        account_id=account_id,
-                        external_call_id=note_id,
-                        lead_id=lead_id,
-                        pipeline_id=pipeline_id,
-                        amo_user_id=amo_user_id,
-                        phone=phone,
-                        call_direction=direction,
-                        call_date=call_date,
-                        duration_seconds=duration,
-                        recording_url=link,
-                        status="skipped_pipeline",
-                        skip_reason="Анализ отключён для данной воронки",
-                    )
-                    session.add(skip_eval)
-                    await session.commit()
-                    continue
-
-                # Проверка статуса звонка в AmoCRM
+                # Разметка статуса звонка:
                 raw_call_status = params.get("call_status")
                 call_status = None
                 if raw_call_status is not None:
@@ -180,119 +189,72 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
                     except (ValueError, TypeError):
                         call_status = None
 
+                status_val = "pending"
+                skip_reason = None
+
                 if call_status is not None and call_status != 4:
-                    reason_desc = CALL_STATUS_DESCRIPTIONS.get(call_status, f"код статуса {call_status}")
-                    skip_eval = QcCallEvaluation(
-                        account_id=account_id,
-                        external_call_id=note_id,
-                        lead_id=lead_id,
-                        pipeline_id=pipeline_id,
-                        amo_user_id=amo_user_id,
-                        phone=phone,
-                        call_direction=direction,
-                        call_date=call_date,
-                        duration_seconds=duration,
-                        recording_url=link,
-                        status="skipped_not_answered",
-                        skip_reason=f"Разговор не состоялся ({reason_desc})",
-                    )
-                    session.add(skip_eval)
-                    await session.commit()
-                    continue
+                    status_val = "skipped_not_answered"
+                    skip_reason = CALL_STATUS_DESCRIPTIONS.get(call_status, f"код статуса {call_status}")
+                elif not link:
+                    status_val = "skipped_no_audio"
+                    skip_reason = "Нет ссылки на аудиозапись"
+                elif is_backfill or (call_date < job_started_at - timedelta(days=2)):
+                    status_val = "skipped_historical"
+                    skip_reason = "Архивный звонок (до активации КК)"
+                elif not qc_settings.is_enabled:
+                    status_val = "skipped_qc_disabled"
+                    skip_reason = "Контроль качества остановлен"
+                elif pipeline_id and pipeline_id in disabled_pipeline_ids:
+                    status_val = "skipped_pipeline"
+                    skip_reason = "Анализ отключён для данной воронки"
+                elif duration < min_duration or duration > max_duration:
+                    status_val = "skipped_duration"
+                    skip_reason = f"Длительность {duration} сек вне диапазона ({min_duration}-{max_duration} сек)"
+                else:
+                    status_val = "pending"
+                    skip_reason = None
+                    total_pending += 1
 
-                # Проверка фильтров длительности
-                if duration < qc_settings.min_duration_sec:
-                    skip_eval = QcCallEvaluation(
-                        account_id=account_id,
-                        external_call_id=note_id,
-                        lead_id=lead_id,
-                        pipeline_id=pipeline_id,
-                        amo_user_id=amo_user_id,
-                        phone=phone,
-                        call_direction=direction,
-                        call_date=call_date,
-                        duration_seconds=duration,
-                        recording_url=link,
-                        status="skipped_duration",
-                        skip_reason=f"Слишком короткий звонок ({duration} сек < {qc_settings.min_duration_sec} сек)",
-                    )
-                    session.add(skip_eval)
-                    await session.commit()
-                    continue
+                batch_evals.append({
+                    "account_id": account_id,
+                    "external_call_id": note_id,
+                    "lead_id": lead_id,
+                    "pipeline_id": pipeline_id,
+                    "amo_user_id": amo_user_id,
+                    "phone": phone,
+                    "call_direction": direction,
+                    "call_date": call_date,
+                    "duration_seconds": duration,
+                    "recording_url": link,
+                    "status": status_val,
+                    "skip_reason": skip_reason,
+                    "created_at": datetime.now(timezone.utc),
+                })
 
-                if duration > qc_settings.max_duration_sec:
-                    skip_eval = QcCallEvaluation(
-                        account_id=account_id,
-                        external_call_id=note_id,
-                        lead_id=lead_id,
-                        pipeline_id=pipeline_id,
-                        amo_user_id=amo_user_id,
-                        phone=phone,
-                        call_direction=direction,
-                        call_date=call_date,
-                        duration_seconds=duration,
-                        recording_url=link,
-                        status="skipped_duration",
-                        skip_reason=f"Превышен лимит длительности ({duration} сек > {qc_settings.max_duration_sec} сек)",
-                    )
-                    session.add(skip_eval)
-                    await session.commit()
-                    continue
-
-                if not link:
-                    skip_eval = QcCallEvaluation(
-                        account_id=account_id,
-                        external_call_id=note_id,
-                        lead_id=lead_id,
-                        pipeline_id=pipeline_id,
-                        amo_user_id=amo_user_id,
-                        phone=phone,
-                        call_direction=direction,
-                        call_date=call_date,
-                        duration_seconds=duration,
-                        recording_url=None,
-                        status="skipped_no_audio",
-                        skip_reason="Нет ссылки на аудиозапись",
-                    )
-                    session.add(skip_eval)
-                    await session.commit()
-                    continue
-
-                # Звонок валиден: регистрируем в статусе 'pending' для асинхронного анализа бэкендом
-                pending_eval = QcCallEvaluation(
-                    account_id=account_id,
-                    external_call_id=note_id,
-                    lead_id=lead_id,
-                    pipeline_id=pipeline_id,
-                    amo_user_id=amo_user_id,
-                    phone=phone,
-                    call_direction=direction,
-                    call_date=call_date,
-                    duration_seconds=duration,
-                    recording_url=link,
-                    status="pending",
-                    skip_reason=None,
-                    overall_score=None,
-                    rules_breakdown=None,
-                    errors_list=None,
-                    bottleneck=None,
-                    transcript=None,
-                    summary=None,
-                    recommendation=None,
-                    anomaly_points=0,
+            if batch_evals:
+                insert_stmt = insert(QcCallEvaluation).values(batch_evals).on_conflict_do_nothing(
+                    index_elements=["account_id", "external_call_id"]
                 )
-                session.add(pending_eval)
+                await session.execute(insert_stmt)
                 await session.commit()
-                total_pending += 1
+                total_saved += len(batch_evals)
 
-            if len(notes) < 100:
+            if len(notes) < 250:
                 break
             page += 1
 
-        # Обновляем курсор синхронизации
+        # Обновляем курсор и флаг завершения бэкфилла
         qc_settings.last_call_synced_at = job_started_at
+        if is_backfill:
+            anomaly_cfg["calls_backfill_done"] = True
+            acc.anomaly_settings = anomaly_cfg
+            flag_modified(acc, "anomaly_settings")
         await session.commit()
-        logger.info(f"Completed calls sync for account #{account_id}: found={total_found}, pending_queued={total_pending}")
+
+        logger.info(
+            f"Completed calls sync for account #{account_id}: "
+            f"found={total_found}, saved={total_saved}, pending_queued={total_pending}, is_backfill={is_backfill}"
+        )
         return True
 
     except Exception as e:
