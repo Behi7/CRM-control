@@ -12,7 +12,8 @@ import {
   ChevronRight,
   Sparkles,
   Flame,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ListTodo
 } from 'lucide-react';
 import { anomalyDealsApi, DealForensicDetail } from '../api/anomalyDeals.api';
 import { useLanguage } from '../../../i18n/LanguageContext';
@@ -30,7 +31,7 @@ export default function DealForensicModal({
 }: DealForensicModalProps) {
   const { lang } = useLanguage();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'verdict' | 'timeline' | 'calls' | 'penalty'>('verdict');
+  const [activeTab, setActiveTab] = useState<'verdict' | 'timeline' | 'calls' | 'tasks' | 'penalty'>('verdict');
   const [copied, setCopied] = useState(false);
 
   const { data: detail, isLoading } = useQuery<DealForensicDetail>({
@@ -181,6 +182,20 @@ export default function DealForensicModal({
           </button>
 
           <button
+            onClick={() => setActiveTab('tasks')}
+            className={`py-3 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              activeTab === 'tasks'
+                ? 'border-violet-600 text-violet-600 dark:text-violet-400'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            <ListTodo size={16} />
+            <span>
+              {lang === 'uz' ? 'Vazifalar intizomi' : 'Дисциплина задач'} ({(detail.tasks || []).length})
+            </span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('penalty')}
             className={`py-3 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
               activeTab === 'penalty'
@@ -255,6 +270,50 @@ export default function DealForensicModal({
                   <div className="text-xs text-slate-700 dark:text-slate-300 mt-1 font-medium leading-relaxed">
                     {detail.ropRecommendation}
                   </div>
+                </div>
+              )}
+
+              {/* Блок дисциплины задач */}
+              {detail.scoreBreakdown?.tasks_metrics && (
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-2 rounded-xl ${
+                      detail.scoreBreakdown.tasks_metrics.tasks_idle_percent > 50
+                        ? 'bg-rose-500/10 text-rose-600'
+                        : detail.scoreBreakdown.tasks_metrics.tasks_idle_percent > 20
+                        ? 'bg-amber-500/10 text-amber-600'
+                        : 'bg-emerald-500/10 text-emerald-600'
+                    }`}>
+                      <ListTodo size={18} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white">
+                        {lang === 'uz' ? 'Vazifalar intizomi:' : 'Дисциплина задач:'}{' '}
+                        <span className={
+                          detail.scoreBreakdown.tasks_metrics.tasks_idle_percent > 50
+                            ? 'text-rose-600 dark:text-rose-400'
+                            : detail.scoreBreakdown.tasks_metrics.tasks_idle_percent > 20
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-emerald-600 dark:text-emerald-400'
+                        }>
+                          {detail.scoreBreakdown.tasks_metrics.tasks_idle_percent}% {lang === 'uz' ? 'vazifasiz vaqt' : 'времени без задач'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        {detail.scoreBreakdown.tasks_metrics.tasks_count === 0
+                          ? (lang === 'uz' ? 'Birorta ham vazifa qo‘yilmagan' : 'За всю жизнь сделки не поставлено ни одной задачи')
+                          : `${lang === 'uz' ? 'Jami vazifalar:' : 'Всего задач:'} ${detail.scoreBreakdown.tasks_metrics.tasks_count} • ${lang === 'uz' ? 'Maksimal uzilish:' : 'Макс. простой без задач:'} ${detail.scoreBreakdown.tasks_metrics.max_idle_gap_hours} ч.`}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setActiveTab('tasks')}
+                    className="text-xs font-semibold text-violet-600 dark:text-violet-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>{lang === 'uz' ? 'Vazifalarni ko‘rish' : 'Смотреть задачи'}</span>
+                    <ChevronRight size={14} />
+                  </button>
                 </div>
               )}
             </div>
@@ -391,7 +450,122 @@ export default function DealForensicModal({
             </div>
           )}
 
-          {/* Вкладка 4: Штрафная ведомость */}
+          {/* Вкладка 4: Дисциплина задач */}
+          {activeTab === 'tasks' && (
+            <div className="space-y-4">
+              {/* Summary banner */}
+              {detail.scoreBreakdown?.tasks_metrics && (
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div>
+                    <div className="text-[11px] text-slate-500">{lang === 'uz' ? 'Jami vazifalar' : 'Всего задач'}</div>
+                    <div className="text-base font-bold text-slate-900 dark:text-white mt-0.5">
+                      {detail.scoreBreakdown.tasks_metrics.tasks_count}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-slate-500">{lang === 'uz' ? 'Vazifasiz vaqt' : 'Время без задач'}</div>
+                    <div className={`text-base font-bold mt-0.5 ${
+                      detail.scoreBreakdown.tasks_metrics.tasks_idle_percent > 50
+                        ? 'text-rose-600'
+                        : detail.scoreBreakdown.tasks_metrics.tasks_idle_percent > 20
+                        ? 'text-amber-600'
+                        : 'text-emerald-600'
+                    }`}>
+                      {detail.scoreBreakdown.tasks_metrics.tasks_idle_percent}%
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-slate-500">{lang === 'uz' ? 'Maks. uzilish' : 'Макс. простой'}</div>
+                    <div className="text-base font-bold text-slate-900 dark:text-white mt-0.5">
+                      {detail.scoreBreakdown.tasks_metrics.max_idle_gap_hours} ч.
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-slate-500">{lang === 'uz' ? 'Muddati o‘tgan' : 'Просрочено'}</div>
+                    <div className={`text-base font-bold mt-0.5 ${
+                      detail.scoreBreakdown.tasks_metrics.overdue_tasks_count > 0 ? 'text-rose-600' : 'text-slate-900 dark:text-white'
+                    }`}>
+                      {detail.scoreBreakdown.tasks_metrics.overdue_tasks_count}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* List of tasks */}
+              {(!detail.tasks || detail.tasks.length === 0) ? (
+                <div className="p-8 text-center bg-rose-50 dark:bg-rose-950/20 rounded-2xl border border-rose-200 dark:border-rose-900/40 space-y-2">
+                  <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-900/50 text-rose-600 flex items-center justify-center mx-auto">
+                    <AlertTriangle size={20} />
+                  </div>
+                  <div className="text-sm font-bold text-rose-800 dark:text-rose-200">
+                    {lang === 'uz' ? 'Ushbu bitimda birorta ham vazifa bo‘lmagan' : 'По сделке не зафиксировано ни одной задачи'}
+                  </div>
+                  <p className="text-xs text-rose-600 dark:text-rose-400 max-w-md mx-auto">
+                    {lang === 'uz'
+                      ? 'Xodim rejalashtirilgan keyingi qadamsiz bitimni tashlab ketgan. Bu tizimli sotuv qoidalarining qo‘pol buzilishidir.'
+                      : 'Менеджер оставил сделку в воронке без единого запланированного следующего шага. Лид был брошен в свободное падение.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {detail.tasks.map((task, idx) => (
+                    <div
+                      key={task.id || idx}
+                      className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex items-start justify-between gap-3 shadow-xs"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2 rounded-xl mt-0.5 ${
+                          task.isCompleted
+                            ? 'bg-emerald-500/10 text-emerald-600'
+                            : 'bg-amber-500/10 text-amber-600'
+                        }`}>
+                          <CheckCircle2 size={16} />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                            {task.text || (lang === 'uz' ? 'Matnsiz vazifa' : 'Задача без описания')}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                            <span>
+                              {lang === 'uz' ? 'Qo‘yilgan:' : 'Поставлена:'} {new Date(task.taskCreatedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
+                            </span>
+                            {task.completeTill && (
+                              <>
+                                <span>•</span>
+                                <span>
+                                  {lang === 'uz' ? 'Muddat:' : 'Дедлайн:'} {new Date(task.completeTill).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
+                                </span>
+                              </>
+                            )}
+                            {task.taskClosedAt && (
+                              <>
+                                <span>•</span>
+                                <span className="text-emerald-600 dark:text-emerald-400">
+                                  {lang === 'uz' ? 'Bajarildi:' : 'Закрыта:'} {new Date(task.taskClosedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                        task.isCompleted
+                          ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'
+                      }`}>
+                        {task.isCompleted
+                          ? (lang === 'uz' ? 'Bajarilgan' : 'Выполнена')
+                          : (lang === 'uz' ? 'Ochiq' : 'В работе')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Вкладка 5: Штрафная ведомость */}
           {activeTab === 'penalty' && (
             <div className="space-y-3 text-xs">
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-3">
@@ -424,6 +598,15 @@ export default function DealForensicModal({
                     </span>
                     <span className="font-bold text-slate-900 dark:text-white">
                       +{detail.scoreBreakdown?.skips_penalty || 0}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800">
+                    <span className="text-slate-600 dark:text-slate-400">
+                      Штраф за простой без задач ({detail.scoreBreakdown?.tasks_metrics?.tasks_idle_percent ?? 0}% жизни сделки)
+                    </span>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      +{detail.scoreBreakdown?.tasks_penalty || 0}
                     </span>
                   </div>
 

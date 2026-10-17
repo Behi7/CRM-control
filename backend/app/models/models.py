@@ -168,6 +168,7 @@ class Lead(Base):
     responsible_user = relationship("AmoUser", back_populates="leads")
     lead_stage_history = relationship("LeadStageHistory", back_populates="lead")
     lead_tags = relationship("LeadTag", back_populates="lead", cascade="all, delete-orphan")
+    tasks = relationship("LeadTask", back_populates="lead", cascade="all, delete-orphan")
 
 class LeadStageHistory(Base):
     __tablename__ = "lead_stage_history"
@@ -403,5 +404,33 @@ class DealAnomalyAudit(Base):
     account = relationship("Account")
     lead = relationship("Lead")
     pipeline = relationship("Pipeline")
+    responsible_user = relationship("AmoUser")
+
+class LeadTask(Base):
+    __tablename__ = "lead_tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    external_task_id = Column(Text, nullable=False)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), nullable=True)
+    lead_external_id = Column(Text, nullable=True)
+    responsible_user_id = Column(Integer, ForeignKey("amo_users.id", ondelete="SET NULL"), nullable=True)
+    task_type_id = Column(Integer, nullable=True)
+    text = Column(Text, nullable=True)
+    is_completed = Column(Boolean, nullable=False, default=False)
+    task_created_at = Column(DateTime(timezone=True), nullable=False)
+    complete_till = Column(DateTime(timezone=True), nullable=True)
+    task_closed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "external_task_id", name="lead_tasks_account_id_external_task_id_key"),
+        Index("idx_lead_tasks_account_lead", "account_id", "lead_id"),
+        Index("idx_lead_tasks_lead_created", "lead_id", "task_created_at"),
+    )
+
+    account = relationship("Account")
+    lead = relationship("Lead", back_populates="tasks")
     responsible_user = relationship("AmoUser")
 

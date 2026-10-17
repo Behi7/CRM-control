@@ -29,6 +29,156 @@ def calculate_stage_benchmarks(won_history: List[Any]) -> Dict[int, float]:
     return benchmarks
 
 
+def calculate_lead_tasks_metrics(
+    lead: Any,
+    tasks: Optional[List[Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Вычисляет процент времени жизни сделки без активных задач (Task Idle Ratio %)
+    и максимальный непрерывный простой без задач.
+    """
+    tasks = tasks or []
+    created_at = lead.crm_created_at
+    closed_at = lead.crm_closed_at or datetime.now(timezone.utc)
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    if closed_at.tzinfo is None:
+        closed_at = closed_at.replace(tzinfo=timezone.utc)
+
+    lifetime_sec = max(1.0, (closed_at - created_at).total_seconds())
+    lifetime_hours = round(lifetime_sec / 3600.0, 1)
+
+    # 1. Защита быстрых отказов (сделки-минутки):
+    # Если сделка прожила менее 3 часов, штраф за отсутствие задач не начисляется.
+    if lifetime_sec < 3 * 3600:
+        return {
+            "tasks_count": len(tasks),
+            "lifetime_hours": lifetime_hours,
+            "tasks_idle_percent": 0.0,
+            "max_idle_gap_hours": 0.0,
+            "overdue_tasks_count": 0,
+            "tasks_penalty": 0,
+            "is_fast_closed": True,
+        }
+
+    # 2. Если задач вообще не было за всю жизнь сделки (>= 3 часов)
+    if len(tasks) == 0:
+        return {
+            "tasks_count": 0,
+            "lifetime_hours": lifetime_hours,
+            "tasks_idle_percent": 100.0,
+            "max_idle_gap_hours": lifetime_hours,
+            "overdue_tasks_count": 0,
+            "tasks_penalty": 30,
+            "is_fast_closed": False,
+        }
+
+    # 3. Собираем интервалы активных задач
+    intervals: List[List[datetime]] = []
+    overdue_count = 0
+
+    for t in tasks:
+        t_created = t.task_created_at
+        if t_created.tzinfo is None:
+            t_created = t_created.replace(tzinfo=timezone.utc)
+
+        start = max(created_at, t_created)
+
+        if t.is_completed and t.task_closed_at:
+            t_closed = t.task_closed_at
+            if t_closed.tzinfo is None:
+                t_closed = t_closed.replace(tzinfo=timezone.utc)
+            end = t_closed
+        elif t.complete_till:
+            t_till = t.complete_till
+            if t_till.tzinfo is None:
+                t_till = t_till.replace(tzinfo=timezone.utc)
+            end = t_till
+        else:
+            end = closed_at
+
+        end = min(closed_at, max(start, end))
+        if end > start:
+            intervals.append([start, end])
+
+        # Проверка на просроченную задачу (>24 часов просрочки)
+        if t.complete_till:
+            t_till = t.complete_till
+            if t_till.tzinfo is None:
+                t_till = t_till.replace(tzinfo=timezone.utc)
+            actual_end = t.task_closed_at or closed_at
+            if actual_end.tzinfo is None:
+                actual_end = actual_end.replace(tzinfo=timezone.utc)
+            if (actual_end - t_till).total_seconds() >= 86400:
+                overdue_count += 1
+
+    if not intervals:
+        return {
+            "tasks_count": len(tasks),
+            "lifetime_hours": lifetime_hours,
+            "tasks_idle_percent": 100.0,
+            "max_idle_gap_hours": lifetime_hours,
+            "overdue_tasks_count": overdue_count,
+            "tasks_penalty": 30,
+            "is_fast_closed": False,
+        }
+
+    # Слияние пересекающихся интервалов
+    intervals.sort(key=lambda x: x[0])
+    merged: List[List[datetime]] = []
+    for s, e in intervals:
+        if not merged:
+            merged.append([s, e])
+        else:
+            if s <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], e)
+            else:
+                merged.append([s, e])
+
+    # Подсчет "пустых окон" без задач
+    gap_seconds: List[float] = []
+    curr = created_at
+    for s, e in merged:
+        if s > curr:
+            gap_seconds.append((s - curr).total_seconds())
+        curr = max(curr, e)
+    if curr < closed_at:
+        gap_seconds.append((closed_at - curr).total_seconds())
+
+    total_idle_sec = sum(gap_seconds)
+    idle_percent = min(100.0, max(0.0, round((total_idle_sec / lifetime_sec) * 100.0, 1)))
+    max_gap_sec = max(gap_seconds) if gap_seconds else 0.0
+    max_gap_hours = round(max_gap_sec / 3600.0, 1)
+
+    # 4. Градация штрафа за простой без задач
+    tasks_penalty = 0
+    if idle_percent > 60.0:
+        tasks_penalty = 30
+    elif idle_percent > 40.0:
+        tasks_penalty = 20
+    elif idle_percent > 20.0:
+        tasks_penalty = 10
+    else:
+        tasks_penalty = 0
+
+    # Бонус за критический непрерывный провал (лид бросили надолго)
+    if (max_gap_sec / lifetime_sec) >= 0.40 and max_gap_hours >= 48:
+        tasks_penalty = min(tasks_penalty + 5, 35)
+
+    if overdue_count >= 2:
+        tasks_penalty = min(tasks_penalty + 5, 35)
+
+    return {
+        "tasks_count": len(tasks),
+        "lifetime_hours": lifetime_hours,
+        "tasks_idle_percent": idle_percent,
+        "max_idle_gap_hours": max_gap_hours,
+        "overdue_tasks_count": overdue_count,
+        "tasks_penalty": tasks_penalty,
+        "is_fast_closed": False,
+    }
+
+
 def audit_lead_math(
     lead: Any,
     stage_history: List[Any],
@@ -37,6 +187,7 @@ def audit_lead_math(
     stage_benchmarks: Dict[int, float],
     stage_names: Dict[int, str],
     avg_won_price: float = 0.0,
+    tasks: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
     """
     Выполняет строгий математический аудит слитой сделки.
@@ -139,7 +290,11 @@ def audit_lead_math(
         if time_penalty > 0 or calls_penalty > 0:
             price_penalty = 15
 
-    raw_score = time_penalty + calls_penalty + skips_penalty + price_penalty
+    # 6. Штраф за дисциплину задач (% жизни без задач)
+    tasks_metrics = calculate_lead_tasks_metrics(lead, tasks)
+    tasks_penalty = tasks_metrics["tasks_penalty"]
+
+    raw_score = time_penalty + calls_penalty + skips_penalty + price_penalty + tasks_penalty
 
     # Если сработал Effort Shield и нет других грубых нарушений — гарантируем справедливую оценку
     if effort_shield_active and calls_penalty == 0 and time_penalty == 0:
@@ -177,6 +332,12 @@ def audit_lead_math(
     if skips:
         key_factors.append(f"Срез воронки ({len(skips)} пропущенных этапов)")
 
+    if tasks_metrics["tasks_idle_percent"] >= 50.0 and not tasks_metrics["is_fast_closed"]:
+        if tasks_metrics["tasks_count"] == 0:
+            key_factors.append(f"Прожила {tasks_metrics['lifetime_hours']} ч. без единой задачи")
+        else:
+            key_factors.append(f"Заброшена: {tasks_metrics['tasks_idle_percent']}% времени без задач (простой {tasks_metrics['max_idle_gap_hours']} ч.)")
+
     main_factor = "; ".join(key_factors[:2]) if key_factors else "Нарушений регламента не зафиксировано"
 
     return {
@@ -190,6 +351,8 @@ def audit_lead_math(
             "calls_penalty": calls_penalty,
             "skips_penalty": skips_penalty,
             "price_penalty": price_penalty,
+            "tasks_penalty": tasks_penalty,
+            "tasks_metrics": tasks_metrics,
             "total_calls": total_calls,
             "completed_calls": total_completed,
             "unique_call_days": unique_call_days,
@@ -243,6 +406,15 @@ async def generate_ai_forensic_verdict(
                 "Лид был слит без реальной попытки квалификации."
             )
             rec = "Срочно переназначить сделку на другого менеджера для первого контакта и проверить дисциплину."
+        elif breakdown.get("tasks_metrics", {}).get("tasks_idle_percent", 0) >= 60 and not breakdown.get("tasks_metrics", {}).get("is_fast_closed"):
+            tm = breakdown["tasks_metrics"]
+            real_reason = f"Сделка брошена без запланированных задач ({tm['tasks_idle_percent']}% простоя)"
+            pivot = f"Сделка провисела {tm['max_idle_gap_hours']} ч. без единой задачи"
+            summary = (
+                f"Менеджер указал «{stated}», однако сделка {tm['tasks_idle_percent']}% времени провела без единого следующего шага "
+                f"(максимальный простой без задач: {tm['max_idle_gap_hours']} ч.). Клиент был упущен из-за отсутствия системного ведения."
+            )
+            rec = "Ввести регламент обязательной постановки следующего шага по каждому открытому лиду."
         elif breakdown.get("stagnant_stages"):
             top_s = breakdown["stagnant_stages"][0]
             real_reason = f"Потеря инициативы и критическое зависание на этапе '{top_s['stage_name']}'"
@@ -295,8 +467,9 @@ async def generate_ai_forensic_verdict(
 ПРАВИЛА АРБИТРАЖА:
 1. Если менеджер указал 'Дорого' / 'Клиент передумал', но по факту не звонил или сделка висела неделями без движения — прямо разоблачи отмазку.
 2. ЕСЛИ менеджер проявил добросовестность (сделал 4+ звонков в разные дни, но клиент не брал трубку) — ОБЯЗАТЕЛЬНО встань на защиту менеджера, сними с него вину и напиши, что отказ объективен.
-3. Укажи конкретную поворотную точку (pivot_point) — где и когда сделка фактически умерла.
-4. Дай РОПу четкую рекомендацию: стоит ли попытаться спасти лида другим менеджером или списать в архив.
+3. ОБРАТИ ВНИМАНИЕ НА ДИСЦИПЛИНУ ЗАДАЧ (tasks_metrics в breakdown): если сделка провела большую часть времени без задач (tasks_idle_percent > 50%), укажи это как причину утери контакта и халатности менеджера.
+4. Укажи конкретную поворотную точку (pivot_point) — где и когда сделка фактически умерла.
+5. Дай РОПу четкую рекомендацию: стоит ли попытаться спасти лида другим менеджером или списать в архив.
 
 Верни ответ СТРОГО в формате JSON со следующими полями:
 {{

@@ -10,6 +10,7 @@ from app.sync.pipeline_sync import sync_pipelines_and_stages
 from app.sync.delta_sync import run_delta_sync
 from app.sync.backfill_sync import run_backfill
 from app.sync.calls_sync import run_calls_sync
+from app.sync.tasks_sync import run_tasks_sync
 from app.sync.event_sync import cleanup_old_events
 from app.core.crm_client import crm_client
 from app.core.security import decrypt_token
@@ -114,6 +115,7 @@ async def sync_loop():
                     elif acc_fresh.backfill_status == "done":
                         await run_delta_sync(session, acc_id)
                         await run_calls_sync(session, acc_id)
+                        await run_tasks_sync(session, acc_id)
                     else:
                         logger.warning(
                             f"Account #{acc_id} ({subdomain}) backfill status is '{acc_fresh.backfill_status}' "

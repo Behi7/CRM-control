@@ -33,6 +33,7 @@ class Account(Base):
     ai_model = Column(String, default='gemini-2.5-flash', nullable=True)
     ai_encrypted_token = Column(Text, nullable=True)
     ai_company_context = Column(Text, nullable=True)
+    anomaly_settings = Column(JSONB, nullable=True, default=dict)
 
     pipelines = relationship('Pipeline', back_populates='account', cascade='all, delete-orphan')
     leads = relationship('Lead', back_populates='account', cascade='all, delete-orphan')
@@ -310,3 +311,31 @@ class QcCallEvaluation(Base):
         Index("idx_qc_eval_account_date", "account_id", "call_date"),
         Index("idx_qc_eval_account_score", "account_id", "overall_score"),
     )
+
+class LeadTask(Base):
+    __tablename__ = "lead_tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    external_task_id = Column(Text, nullable=False)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), nullable=True)
+    lead_external_id = Column(Text, nullable=True)
+    responsible_user_id = Column(Integer, ForeignKey("amo_users.id", ondelete="SET NULL"), nullable=True)
+    task_type_id = Column(Integer, nullable=True)
+    text = Column(Text, nullable=True)
+    is_completed = Column(Boolean, nullable=False, default=False)
+    task_created_at = Column(DateTime(timezone=True), nullable=False)
+    complete_till = Column(DateTime(timezone=True), nullable=True)
+    task_closed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "external_task_id", name="lead_tasks_account_id_external_task_id_key"),
+        Index("idx_lead_tasks_account_lead", "account_id", "lead_id"),
+        Index("idx_lead_tasks_lead_created", "lead_id", "task_created_at"),
+    )
+
+    account = relationship("Account")
+    lead = relationship("Lead")
+    responsible_user = relationship("AmoUser")

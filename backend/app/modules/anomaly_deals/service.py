@@ -10,12 +10,12 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.core.database import AsyncSessionLocal
 from app.models import (
     Account, Lead, Pipeline, Stage, AmoUser,
-    LeadStageHistory, LeadStageSkip, QcCallEvaluation, DealAnomalyAudit
+    LeadStageHistory, LeadStageSkip, QcCallEvaluation, DealAnomalyAudit, LeadTask
 )
 from app.core.security import decrypt_token
 from app.modules.anomaly_deals.schemas import (
     AnomalyStatsDto, AnomalyManagerStatDto, AnomalyDealListItemDto, AnomalyDealListResponseDto,
-    DealForensicDetailDto, TimelineStageDto, CallEvaluationSummaryDto
+    DealForensicDetailDto, TimelineStageDto, CallEvaluationSummaryDto, LeadTaskSummaryDto
 )
 from app.modules.anomaly_deals.engine import (
     calculate_stage_benchmarks, audit_lead_math, generate_ai_forensic_verdict
@@ -423,6 +423,26 @@ async def get_deal_forensic_detail(
         for c in calls_rows
     ]
 
+    # Загружаем задачи
+    tasks_stmt = (
+        select(LeadTask)
+        .where(LeadTask.account_id == account_id, LeadTask.lead_id == lead_id)
+        .order_by(LeadTask.task_created_at.asc())
+    )
+    tasks_rows = (await session.execute(tasks_stmt)).scalars().all()
+    tasks_summary = [
+        LeadTaskSummaryDto(
+            id=t.id,
+            externalTaskId=t.external_task_id,
+            text=t.text,
+            isCompleted=t.is_completed,
+            taskCreatedAt=t.task_created_at.isoformat() if t.task_created_at else "",
+            completeTill=t.complete_till.isoformat() if t.complete_till else None,
+            taskClosedAt=t.task_closed_at.isoformat() if t.task_closed_at else None,
+        )
+        for t in tasks_rows
+    ]
+
     return DealForensicDetailDto(
         auditId=audit.id,
         leadId=lead.id,
@@ -446,6 +466,7 @@ async def get_deal_forensic_detail(
         scoreBreakdown=audit.score_breakdown,
         stagesTimeline=stages_timeline,
         calls=calls_summary,
+        tasks=tasks_summary,
         isReviewed=audit.is_reviewed,
     )
 
@@ -635,7 +656,15 @@ async def run_single_deal_audit(
     calls_stmt = select(QcCallEvaluation).where(QcCallEvaluation.account_id == account_id, QcCallEvaluation.lead_id == lead.id)
     calls = (await session.execute(calls_stmt)).scalars().all()
 
-    # Математический аудит с правилом усилий
+    # Загружаем задачи по сделке
+    tasks_stmt = (
+        select(LeadTask)
+        .where(LeadTask.account_id == account_id, LeadTask.lead_id == lead.id)
+        .order_by(LeadTask.task_created_at.asc())
+    )
+    tasks = (await session.execute(tasks_stmt)).scalars().all()
+
+    # Математический аудит с правилом усилий и дисциплиной задач
     audit_math = audit_lead_math(
         lead=lead,
         stage_history=stage_history,
@@ -643,6 +672,7 @@ async def run_single_deal_audit(
         calls=calls,
         stage_benchmarks=benchmarks,
         stage_names=stage_names,
+        tasks=tasks,
     )
 
     # Smart AI Cost-Saver:

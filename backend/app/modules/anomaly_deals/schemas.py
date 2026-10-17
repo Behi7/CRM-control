@@ -73,6 +73,15 @@ class CallEvaluationSummaryDto(BaseModel):
     bottleneck: Optional[str] = None
     summary: Optional[str] = None
 
+class LeadTaskSummaryDto(BaseModel):
+    id: int
+    externalTaskId: str
+    text: Optional[str] = None
+    isCompleted: bool
+    taskCreatedAt: str
+    completeTill: Optional[str] = None
+    taskClosedAt: Optional[str] = None
+
 class DealForensicDetailDto(BaseModel):
     auditId: int
     leadId: int
@@ -96,6 +105,7 @@ class DealForensicDetailDto(BaseModel):
     scoreBreakdown: Optional[Dict[str, Any]] = None
     stagesTimeline: List[TimelineStageDto] = []
     calls: List[CallEvaluationSummaryDto] = []
+    tasks: List[LeadTaskSummaryDto] = []
     isReviewed: bool
 
 class AnalyzeBatchRequestDto(BaseModel):

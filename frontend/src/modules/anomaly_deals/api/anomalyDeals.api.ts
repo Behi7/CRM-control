@@ -78,6 +78,16 @@ export interface CallEvaluationSummary {
   summary?: string;
 }
 
+export interface LeadTaskSummary {
+  id: number;
+  externalTaskId: string;
+  text?: string;
+  isCompleted: boolean;
+  taskCreatedAt: string;
+  completeTill?: string;
+  taskClosedAt?: string;
+}
+
 export interface DealForensicDetail {
   auditId: number;
   leadId: number;
@@ -101,6 +111,7 @@ export interface DealForensicDetail {
   scoreBreakdown?: Record<string, any>;
   stagesTimeline: TimelineStage[];
   calls: CallEvaluationSummary[];
+  tasks?: LeadTaskSummary[];
   isReviewed: boolean;
 }
 
