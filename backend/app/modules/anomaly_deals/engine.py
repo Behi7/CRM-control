@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import httpx
 
@@ -472,7 +472,7 @@ async def generate_ai_forensic_verdict(
             "effort_shield_active": audit_math.get("effort_shield_active", False),
             "activity": {
                 "total_calls": breakdown.get("total_calls", 0),
-                "answered_calls": breakdown.get("answered_calls", 0),
+                "completed_calls": breakdown.get("completed_calls", 0),
                 "unique_call_days": breakdown.get("unique_call_days", 0),
                 "tasks_idle_percent": breakdown.get("tasks_metrics", {}).get("tasks_idle_percent", 0),
                 "max_idle_gap_hours": breakdown.get("tasks_metrics", {}).get("max_idle_gap_hours", 0),

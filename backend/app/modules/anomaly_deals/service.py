@@ -2,7 +2,7 @@ import asyncio
 import logging
 import httpx
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc, update, case
 from sqlalchemy.dialects.postgresql import insert
