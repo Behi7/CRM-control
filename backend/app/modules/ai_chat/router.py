@@ -63,8 +63,10 @@ async def chat_ai(account_id: int, body: AiChatBody, user: dict = Depends(get_cu
 
         chat_cfg = acc.get("chat_settings") or {}
         chat_enabled = chat_cfg.get("is_enabled", True)
-        if not acc["ai_enabled"] or not chat_enabled or not acc["ai_encrypted_token"]:
-            raise HTTPException(status_code=400, detail="AI analyst is not enabled or API key is missing")
+        if not acc["ai_enabled"] or not chat_enabled:
+            raise HTTPException(status_code=403, detail="Модуль ИИ Чат отключен")
+        if not acc["ai_encrypted_token"]:
+            raise HTTPException(status_code=400, detail="Gemini API key is missing")
 
         api_key = decrypt_token(acc["ai_encrypted_token"])
         model_name = chat_cfg.get("ai_model") or acc["ai_model"] or "gemini-2.5-flash"

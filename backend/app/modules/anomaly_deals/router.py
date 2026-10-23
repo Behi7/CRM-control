@@ -1,9 +1,11 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.security import get_current_user
 from app.core.database import get_db
+from app.models import Account
 from app.modules.anomaly_deals.schemas import (
     AnomalyStatsDto, AnomalyDealListResponseDto, DealForensicDetailDto,
     AnalyzeBatchRequestDto, ReviewAuditRequestDto
@@ -100,6 +102,12 @@ async def batch_analyze_endpoint(
     user: dict = Depends(get_current_user),
 ):
     check_account_access(user, account_id)
+    acc_stmt = select(Account).where(Account.id == account_id)
+    acc = (await session.execute(acc_stmt)).scalar_one_or_none()
+    anomaly_cfg = dict(acc.anomaly_settings or {}) if acc else {}
+    if not acc or not acc.ai_enabled or not anomaly_cfg.get("is_enabled", True):
+        raise HTTPException(status_code=403, detail="Модуль Аномальные сделки отключен")
+
     processed = await run_batch_audit(
         session=session,
         account_id=account_id,

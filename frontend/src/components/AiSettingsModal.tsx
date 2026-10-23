@@ -254,6 +254,8 @@ export default function AiSettingsModal({
     mutationFn: (data: any) => adminApi.patchAiSettings(accountId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts'] });
+      qc.invalidateQueries({ queryKey: ['sidebar-accounts'] });
+      qc.invalidateQueries({ queryKey: ['ai-status'] });
       qc.invalidateQueries({ queryKey: ['ai-settings', accountId] });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);

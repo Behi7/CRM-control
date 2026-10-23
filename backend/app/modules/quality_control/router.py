@@ -639,6 +639,13 @@ async def trigger_call_analysis(
     db: AsyncSession = Depends(get_db),
 ):
     check_account_access(user, account_id)
+    qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
+    qc = (await db.execute(qc_stmt)).scalar_one_or_none()
+    acc_stmt = select(Account).where(Account.id == account_id)
+    acc = (await db.execute(acc_stmt)).scalar_one_or_none()
+    if not acc or not acc.ai_enabled or not qc or not qc.is_enabled:
+        raise HTTPException(status_code=403, detail="Модуль Контроль качества отключен")
+
     from app.modules.quality_control.service import process_call_evaluation
     ok = await process_call_evaluation(db, call_id)
     if not ok:
@@ -654,6 +661,12 @@ async def recalculate_scores(
 ):
     """Пересчитывает оценки всех завершенных звонков по новой математической формуле процентов."""
     check_account_access(user, account_id)
+    qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
+    qc = (await db.execute(qc_stmt)).scalar_one_or_none()
+    acc_stmt = select(Account).where(Account.id == account_id)
+    acc = (await db.execute(acc_stmt)).scalar_one_or_none()
+    if not acc or not acc.ai_enabled or not qc or not qc.is_enabled:
+        raise HTTPException(status_code=403, detail="Модуль Контроль качества отключен")
     from app.modules.quality_control.service import calculate_score_and_anomalies, get_active_rules
 
     stmt = select(QcCallEvaluation).where(

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Headphones,
@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { qcApi } from '../api/qcApi';
 import { useLanguage } from '../../../i18n/LanguageContext';
+import { useAuth } from '../../../auth/AuthContext';
+import { adminApi, py2Api } from '../../../api/client';
 import { useFilterContext } from '../../../shared/context/FilterContext';
 import FilterBar from '../../../shared/components/FilterBar';
 import QcManagerCards from '../components/QcManagerCards';
@@ -29,6 +31,17 @@ export default function QualityControlPage() {
 
   const storedAccountId = Number(localStorage.getItem('active_account_id')) || 1;
   const accountId = params.accountId ? parseInt(params.accountId, 10) : (effectiveAccountId || storedAccountId);
+
+  const navigate = useNavigate();
+  const { role } = useAuth();
+  const accountsQuery = useQuery({
+    queryKey: ['sidebar-accounts', role],
+    queryFn: () => (role === 'admin' ? adminApi.listAccounts() : py2Api.accounts()),
+    enabled: !!role,
+    staleTime: 60_000,
+  });
+  const currentAcc = accountsQuery.data?.find((a: any) => a.id === accountId);
+  const isQcDisabled = role === 'viewer' && currentAcc && (currentAcc.qcEnabled === false || currentAcc.aiEnabled === false);
 
   // Draft vs Applied filters for Call feed specifics
   const [draftScoreFilter, setDraftScoreFilter] = useState('all');
@@ -88,6 +101,7 @@ export default function QualityControlPage() {
         dateFrom: applied.dateFrom || undefined,
         dateTo: applied.dateTo || undefined,
       }),
+    enabled: !isQcDisabled,
     refetchInterval: 30_000,
   });
 
@@ -130,9 +144,36 @@ export default function QualityControlPage() {
         dateTo: applied.dateTo || undefined,
       }),
     refetchInterval: 30_000,
+    enabled: !isQcDisabled,
   });
 
   const totalPages = Math.ceil((callsQuery.data?.total || 0) / 15) || 1;
+
+  if (isQcDisabled) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center shadow-sm">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-500 mx-auto flex items-center justify-center mb-4">
+            <Headphones size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
+            {lang === 'uz' ? 'Sifat nazorati moduli o‘chirilgan' : 'Модуль Контроль качества отключен'}
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+            {lang === 'uz'
+              ? 'Ushbu modul administrator tomonidan vaqtincha to‘xtatilgan.'
+              : 'Этот модуль временно отключен администратором для данного аккаунта.'}
+          </p>
+          <button
+            onClick={() => navigate('/bi')}
+            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors cursor-pointer"
+          >
+            {lang === 'uz' ? 'Tahlil bo‘limiga qaytish' : 'Перейти в Аналитику продаж'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 lg:p-6 mx-auto max-w-[1920px] space-y-6">

@@ -329,10 +329,18 @@ async def process_call_evaluation(session: AsyncSession, eval_id: int) -> bool:
 
 
 async def process_pending_calls(session: AsyncSession, limit: int = 5) -> int:
-    """Выбирает звонки в статусе 'pending' и прогоняет их через анализ."""
+    """Выбирает звонки в статусе 'pending' и прогоняет их через анализ (только для активных модулей)."""
     stmt = (
         select(QcCallEvaluation.id)
-        .where(QcCallEvaluation.status == "pending")
+        .join(QcSettings, QcSettings.account_id == QcCallEvaluation.account_id)
+        .join(Account, Account.id == QcCallEvaluation.account_id)
+        .where(
+            QcCallEvaluation.status == "pending",
+            QcSettings.is_enabled == True,
+            Account.ai_enabled == True,
+            Account.status == "connected",
+            Account.sync_status == "active"
+        )
         .order_by(QcCallEvaluation.id.asc())
         .limit(limit)
     )

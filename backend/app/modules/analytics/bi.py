@@ -28,20 +28,45 @@ def list_accounts_bi(user: dict):
             a.status,
             a.sync_status AS "syncStatus",
             a.last_synced_at AS "lastSyncedAt",
+            a.ai_enabled AS "aiEnabled",
+            a.chat_settings AS "chatSettings",
+            a.anomaly_settings AS "anomalySettings",
+            COALESCE(q.is_enabled, false) AS "qcEnabled",
             COUNT(l.id) AS "totalLeads",
             COUNT(l.custom_fields) AS "enrichedLeads",
             COUNT(l.main_contact_id) AS "withContacts",
             COUNT(l.utm_source) AS "withUtm",
             COUNT(l.loss_reason_name) AS "withLossReason"
         FROM accounts a
+        LEFT JOIN qc_settings q ON q.account_id = a.id
         LEFT JOIN leads l ON l.account_id = a.id
         {where_clause}
-        GROUP BY a.id
+        GROUP BY a.id, q.is_enabled
         ORDER BY a.id ASC
     """)
     with engine.connect() as conn:
         rows = conn.execute(sql, params).mappings().all()
-        return [dict(r) for r in rows]
+        results = []
+        for r in rows:
+            d = dict(r)
+            chat_s = d.pop("chatSettings", None) or {}
+            anom_s = d.pop("anomalySettings", None) or {}
+            if isinstance(chat_s, str):
+                try:
+                    chat_s = json.loads(chat_s)
+                except Exception:
+                    chat_s = {}
+            if isinstance(anom_s, str):
+                try:
+                    anom_s = json.loads(anom_s)
+                except Exception:
+                    anom_s = {}
+            d["chatEnabled"] = bool(chat_s.get("is_enabled", True))
+            d["anomalyEnabled"] = bool(anom_s.get("is_enabled", True))
+            d["qcEnabled"] = bool(d.get("qcEnabled", False))
+            d["aiEnabled"] = bool(d.get("aiEnabled", False))
+            results.append(d)
+        return results
 
 
 def trigger_account_enrichment(account_id: int, authorization: str | None, user: dict):

@@ -11,7 +11,7 @@ from app.core.security import (
     require_admin, hash_password, encrypt_token
 )
 from app.core.crm_client import CrmClient
-from app.models import Account, User, Notification, QcSettings, CustomFieldDefinition
+from app.models import Account, User, Notification, QcSettings, CustomFieldDefinition, QcCallEvaluation
 from app.modules.admin.schemas import (
     CreateAccountDto, PatchAccountDto, UpdateAiSettingsDto, TestAiDto
 )
@@ -19,6 +19,9 @@ from app.modules.admin.schemas import (
 router = APIRouter(prefix="/admin", tags=["Admin"], dependencies=[Depends(require_admin)])
 
 def serialize_account(acc: Account) -> dict:
+    anomaly_cfg = dict(acc.anomaly_settings or {})
+    chat_cfg = dict(acc.chat_settings or {})
+    qc_enabled = bool(acc.qc_settings.is_enabled) if getattr(acc, "qc_settings", None) else False
     return {
         "id": acc.id,
         "subdomain": acc.subdomain,
@@ -39,11 +42,18 @@ def serialize_account(acc: Account) -> dict:
         "aiCompanyContext": acc.ai_company_context,
         "createdAt": acc.created_at.isoformat() if acc.created_at else None,
         "users": [{"id": u.id, "email": u.email, "role": u.role} for u in (acc.users or []) if u.role == "viewer"],
+        "qcEnabled": qc_enabled,
+        "anomalyEnabled": bool(anomaly_cfg.get("is_enabled", True)),
+        "chatEnabled": bool(chat_cfg.get("is_enabled", True)),
     }
 
 @router.get("/accounts")
 async def list_accounts(db: AsyncSession = Depends(get_db)):
-    stmt = select(Account).options(selectinload(Account.users)).order_by(Account.created_at.desc())
+    stmt = (
+        select(Account)
+        .options(selectinload(Account.users), selectinload(Account.qc_settings))
+        .order_by(Account.created_at.desc())
+    )
     res = await db.execute(stmt)
     accounts = res.scalars().all()
     return [serialize_account(a) for a in accounts]
@@ -232,16 +242,17 @@ async def start_sync(account_id: int, db: AsyncSession = Depends(get_db)):
 
     acc.sync_status = "active"
 
-    # При возобновлении синхронизации сбрасываем курсор звонков,
+    now_utc = datetime.now(timezone.utc)
+    # При возобновлении синхронизации фиксируем курсор звонков на текущее время,
     # чтобы звонки периода простоя ("Стоп") не отправлялись в контроль качества
     qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
     qc = (await db.execute(qc_stmt)).scalar_one_or_none()
     if qc:
-        qc.last_call_synced_at = None
+        qc.last_call_synced_at = now_utc
 
-    # Сбрасываем курсор аномалий, чтобы закрытые во время "Стоп" сделки не отправлялись на анализ
+    # Фиксируем курсор аномалий на текущее время, чтобы закрытые во время "Стоп" сделки не отправлялись на анализ
     cur_anomaly = dict(acc.anomaly_settings or {})
-    cur_anomaly["last_anomaly_audited_at"] = None
+    cur_anomaly["last_anomaly_audited_at"] = now_utc.isoformat()
     acc.anomaly_settings = cur_anomaly
     flag_modified(acc, "anomaly_settings")
 
@@ -323,9 +334,13 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
     if dto.aiToken:
         acc.ai_encrypted_token = encrypt_token(dto.aiToken.strip())
 
+    now_utc = datetime.now(timezone.utc)
+
     # Chat settings
     cur_chat = dict(acc.chat_settings or {})
     if dto.chatEnabled is not None:
+        if dto.chatEnabled and not cur_chat.get("is_enabled", True):
+            cur_chat["started_at"] = now_utc.isoformat()
         cur_chat["is_enabled"] = dto.chatEnabled
     if dto.chatAiModel is not None:
         cur_chat["ai_model"] = dto.chatAiModel.strip() or None
@@ -337,6 +352,10 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
     # Anomaly Deals settings
     cur_anomaly = dict(acc.anomaly_settings or {})
     if dto.anomalyEnabled is not None:
+        if dto.anomalyEnabled and not cur_anomaly.get("is_enabled", True):
+            # Чистый старт: фиксируем точку отсчета на текущее время, чтобы отсечь закрытые во время паузы сделки
+            cur_anomaly["last_anomaly_audited_at"] = now_utc.isoformat()
+            cur_anomaly["started_at"] = now_utc.isoformat()
         cur_anomaly["is_enabled"] = dto.anomalyEnabled
     if dto.anomalyAiModel is not None:
         cur_anomaly["ai_model"] = dto.anomalyAiModel.strip() or None
@@ -358,7 +377,34 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
 
     if dto.qcEnabled is not None:
         if dto.qcEnabled and not qc.is_enabled:
-            qc.last_call_synced_at = None
+            # Чистый старт: фиксируем курсор на текущем времени, чтобы не скачивать архив из AmoCRM
+            qc.last_call_synced_at = now_utc
+            # Старые звонки в очереди со статусом pending (накопившиеся до включения) переводим в skipped
+            await db.execute(
+                update(QcCallEvaluation)
+                .where(
+                    QcCallEvaluation.account_id == account_id,
+                    QcCallEvaluation.status == "pending",
+                    QcCallEvaluation.call_date < now_utc
+                )
+                .values(
+                    status="skipped_qc_disabled",
+                    skip_reason="Звонок совершен до активации контроля качества"
+                )
+            )
+        elif not dto.qcEnabled and qc.is_enabled:
+            # Остановка: все текущие pending звонки переводим в skipped_qc_disabled, чтобы очистить очередь воркера
+            await db.execute(
+                update(QcCallEvaluation)
+                .where(
+                    QcCallEvaluation.account_id == account_id,
+                    QcCallEvaluation.status == "pending"
+                )
+                .values(
+                    status="skipped_qc_disabled",
+                    skip_reason="Контроль качества остановлен администратором"
+                )
+            )
         qc.is_enabled = dto.qcEnabled
     if dto.qcAiModel is not None:
         qc.ai_model = dto.qcAiModel.strip() or None

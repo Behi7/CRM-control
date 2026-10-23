@@ -45,6 +45,7 @@ class Account(Base):
     amo_users = relationship("AmoUser", back_populates="account")
     notifications = relationship("Notification", back_populates="account")
     custom_field_definitions = relationship("CustomFieldDefinition", back_populates="account")
+    qc_settings = relationship("QcSettings", back_populates="account", uselist=False)
 
 class User(Base):
     __tablename__ = "users"
@@ -312,7 +313,7 @@ class QcSettings(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
-    account = relationship("Account")
+    account = relationship("Account", back_populates="qc_settings")
 
 class QcRule(Base):
     __tablename__ = "qc_rules"

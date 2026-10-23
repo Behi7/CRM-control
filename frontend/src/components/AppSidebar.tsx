@@ -145,6 +145,12 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
   const isAnomalyDealsActive = isPathActive('/admin/anomaly-deals') || isPathActive('/anomaly-deals');
 
   const currentAccObj = accounts.find((a: any) => a.id === activeAccountId) || accounts[0];
+  const isAiGlobalEnabled = currentAccObj?.aiEnabled !== false;
+  const isQcEnabled = isAiGlobalEnabled && (currentAccObj?.qcEnabled !== false);
+  const isAnomalyEnabled = isAiGlobalEnabled && (currentAccObj?.anomalyEnabled !== false);
+  const showQcItem = role === 'admin' || isQcEnabled;
+  const showAnomalyItem = role === 'admin' || isAnomalyEnabled;
+
   const amoAccountName = currentAccObj?.subdomain || 'AmoCRM';
   const fullDomain = currentAccObj?.subdomain
     ? `${currentAccObj.subdomain}.${currentAccObj.baseDomain || 'amocrm.ru'}`
@@ -321,29 +327,31 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               )}
             </button>
 
-            <button
-              onClick={() => {
-                setMobileOpen(false);
-                navigate(qcUrl);
-              }}
-              className={`${
-                collapsed
-                  ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
-                  : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
-              } transition-all cursor-pointer ${
-                isQcActive
-                  ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-950/50'
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-              title={labels.qcApp}
-            >
-              <Headphones size={20} className="shrink-0" />
-              {!collapsed && (
-                <div className="overflow-hidden flex-1">
-                  <span className="text-xs font-semibold truncate">{labels.qcApp}</span>
-                </div>
-              )}
-            </button>
+            {showQcItem && (
+              <button
+                onClick={() => {
+                  setMobileOpen(false);
+                  navigate(qcUrl);
+                }}
+                className={`${
+                  collapsed
+                    ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
+                    : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
+                } transition-all cursor-pointer ${
+                  isQcActive
+                    ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-950/50'
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+                title={labels.qcApp}
+              >
+                <Headphones size={20} className="shrink-0" />
+                {!collapsed && (
+                  <div className="overflow-hidden flex-1">
+                    <span className="text-xs font-semibold truncate">{labels.qcApp}</span>
+                  </div>
+                )}
+              </button>
+            )}
 
             <button
               onClick={() => {
@@ -393,29 +401,31 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               )}
             </button>
 
-            <button
-              onClick={() => {
-                setMobileOpen(false);
-                navigate(anomalyDealsUrl);
-              }}
-              className={`${
-                collapsed
-                  ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
-                  : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
-              } transition-all cursor-pointer ${
-                isAnomalyDealsActive
-                  ? 'bg-gradient-to-r from-amber-600 to-rose-600 text-white shadow-md shadow-amber-950/50'
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-              title={labels.anomalyDeals}
-            >
-              <AlertTriangle size={20} className="shrink-0" />
-              {!collapsed && (
-                <div className="overflow-hidden flex-1">
-                  <span className="text-xs font-semibold truncate">{labels.anomalyDeals}</span>
-                </div>
-              )}
-            </button>
+            {showAnomalyItem && (
+              <button
+                onClick={() => {
+                  setMobileOpen(false);
+                  navigate(anomalyDealsUrl);
+                }}
+                className={`${
+                  collapsed
+                    ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
+                    : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
+                } transition-all cursor-pointer ${
+                  isAnomalyDealsActive
+                    ? 'bg-gradient-to-r from-amber-600 to-rose-600 text-white shadow-md shadow-amber-950/50'
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+                title={labels.anomalyDeals}
+              >
+                <AlertTriangle size={20} className="shrink-0" />
+                {!collapsed && (
+                  <div className="overflow-hidden flex-1">
+                    <span className="text-xs font-semibold truncate">{labels.anomalyDeals}</span>
+                  </div>
+                )}
+              </button>
+            )}
           </nav>
         </div>
 
