@@ -1011,6 +1011,11 @@ async def run_batch_audit(
     if not acc:
         return 0
 
+    # 0. Гейткипер включения модуля:
+    anomaly_cfg = dict(acc.anomaly_settings or {})
+    if not acc.ai_enabled or not anomaly_cfg.get("is_enabled", True):
+        return 0
+
     # 1. Гейткипер админки: не запускаем, если интеграция выключена или на паузе ("Стоп")
     if acc.status != "connected" or acc.sync_status != "active":
         logger.info(f"Account #{account_id}: Anomaly audit skipped (sync_status={acc.sync_status}, status={acc.status})")

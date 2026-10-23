@@ -298,6 +298,7 @@ async def get_ai_settings(account_id: int, db: AsyncSession = Depends(get_db)):
         "qcMaxDurationSec": qc.max_duration_sec if qc else 600,
         "qcSystemPrompt": qc.system_prompt if qc else None,
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids if (qc and qc.disabled_pipeline_ids is not None) else [],
+        "anomalyEnabled": anomaly_cfg.get("is_enabled", True),
         "anomalyAiModel": anomaly_cfg.get("ai_model") or "",
         "anomalyLossReasonFieldId": anomaly_cfg.get("loss_reason_field_id"),
         "anomalyIgnoredReasons": anomaly_cfg.get("ignored_reasons", []),
@@ -335,6 +336,8 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
 
     # Anomaly Deals settings
     cur_anomaly = dict(acc.anomaly_settings or {})
+    if dto.anomalyEnabled is not None:
+        cur_anomaly["is_enabled"] = dto.anomalyEnabled
     if dto.anomalyAiModel is not None:
         cur_anomaly["ai_model"] = dto.anomalyAiModel.strip() or None
     if dto.anomalyLossReasonFieldId is not None:
@@ -386,6 +389,7 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         "qcMaxDurationSec": qc.max_duration_sec,
         "qcSystemPrompt": qc.system_prompt,
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids or [],
+        "anomalyEnabled": acc.anomaly_settings.get("is_enabled", True) if acc.anomaly_settings else True,
         "anomalyAiModel": acc.anomaly_settings.get("ai_model") or "" if acc.anomaly_settings else "",
         "anomalyLossReasonFieldId": acc.anomaly_settings.get("loss_reason_field_id") if acc.anomaly_settings else None,
         "anomalyIgnoredReasons": acc.anomaly_settings.get("ignored_reasons", []) if acc.anomaly_settings else [],

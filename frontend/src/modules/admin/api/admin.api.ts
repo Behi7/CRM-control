@@ -23,6 +23,7 @@ export interface AiSettingsResponse {
   qcMaxDurationSec?: number;
   qcSystemPrompt?: string | null;
   qcDisabledPipelineIds?: number[];
+  anomalyEnabled?: boolean;
   anomalyAiModel?: string;
   anomalyLossReasonFieldId?: string | null;
   anomalyIgnoredReasons?: string[];
@@ -44,6 +45,7 @@ export interface PatchAiSettingsDto {
   qcMaxDurationSec?: number;
   qcSystemPrompt?: string | null;
   qcDisabledPipelineIds?: number[];
+  anomalyEnabled?: boolean;
   anomalyAiModel?: string;
   anomalyLossReasonFieldId?: string | null;
   anomalyIgnoredReasons?: string[];

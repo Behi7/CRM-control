@@ -29,6 +29,7 @@ class UpdateAiSettingsDto(BaseModel):
     qcMaxDurationSec: Optional[int] = None
     qcSystemPrompt: Optional[str] = None
     qcDisabledPipelineIds: Optional[list[int]] = None
+    anomalyEnabled: Optional[bool] = None
     anomalyAiModel: Optional[str] = None
     anomalyLossReasonFieldId: Optional[str] = None
     anomalyIgnoredReasons: Optional[list[str]] = None

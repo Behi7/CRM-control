@@ -57,6 +57,95 @@ const DEFAULT_ANOMALY_SYSTEM_PROMPT = `Ты — беспристрастный �
 5. Укажи конкретную поворотную точку (pivot_point) — где и когда сделка фактически умерла.
 6. Дай РОПу четкую рекомендацию: стоит ли попытаться спасти лида другим менеджером или списать в архив.`;
 
+interface ModuleStatusCardProps {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  enabled: boolean;
+  onToggle: () => void;
+  activeText: string;
+  disabledText: string;
+  disabledNotice?: string;
+}
+
+function ModuleStatusCard({
+  icon,
+  title,
+  description,
+  enabled,
+  onToggle,
+  activeText,
+  disabledText,
+  disabledNotice,
+}: ModuleStatusCardProps) {
+  return (
+    <div className="space-y-2.5">
+      <div
+        className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
+          enabled
+            ? 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 shadow-2xs'
+            : 'bg-slate-100/70 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 opacity-90'
+        }`}
+      >
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div
+            className={`p-2.5 rounded-xl shrink-0 transition-colors ${
+              enabled
+                ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300'
+                : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            {icon}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">
+                {title}
+              </h3>
+              <span
+                className={`px-2 py-0.5 text-[10px] font-semibold rounded-md border shrink-0 transition-colors ${
+                  enabled
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                    : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-600'
+                }`}
+              >
+                {enabled ? activeText : disabledText}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">
+              {description}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={onToggle}
+          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ml-2 ${
+            enabled ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
+          }`}
+        >
+          <span
+            aria-hidden="true"
+            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+              enabled ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+
+      {!enabled && disabledNotice && (
+        <div className="px-3.5 py-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/40 text-amber-800 dark:text-amber-300 text-xs rounded-xl flex items-center gap-2">
+          <AlertCircle size={15} className="shrink-0 text-amber-600 dark:text-amber-400" />
+          <span>{disabledNotice}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AiSettingsModal({
   accountId,
   subdomain = 'amoCRM',
@@ -93,6 +182,7 @@ export default function AiSettingsModal({
   const [disabledPipelineIds, setDisabledPipelineIds] = useState<number[]>([]);
 
   // Anomaly Deals settings
+  const [anomalyEnabled, setAnomalyEnabled] = useState(true);
   const [anomalyModel, setAnomalyModel] = useState('');
   const [lossReasonFieldId, setLossReasonFieldId] = useState<string>('');
   const [ignoredReasons, setIgnoredReasons] = useState<string[]>([]);
@@ -136,6 +226,7 @@ export default function AiSettingsModal({
       setDisabledPipelineIds(settingsQuery.data.qcDisabledPipelineIds || []);
 
       // Anomaly settings
+      setAnomalyEnabled(settingsQuery.data.anomalyEnabled ?? true);
       setAnomalyModel(settingsQuery.data.anomalyAiModel || '');
       const savedFieldId = settingsQuery.data.anomalyLossReasonFieldId || '';
       setLossReasonFieldId(savedFieldId);
@@ -217,6 +308,7 @@ export default function AiSettingsModal({
         qcMaxDurationSec: Number(maxDuration) || 600,
         qcSystemPrompt: qcSystemPrompt.trim() ? qcSystemPrompt.trim() : null,
         qcDisabledPipelineIds: disabledPipelineIds,
+        anomalyEnabled: anomalyEnabled,
         anomalyAiModel: anomalyModel.trim() || null,
         anomalyLossReasonFieldId: lossReasonFieldId || null,
         anomalyIgnoredReasons: ignoredReasons,
@@ -335,35 +427,20 @@ export default function AiSettingsModal({
 
               {/* TAB 1: GENERAL AI SETTINGS */}
               {activeTab === 'general' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                  <div className="space-y-4">
-                    {/* Toggle Enabled */}
-                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
-                      <div>
-                        <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 block">
-                          {t('ai_enable_label')}
-                        </span>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          {t('ai_enable_desc')}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={enabled}
-                        onClick={() => setEnabled(!enabled)}
-                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ml-3 ${
-                          enabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
-                        }`}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                            enabled ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
-                    </div>
+                <div className="space-y-5">
+                  <ModuleStatusCard
+                    icon={<Sparkles size={20} />}
+                    title={t('ai_tab_general')}
+                    description={t('ai_module_general_desc')}
+                    enabled={enabled}
+                    onToggle={() => setEnabled(!enabled)}
+                    activeText={t('ai_status_active')}
+                    disabledText={t('ai_status_disabled')}
+                    disabledNotice={t('ai_module_disabled_hint')}
+                  />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                    <div className="space-y-4">
 
                     {/* Model field (Текстовый ввод - Базовая модель) */}
                     <div>
@@ -455,41 +532,25 @@ export default function AiSettingsModal({
                     </p>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
               {/* TAB 2: AI CHAT ANALYST */}
               {activeTab === 'chat' && (
                 <div className="space-y-5">
+                  <ModuleStatusCard
+                    icon={<MessageSquare size={20} />}
+                    title={t('ai_tab_chat')}
+                    description={t('ai_module_chat_desc')}
+                    enabled={chatEnabled}
+                    onToggle={() => setChatEnabled(!chatEnabled)}
+                    activeText={t('ai_status_active')}
+                    disabledText={t('ai_status_disabled')}
+                    disabledNotice={t('ai_module_disabled_hint')}
+                  />
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                     <div className="space-y-4">
-                      {/* Toggle Chat Enabled */}
-                      <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
-                        <div>
-                          <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 block">
-                            {t('ai_chat_enable_label')}
-                          </span>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            {t('ai_chat_enable_desc')}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={chatEnabled}
-                          onClick={() => setChatEnabled(!chatEnabled)}
-                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ml-3 ${
-                            chatEnabled ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
-                          }`}
-                        >
-                          <span
-                            aria-hidden="true"
-                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                              chatEnabled ? 'translate-x-5' : 'translate-x-0'
-                            }`}
-                          />
-                        </button>
-                      </div>
-
                       {/* Chat Model input */}
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -546,6 +607,17 @@ export default function AiSettingsModal({
               {/* TAB 3: QUALITY CONTROL (MERGED: AUDIT + PROMPT + CHECKLISTS) */}
               {activeTab === 'qc' && (
                 <div className="space-y-5">
+                  <ModuleStatusCard
+                    icon={<Headphones size={20} />}
+                    title={t('ai_tab_qc')}
+                    description={t('ai_module_qc_desc')}
+                    enabled={qcEnabled}
+                    onToggle={() => setQcEnabled(!qcEnabled)}
+                    activeText={t('ai_status_active')}
+                    disabledText={t('ai_status_disabled')}
+                    disabledNotice={t('ai_module_disabled_hint')}
+                  />
+
                   {/* Sub-navigation pills */}
                   <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl w-fit">
                     <button
@@ -576,37 +648,10 @@ export default function AiSettingsModal({
 
                   {qcSubTab === 'settings' && (
                     <div className="space-y-5">
-                      {/* QC Toggle & Call duration & Model settings */}
+                      {/* Call duration & Model settings */}
                       <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                              <span>🎧</span> {lang === 'uz' ? 'Qo\'ng\'iroqlar auditi (AI QC)' : 'Автоматический аудит звонков (AI QC)'}
-                            </span>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                              {lang === 'uz' ? 'Vorker orqali yangi audio yozuvlarni muntazam tahlil qilish' : 'Фоновый анализ аудиозаписей звонков через воркер crm_sync'}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={qcEnabled}
-                            onClick={() => setQcEnabled(!qcEnabled)}
-                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ml-3 ${
-                              qcEnabled ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
-                            }`}
-                          >
-                            <span
-                              aria-hidden="true"
-                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                                qcEnabled ? 'translate-x-5' : 'translate-x-0'
-                              }`}
-                            />
-                          </button>
-                        </div>
-
                         {/* QC AI Model input */}
-                        <div className="pt-3 border-t border-slate-200 dark:border-slate-700/70">
+                        <div>
                           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                             {t('ai_qc_model_label')}
                           </label>
@@ -791,6 +836,17 @@ export default function AiSettingsModal({
               {/* TAB 4: ANOMALIES & LOSS REASONS */}
               {activeTab === 'anomalies' && (
                 <div className="space-y-6">
+                  <ModuleStatusCard
+                    icon={<AlertTriangle size={20} />}
+                    title={t('ai_tab_anomalies')}
+                    description={t('ai_module_anomalies_desc')}
+                    enabled={anomalyEnabled}
+                    onToggle={() => setAnomalyEnabled(!anomalyEnabled)}
+                    activeText={t('ai_status_active')}
+                    disabledText={t('ai_status_disabled')}
+                    disabledNotice={t('ai_module_disabled_hint')}
+                  />
+
                   {/* Card 0: AI Model for Anomaly Deals */}
                   <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-2">
                     <label className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
