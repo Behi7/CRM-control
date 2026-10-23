@@ -34,6 +34,7 @@ class Account(Base):
     ai_encrypted_token = Column(Text, nullable=True)
     ai_company_context = Column(Text, nullable=True)
     anomaly_settings = Column(JSONB, nullable=True, default=dict)
+    chat_settings = Column(JSONB, nullable=True, default=dict)
 
     pipelines = relationship('Pipeline', back_populates='account', cascade='all, delete-orphan')
     leads = relationship('Lead', back_populates='account', cascade='all, delete-orphan')

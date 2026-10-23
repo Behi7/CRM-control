@@ -18,6 +18,7 @@ import {
   Plus,
   Trash2,
   Filter,
+  MessageSquare,
 } from 'lucide-react';
 import RulesSettingsTab from '../modules/quality_control/components/RulesSettingsTab';
 
@@ -25,8 +26,16 @@ interface AiSettingsModalProps {
   accountId: number;
   subdomain?: string;
   onClose: () => void;
-  initialTab?: 'general' | 'qc' | 'rules' | 'anomalies';
+  initialTab?: 'general' | 'chat' | 'qc' | 'anomalies';
 }
+
+const DEFAULT_CHAT_SYSTEM_PROMPT = `Ты — ведущий Бизнес-Аналитик (BI Analyst) и эксперт по воронкам продаж amoCRM.
+Твоя задача — помогать РОПу и руководству находить узкие места в воронках, анализировать динамику конверсий и давать конкретные практические рекомендации.
+
+Правила:
+1. Анализируй факты и цифры из CRM объективно.
+2. Давай четкие и структурированные рекомендации с выделением ключевых метрик жирным.
+3. Фокусируйся на конверсиях, удержании клиентов и устранении зависших этапов.`;
 
 const DEFAULT_QC_SYSTEM_PROMPT = `Ты — объективный и внимательный эксперт службы контроля качества звонков отдела продаж.
 Твоя задача — внимательно прослушать аудиозапись разговора менеджера с клиентом, провести глубокий аудит соблюдения законов регламента, зафиксировать точные таймкоды, цитаты ошибок и составить готовую речевую подсказку (как следовало сказать).
@@ -57,22 +66,34 @@ export default function AiSettingsModal({
   const qc = useQueryClient();
   const { t, lang } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'qc' | 'rules' | 'anomalies'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'general' | 'chat' | 'qc' | 'anomalies'>(
+    initialTab === 'general' || initialTab === 'chat' || initialTab === 'qc' || initialTab === 'anomalies'
+      ? initialTab
+      : 'general'
+  );
 
-  // General AI settings
+  // General AI settings (Base Fallback model)
   const [model, setModel] = useState('gemini-2.5-flash');
   const [token, setToken] = useState('');
   const [companyContext, setCompanyContext] = useState('');
   const [enabled, setEnabled] = useState(false);
 
+  // AI Chat settings
+  const [chatEnabled, setChatEnabled] = useState(true);
+  const [chatModel, setChatModel] = useState('');
+  const [chatSystemPrompt, setChatSystemPrompt] = useState('');
+
   // QC settings
+  const [qcSubTab, setQcSubTab] = useState<'settings' | 'rules'>('settings');
   const [qcEnabled, setQcEnabled] = useState(false);
+  const [qcModel, setQcModel] = useState('');
   const [minDuration, setMinDuration] = useState(20);
   const [maxDuration, setMaxDuration] = useState(600);
   const [qcSystemPrompt, setQcSystemPrompt] = useState('');
   const [disabledPipelineIds, setDisabledPipelineIds] = useState<number[]>([]);
 
   // Anomaly Deals settings
+  const [anomalyModel, setAnomalyModel] = useState('');
   const [lossReasonFieldId, setLossReasonFieldId] = useState<string>('');
   const [ignoredReasons, setIgnoredReasons] = useState<string[]>([]);
   const [customReasonInput, setCustomReasonInput] = useState<string>('');
@@ -100,13 +121,22 @@ export default function AiSettingsModal({
       setModel(settingsQuery.data.aiModel || 'gemini-2.5-flash');
       setCompanyContext(settingsQuery.data.aiCompanyContext || '');
       setEnabled(settingsQuery.data.aiEnabled ?? false);
+
+      // Chat settings
+      setChatEnabled(settingsQuery.data.chatEnabled ?? true);
+      setChatModel(settingsQuery.data.chatAiModel || '');
+      setChatSystemPrompt(settingsQuery.data.chatSystemPrompt || '');
+
+      // QC settings
       setQcEnabled(settingsQuery.data.qcEnabled ?? false);
+      setQcModel(settingsQuery.data.qcAiModel || '');
       setMinDuration(settingsQuery.data.qcMinDurationSec ?? 20);
       setMaxDuration(settingsQuery.data.qcMaxDurationSec ?? 600);
       setQcSystemPrompt(settingsQuery.data.qcSystemPrompt || '');
       setDisabledPipelineIds(settingsQuery.data.qcDisabledPipelineIds || []);
 
       // Anomaly settings
+      setAnomalyModel(settingsQuery.data.anomalyAiModel || '');
       const savedFieldId = settingsQuery.data.anomalyLossReasonFieldId || '';
       setLossReasonFieldId(savedFieldId);
       setIgnoredReasons(settingsQuery.data.anomalyIgnoredReasons || []);
@@ -176,13 +206,18 @@ export default function AiSettingsModal({
     try {
       const payload: any = {
         aiEnabled: enabled,
-        aiModel: model.trim(),
+        aiModel: model.trim() || 'gemini-2.5-flash',
         aiCompanyContext: companyContext.trim(),
+        chatEnabled: chatEnabled,
+        chatAiModel: chatModel.trim() || null,
+        chatSystemPrompt: chatSystemPrompt.trim() || null,
         qcEnabled: qcEnabled,
+        qcAiModel: qcModel.trim() || null,
         qcMinDurationSec: Number(minDuration) || 20,
         qcMaxDurationSec: Number(maxDuration) || 600,
         qcSystemPrompt: qcSystemPrompt.trim() ? qcSystemPrompt.trim() : null,
         qcDisabledPipelineIds: disabledPipelineIds,
+        anomalyAiModel: anomalyModel.trim() || null,
         anomalyLossReasonFieldId: lossReasonFieldId || null,
         anomalyIgnoredReasons: ignoredReasons,
         anomalySystemPrompt: anomalySystemPrompt.trim() ? anomalySystemPrompt.trim() : null,
@@ -220,7 +255,7 @@ export default function AiSettingsModal({
           </button>
         </div>
 
-        {/* Tab Navigation Bar */}
+        {/* Tab Navigation Bar (4 Modules) */}
         <div className="px-6 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2 shrink-0 overflow-x-auto">
           <button
             type="button"
@@ -237,6 +272,19 @@ export default function AiSettingsModal({
 
           <button
             type="button"
+            onClick={() => setActiveTab('chat')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'chat'
+                ? 'bg-purple-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <MessageSquare size={14} />
+            <span>{t('ai_tab_chat')}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('qc')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'qc'
@@ -246,19 +294,6 @@ export default function AiSettingsModal({
           >
             <Headphones size={14} />
             <span>{t('ai_tab_qc')}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('rules')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'rules'
-                ? 'bg-purple-600 text-white shadow-xs'
-                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <FileCheck size={14} />
-            <span>{t('ai_tab_rules')}</span>
           </button>
 
           <button
@@ -330,10 +365,10 @@ export default function AiSettingsModal({
                       </button>
                     </div>
 
-                    {/* Model field (Текстовый ввод) */}
+                    {/* Model field (Текстовый ввод - Базовая модель) */}
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                        {t('ai_model_label')}
+                        {t('ai_model_label')} <span className="text-slate-400 font-normal">({lang === 'uz' ? 'Asosiy / Standart' : 'Базовая / По умолчанию'})</span>
                       </label>
                       <input
                         type="text"
@@ -344,20 +379,9 @@ export default function AiSettingsModal({
                         required
                       />
                       <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                        {lang === 'uz' ? 'Tavsiya etiladi:' : 'Рекомендуется:'}{' '}
-                        <code
-                          className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-purple-700 dark:text-purple-300 cursor-pointer font-medium"
-                          onClick={() => setModel('gemini-2.5-flash')}
-                        >
-                          gemini-2.5-flash
-                        </code>{' '}
-                        {lang === 'uz' ? 'yoki' : 'или'}{' '}
-                        <code
-                          className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-purple-700 dark:text-purple-300 cursor-pointer font-medium"
-                          onClick={() => setModel('gemini-1.5-flash')}
-                        >
-                          gemini-1.5-flash
-                        </code>
+                        {lang === 'uz'
+                          ? 'Barcha modullar uchun umumiy model. Agar boshqa modulda model maydoni bo‘sh qoldirilsa, shu model ishlatiladi.'
+                          : 'Базовая модель системы. Если в одном из модулей ниже поле модели оставить пустым, будет использоваться эта модель.'}
                       </p>
                     </div>
 
@@ -433,197 +457,333 @@ export default function AiSettingsModal({
                 </div>
               )}
 
-              {/* TAB 2: CALL AUDIT & QC SYSTEM PROMPT */}
-              {activeTab === 'qc' && (
+              {/* TAB 2: AI CHAT ANALYST */}
+              {activeTab === 'chat' && (
                 <div className="space-y-5">
-                  {/* QC Toggle & Call duration settings */}
-                  <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                          <span>🎧</span> {lang === 'uz' ? 'Qo\'ng\'iroqlar auditi (AI QC)' : 'Автоматический аудит звонков (AI QC)'}
-                        </span>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          {lang === 'uz' ? 'Vorker orqali yangi audio yozuvlarni muntazam tahlil qilish' : 'Фоновый анализ аудиозаписей звонков через воркер crm_sync'}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={qcEnabled}
-                        onClick={() => setQcEnabled(!qcEnabled)}
-                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ml-3 ${
-                          qcEnabled ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
-                        }`}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                            qcEnabled ? 'translate-x-5' : 'translate-x-0'
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                    <div className="space-y-4">
+                      {/* Toggle Chat Enabled */}
+                      <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
+                        <div>
+                          <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 block">
+                            {t('ai_chat_enable_label')}
+                          </span>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            {t('ai_chat_enable_desc')}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={chatEnabled}
+                          onClick={() => setChatEnabled(!chatEnabled)}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ml-3 ${
+                            chatEnabled ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
                           }`}
-                        />
-                      </button>
-                    </div>
-
-                    {qcEnabled && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-200 dark:border-slate-700/70">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            {lang === 'uz' ? 'Min. davomiylik (sek)' : 'Мин. длительность (сек)'}
-                          </label>
-                          <input
-                            type="number"
-                            min={5}
-                            max={3600}
-                            value={minDuration}
-                            onChange={(e) => setMinDuration(Number(e.target.value))}
-                            className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                              chatEnabled ? 'translate-x-5' : 'translate-x-0'
+                            }`}
                           />
-                          <span className="text-[10px] text-slate-400 mt-0.5 block">
-                            {lang === 'uz' ? 'Qisqa qo\'ng\'iroqlar o\'tkaziladi' : 'Короткие звонки пропускаются'}
-                          </span>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            {lang === 'uz' ? 'Maks. davomiylik (sek)' : 'Макс. длительность (сек)'}
-                          </label>
-                          <input
-                            type="number"
-                            min={30}
-                            max={7200}
-                            value={maxDuration}
-                            onChange={(e) => setMaxDuration(Number(e.target.value))}
-                            className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-purple-500 focus:outline-none"
-                          />
-                          <span className="text-[10px] text-slate-400 mt-0.5 block">
-                            {lang === 'uz' ? 'Tokenlarni tejash' : 'Защита бюджета токенов'}
-                          </span>
-                        </div>
+                        </button>
                       </div>
-                    )}
 
-                    {qcEnabled && (
-                      <div className="pt-3.5 border-t border-slate-200 dark:border-slate-700/70 space-y-2.5">
-                        <div>
-                          <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                            <GitBranch size={14} className="text-purple-600 dark:text-purple-400" />
-                            {lang === 'uz' ? 'Qo\'ng\'iroqlar tahlili uchun voronkalar' : 'Воронки для анализа диалогов'}
-                          </span>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                            {lang === 'uz'
-                              ? 'Kerakli voronkalarni yoqing yoki o\'chiring. O\'chirilgan voronkalardagi qo\'ng\'iroqlar tahlil qilinmaydi.'
-                              : 'Включайте или отключайте анализ звонков для конкретных воронок продаж. Звонки по сделкам из отключенных воронок пропускаются.'}
-                          </p>
-                        </div>
-
-                        {pipelines.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic">
-                            {pipelinesQuery.isLoading
-                              ? (lang === 'uz' ? 'Voronkalar yuklanmoqda...' : 'Загрузка списка воронок...')
-                              : (lang === 'uz' ? 'Voronkalar topilmadi' : 'Воронки не найдены')}
-                          </p>
-                        ) : (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                            {pipelines.map((pipe: any) => {
-                              const isPipelineDisabled = disabledPipelineIds.includes(pipe.id);
-                              const isPipeActive = !isPipelineDisabled;
-                              return (
-                                <div
-                                  key={pipe.id}
-                                  className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
-                                    isPipeActive
-                                      ? 'bg-white dark:bg-slate-800/80 border-purple-200/70 dark:border-purple-900/40 shadow-xs'
-                                      : 'bg-slate-100/70 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 opacity-60'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2 min-w-0 pr-2">
-                                    <span
-                                      className={`w-2 h-2 rounded-full shrink-0 ${
-                                        isPipeActive ? 'bg-emerald-500' : 'bg-slate-400'
-                                      }`}
-                                    />
-                                    <span className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
-                                      {pipe.name}
-                                    </span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    role="switch"
-                                    aria-checked={isPipeActive}
-                                    onClick={() => {
-                                      if (isPipeActive) {
-                                        setDisabledPipelineIds((prev) =>
-                                          prev.includes(pipe.id) ? prev : [...prev, pipe.id]
-                                        );
-                                      } else {
-                                        setDisabledPipelineIds((prev) => prev.filter((id) => id !== pipe.id));
-                                      }
-                                    }}
-                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                      isPipeActive ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
-                                    }`}
-                                  >
-                                    <span
-                                      aria-hidden="true"
-                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                                        isPipeActive ? 'translate-x-4' : 'translate-x-0'
-                                      }`}
-                                    />
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* System Prompt for Call Quality Control */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3">
+                      {/* Chat Model input */}
                       <div>
-                        <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                          {t('ai_qc_system_prompt_label')}
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          {t('ai_chat_model_label')}
                         </label>
-                        <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                          {t('ai_qc_system_prompt_desc')}
+                        <input
+                          type="text"
+                          value={chatModel}
+                          onChange={(e) => setChatModel(e.target.value)}
+                          placeholder={model ? `${lang === 'uz' ? 'Asosiy sozlamalardan' : 'По умолчанию из общих'}: ${model}` : 'gemini-2.5-flash'}
+                          className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                        />
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                          {lang === 'uz'
+                            ? `Bo‘sh qoldirilsa, umumiy model (${model || 'gemini-2.5-flash'}) ishlatiladi.`
+                            : `Если оставить пустым, будет использоваться базовая модель из общих настроек (${model || 'gemini-2.5-flash'}).`}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleResetPrompt}
-                        className="px-2.5 py-1 text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 rounded-lg border border-purple-200 dark:border-purple-800 flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
-                      >
-                        <RotateCcw size={12} />
-                        <span>{t('ai_qc_system_prompt_reset')}</span>
-                      </button>
                     </div>
 
-                    <textarea
-                      value={qcSystemPrompt}
-                      onChange={(e) => setQcSystemPrompt(e.target.value)}
-                      rows={12}
-                      placeholder={DEFAULT_QC_SYSTEM_PROMPT}
-                      className="w-full p-3 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-xs leading-relaxed bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:outline-none resize-y"
-                    />
+                    {/* Chat System Prompt */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                            {t('ai_chat_system_prompt_label')}
+                          </label>
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                            {t('ai_chat_system_prompt_desc')}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setChatSystemPrompt(DEFAULT_CHAT_SYSTEM_PROMPT)}
+                          className="px-2.5 py-1 text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 rounded-lg border border-purple-200 dark:border-purple-800 flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                        >
+                          <RotateCcw size={12} />
+                          <span>{t('ai_chat_system_prompt_reset')}</span>
+                        </button>
+                      </div>
+
+                      <textarea
+                        value={chatSystemPrompt}
+                        onChange={(e) => setChatSystemPrompt(e.target.value)}
+                        rows={11}
+                        placeholder={DEFAULT_CHAT_SYSTEM_PROMPT}
+                        className="w-full p-3 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-xs leading-relaxed bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:outline-none resize-y"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* TAB 3: CHECKLIST RULES & PIPELINES */}
-              {activeTab === 'rules' && (
-                <div className="space-y-4">
-                  {pipelinesQuery.isLoading ? (
-                    <div className="py-12 flex items-center justify-center gap-2 text-slate-400">
-                      <Loader2 size={20} className="animate-spin" />
-                      <span>{t('loading')}</span>
+              {/* TAB 3: QUALITY CONTROL (MERGED: AUDIT + PROMPT + CHECKLISTS) */}
+              {activeTab === 'qc' && (
+                <div className="space-y-5">
+                  {/* Sub-navigation pills */}
+                  <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl w-fit">
+                    <button
+                      type="button"
+                      onClick={() => setQcSubTab('settings')}
+                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        qcSubTab === 'settings'
+                          ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <Headphones size={13} />
+                      <span>{t('ai_qc_subtab_settings')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQcSubTab('rules')}
+                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        qcSubTab === 'rules'
+                          ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <FileCheck size={13} />
+                      <span>{t('ai_qc_subtab_rules')}</span>
+                    </button>
+                  </div>
+
+                  {qcSubTab === 'settings' && (
+                    <div className="space-y-5">
+                      {/* QC Toggle & Call duration & Model settings */}
+                      <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                              <span>🎧</span> {lang === 'uz' ? 'Qo\'ng\'iroqlar auditi (AI QC)' : 'Автоматический аудит звонков (AI QC)'}
+                            </span>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              {lang === 'uz' ? 'Vorker orqali yangi audio yozuvlarni muntazam tahlil qilish' : 'Фоновый анализ аудиозаписей звонков через воркер crm_sync'}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={qcEnabled}
+                            onClick={() => setQcEnabled(!qcEnabled)}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ml-3 ${
+                              qcEnabled ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
+                            }`}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                qcEnabled ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        {/* QC AI Model input */}
+                        <div className="pt-3 border-t border-slate-200 dark:border-slate-700/70">
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                            {t('ai_qc_model_label')}
+                          </label>
+                          <input
+                            type="text"
+                            value={qcModel}
+                            onChange={(e) => setQcModel(e.target.value)}
+                            placeholder={model ? `${lang === 'uz' ? 'Asosiy sozlamalardan' : 'По умолчанию из общих'}: ${model}` : 'gemini-2.5-flash'}
+                            className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                          />
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                            {lang === 'uz'
+                              ? `Bo‘sh qoldirilsa, umumiy model (${model || 'gemini-2.5-flash'}) ishlatiladi.`
+                              : `Если оставить пустым, будет использоваться базовая модель из общих настроек (${model || 'gemini-2.5-flash'}).`}
+                          </p>
+                        </div>
+
+                        {qcEnabled && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-200 dark:border-slate-700/70">
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                {lang === 'uz' ? 'Min. davomiylik (sek)' : 'Мин. длительность (сек)'}
+                              </label>
+                              <input
+                                type="number"
+                                min={5}
+                                max={3600}
+                                value={minDuration}
+                                onChange={(e) => setMinDuration(Number(e.target.value))}
+                                className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                              />
+                              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                                {lang === 'uz' ? 'Qisqa qo\'ng\'iroqlar o\'tkaziladi' : 'Короткие звонки пропускаются'}
+                              </span>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                {lang === 'uz' ? 'Maks. davomiylik (sek)' : 'Макс. длительность (сек)'}
+                              </label>
+                              <input
+                                type="number"
+                                min={30}
+                                max={7200}
+                                value={maxDuration}
+                                onChange={(e) => setMaxDuration(Number(e.target.value))}
+                                className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                              />
+                              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                                {lang === 'uz' ? 'Tokenlarni tejash' : 'Защита бюджета токенов'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {qcEnabled && (
+                          <div className="pt-3.5 border-t border-slate-200 dark:border-slate-700/70 space-y-2.5">
+                            <div>
+                              <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                <GitBranch size={14} className="text-purple-600 dark:text-purple-400" />
+                                {lang === 'uz' ? 'Qo\'ng\'iroqlar tahlili uchun voronkalar' : 'Воронки для анализа диалогов'}
+                              </span>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                {lang === 'uz'
+                                  ? 'Kerakli voronkalarni yoqing yoki o\'chiring. O\'chirilgan voronkalardagi qo\'ng\'iroqlar tahlil qilinmaydi.'
+                                  : 'Включайте или отключайте анализ звонков для конкретных воронок продаж. Звонки по сделкам из отключенных воронок пропускаются.'}
+                              </p>
+                            </div>
+
+                            {pipelines.length === 0 ? (
+                              <p className="text-xs text-slate-400 italic">
+                                {pipelinesQuery.isLoading
+                                  ? (lang === 'uz' ? 'Voronkalar yuklanmoqda...' : 'Загрузка списка воронок...')
+                                  : (lang === 'uz' ? 'Voronkalar topilmadi' : 'Воронки не найдены')}
+                              </p>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                                {pipelines.map((pipe: any) => {
+                                  const isPipelineDisabled = disabledPipelineIds.includes(pipe.id);
+                                  const isPipeActive = !isPipelineDisabled;
+                                  return (
+                                    <div
+                                      key={pipe.id}
+                                      className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
+                                        isPipeActive
+                                          ? 'bg-white dark:bg-slate-800/80 border-purple-200/70 dark:border-purple-900/40 shadow-xs'
+                                          : 'bg-slate-100/70 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 opacity-60'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0 pr-2">
+                                        <span
+                                          className={`w-2 h-2 rounded-full shrink-0 ${
+                                            isPipeActive ? 'bg-emerald-500' : 'bg-slate-400'
+                                          }`}
+                                        />
+                                        <span className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                                          {pipe.name}
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={isPipeActive}
+                                        onClick={() => {
+                                          if (isPipeActive) {
+                                            setDisabledPipelineIds((prev) =>
+                                              prev.includes(pipe.id) ? prev : [...prev, pipe.id]
+                                            );
+                                          } else {
+                                            setDisabledPipelineIds((prev) => prev.filter((id) => id !== pipe.id));
+                                          }
+                                        }}
+                                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                          isPipeActive ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
+                                        }`}
+                                      >
+                                        <span
+                                          aria-hidden="true"
+                                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                                            isPipeActive ? 'translate-x-4' : 'translate-x-0'
+                                          }`}
+                                        />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* System Prompt for Call Quality Control */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                              {t('ai_qc_system_prompt_label')}
+                            </label>
+                            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                              {t('ai_qc_system_prompt_desc')}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleResetPrompt}
+                            className="px-2.5 py-1 text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 rounded-lg border border-purple-200 dark:border-purple-800 flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                          >
+                            <RotateCcw size={12} />
+                            <span>{t('ai_qc_system_prompt_reset')}</span>
+                          </button>
+                        </div>
+
+                        <textarea
+                          value={qcSystemPrompt}
+                          onChange={(e) => setQcSystemPrompt(e.target.value)}
+                          rows={12}
+                          placeholder={DEFAULT_QC_SYSTEM_PROMPT}
+                          className="w-full p-3 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-xs leading-relaxed bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:outline-none resize-y"
+                        />
+                      </div>
                     </div>
-                  ) : (
-                    <RulesSettingsTab
-                      accountId={accountId}
-                      pipelines={pipelines}
-                    />
+                  )}
+
+                  {qcSubTab === 'rules' && (
+                    <div className="space-y-4">
+                      {pipelinesQuery.isLoading ? (
+                        <div className="py-12 flex items-center justify-center gap-2 text-slate-400">
+                          <Loader2 size={20} className="animate-spin" />
+                          <span>{t('loading')}</span>
+                        </div>
+                      ) : (
+                        <RulesSettingsTab
+                          accountId={accountId}
+                          pipelines={pipelines}
+                        />
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -631,6 +791,25 @@ export default function AiSettingsModal({
               {/* TAB 4: ANOMALIES & LOSS REASONS */}
               {activeTab === 'anomalies' && (
                 <div className="space-y-6">
+                  {/* Card 0: AI Model for Anomaly Deals */}
+                  <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                    <label className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <Sparkles size={16} className="text-purple-600 dark:text-purple-400" />
+                      <span>{t('ai_anomalies_model_label')}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={anomalyModel}
+                      onChange={(e) => setAnomalyModel(e.target.value)}
+                      placeholder={model ? `${lang === 'uz' ? 'Asosiy sozlamalardan' : 'По умолчанию из общих'}: ${model}` : 'gemini-2.5-flash'}
+                      className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                    />
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                      {lang === 'uz'
+                        ? `Bo‘sh qoldirilsa, umumiy model (${model || 'gemini-2.5-flash'}) ishlatiladi.`
+                        : `Если оставить пустым, будет использоваться базовая модель из общих настроек (${model || 'gemini-2.5-flash'}).`}
+                    </p>
+                  </div>
                   {/* Card 1: Custom Field Selector */}
                   <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-3">
                     <div className="flex items-start justify-between gap-4">

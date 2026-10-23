@@ -573,7 +573,7 @@ async def get_deal_forensic_detail(
             account_id=account_id,
             lead=lead_obj,
             api_key=api_k,
-            model_name=acc_obj.ai_model if acc_obj else "gemini-2.5-flash",
+            model_name=(acc_obj.anomaly_settings or {}).get("ai_model") or acc_obj.ai_model if acc_obj else "gemini-2.5-flash",
             company_context=acc_obj.ai_company_context if acc_obj else None,
             anomaly_settings=acc_obj.anomaly_settings if acc_obj else None,
             force_ai=True,
@@ -1050,7 +1050,7 @@ async def run_batch_audit(
         return 0
 
     api_key = decrypt_token(acc.ai_encrypted_token) if acc.ai_encrypted_token else None
-    model_name = acc.ai_model or "gemini-2.5-flash"
+    model_name = (anomaly_cfg.get("ai_model") if anomaly_cfg else None) or acc.ai_model or "gemini-2.5-flash"
     company_context = acc.ai_company_context
 
     # 4. Ищем сделки со статусом lost, закрытые ПОСЛЕ курсора (строго после бэкфила и вне периода "Стоп")

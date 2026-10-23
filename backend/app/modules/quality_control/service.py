@@ -296,7 +296,7 @@ async def process_call_evaluation(session: AsyncSession, eval_id: int) -> bool:
         mime_type=mime_type,
         rules=rules,
         api_key=gemini_key,
-        model_name=qc_settings.ai_model,
+        model_name=qc_settings.ai_model or acc.ai_model or "gemini-2.5-flash",
         custom_prompt=qc_settings.system_prompt,
         company_context=acc.ai_company_context,
     )

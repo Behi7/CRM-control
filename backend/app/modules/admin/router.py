@@ -281,6 +281,7 @@ async def get_ai_settings(account_id: int, db: AsyncSession = Depends(get_db)):
     ]
 
     anomaly_cfg = acc.anomaly_settings or {}
+    chat_cfg = acc.chat_settings or {}
 
     return {
         "accountId": acc.id,
@@ -288,11 +289,16 @@ async def get_ai_settings(account_id: int, db: AsyncSession = Depends(get_db)):
         "aiModel": acc.ai_model or "gemini-2.5-flash",
         "hasToken": bool(acc.ai_encrypted_token),
         "aiCompanyContext": acc.ai_company_context or "",
+        "chatEnabled": chat_cfg.get("is_enabled", True),
+        "chatAiModel": chat_cfg.get("ai_model") or "",
+        "chatSystemPrompt": chat_cfg.get("system_prompt"),
         "qcEnabled": qc.is_enabled if qc else False,
+        "qcAiModel": qc.ai_model or "" if qc else "",
         "qcMinDurationSec": qc.min_duration_sec if qc else 20,
         "qcMaxDurationSec": qc.max_duration_sec if qc else 600,
         "qcSystemPrompt": qc.system_prompt if qc else None,
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids if (qc and qc.disabled_pipeline_ids is not None) else [],
+        "anomalyAiModel": anomaly_cfg.get("ai_model") or "",
         "anomalyLossReasonFieldId": anomaly_cfg.get("loss_reason_field_id"),
         "anomalyIgnoredReasons": anomaly_cfg.get("ignored_reasons", []),
         "anomalySystemPrompt": anomaly_cfg.get("system_prompt"),
@@ -310,14 +316,27 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
     if dto.aiEnabled is not None:
         acc.ai_enabled = dto.aiEnabled
     if dto.aiModel is not None:
-        acc.ai_model = dto.aiModel.strip()
+        acc.ai_model = dto.aiModel.strip() or "gemini-2.5-flash"
     if dto.aiCompanyContext is not None:
         acc.ai_company_context = dto.aiCompanyContext.strip()
     if dto.aiToken:
         acc.ai_encrypted_token = encrypt_token(dto.aiToken.strip())
 
+    # Chat settings
+    cur_chat = dict(acc.chat_settings or {})
+    if dto.chatEnabled is not None:
+        cur_chat["is_enabled"] = dto.chatEnabled
+    if dto.chatAiModel is not None:
+        cur_chat["ai_model"] = dto.chatAiModel.strip() or None
+    if dto.chatSystemPrompt is not None:
+        cur_chat["system_prompt"] = dto.chatSystemPrompt.strip() or None
+    acc.chat_settings = cur_chat
+    flag_modified(acc, "chat_settings")
+
     # Anomaly Deals settings
     cur_anomaly = dict(acc.anomaly_settings or {})
+    if dto.anomalyAiModel is not None:
+        cur_anomaly["ai_model"] = dto.anomalyAiModel.strip() or None
     if dto.anomalyLossReasonFieldId is not None:
         cur_anomaly["loss_reason_field_id"] = dto.anomalyLossReasonFieldId.strip() if dto.anomalyLossReasonFieldId else None
     if dto.anomalyIgnoredReasons is not None:
@@ -338,8 +357,8 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         if dto.qcEnabled and not qc.is_enabled:
             qc.last_call_synced_at = None
         qc.is_enabled = dto.qcEnabled
-    if dto.aiModel is not None:
-        qc.ai_model = dto.aiModel.strip()
+    if dto.qcAiModel is not None:
+        qc.ai_model = dto.qcAiModel.strip() or None
     if dto.qcMinDurationSec is not None:
         qc.min_duration_sec = max(5, dto.qcMinDurationSec)
     if dto.qcMaxDurationSec is not None:
@@ -358,11 +377,16 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         "aiModel": acc.ai_model or "gemini-2.5-flash",
         "hasToken": bool(acc.ai_encrypted_token),
         "aiCompanyContext": acc.ai_company_context or "",
+        "chatEnabled": acc.chat_settings.get("is_enabled", True) if acc.chat_settings else True,
+        "chatAiModel": acc.chat_settings.get("ai_model") or "" if acc.chat_settings else "",
+        "chatSystemPrompt": acc.chat_settings.get("system_prompt") if acc.chat_settings else None,
         "qcEnabled": qc.is_enabled,
+        "qcAiModel": qc.ai_model or "",
         "qcMinDurationSec": qc.min_duration_sec,
         "qcMaxDurationSec": qc.max_duration_sec,
         "qcSystemPrompt": qc.system_prompt,
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids or [],
+        "anomalyAiModel": acc.anomaly_settings.get("ai_model") or "" if acc.anomaly_settings else "",
         "anomalyLossReasonFieldId": acc.anomaly_settings.get("loss_reason_field_id") if acc.anomaly_settings else None,
         "anomalyIgnoredReasons": acc.anomaly_settings.get("ignored_reasons", []) if acc.anomaly_settings else [],
         "anomalySystemPrompt": acc.anomaly_settings.get("system_prompt") if acc.anomaly_settings else None,

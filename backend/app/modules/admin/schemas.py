@@ -20,11 +20,16 @@ class UpdateAiSettingsDto(BaseModel):
     aiModel: Optional[str] = None
     aiToken: Optional[str] = None
     aiCompanyContext: Optional[str] = None
+    chatEnabled: Optional[bool] = None
+    chatAiModel: Optional[str] = None
+    chatSystemPrompt: Optional[str] = None
     qcEnabled: Optional[bool] = None
+    qcAiModel: Optional[str] = None
     qcMinDurationSec: Optional[int] = None
     qcMaxDurationSec: Optional[int] = None
     qcSystemPrompt: Optional[str] = None
     qcDisabledPipelineIds: Optional[list[int]] = None
+    anomalyAiModel: Optional[str] = None
     anomalyLossReasonFieldId: Optional[str] = None
     anomalyIgnoredReasons: Optional[list[str]] = None
     anomalySystemPrompt: Optional[str] = None

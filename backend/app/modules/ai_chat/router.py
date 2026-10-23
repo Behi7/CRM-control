@@ -30,16 +30,20 @@ def get_ai_status(account_id: int, user: dict = Depends(get_current_user)):
     check_account_access(user, account_id)
     with sync_engine.connect() as conn:
         acc = conn.execute(
-            text("SELECT ai_enabled, ai_model, ai_encrypted_token FROM accounts WHERE id = :id"),
+            text("SELECT ai_enabled, ai_model, ai_encrypted_token, chat_settings FROM accounts WHERE id = :id"),
             {"id": account_id}
         ).mappings().first()
         if not acc:
             raise HTTPException(status_code=404, detail="Account not found")
 
+        chat_cfg = acc.get("chat_settings") or {}
+        chat_model = chat_cfg.get("ai_model") or acc["ai_model"] or "gemini-2.5-flash"
+        chat_enabled = chat_cfg.get("is_enabled", True) if acc["ai_enabled"] else False
+
         return {
-            "enabled": bool(acc["ai_enabled"] and acc["ai_encrypted_token"]),
+            "enabled": bool(chat_enabled and acc["ai_encrypted_token"]),
             "configured": bool(acc["ai_encrypted_token"]),
-            "model": acc["ai_model"] or "gemini-2.5-flash",
+            "model": chat_model,
         }
 
 @router.post("/accounts/{account_id}/ai-chat")
@@ -49,7 +53,7 @@ async def chat_ai(account_id: int, body: AiChatBody, user: dict = Depends(get_cu
     with sync_engine.connect() as conn:
         acc = conn.execute(
             text("""
-                SELECT ai_enabled, ai_model, ai_encrypted_token, ai_company_context, subdomain, base_domain
+                SELECT ai_enabled, ai_model, ai_encrypted_token, ai_company_context, chat_settings, subdomain, base_domain
                 FROM accounts WHERE id = :id
             """),
             {"id": account_id}
@@ -57,13 +61,16 @@ async def chat_ai(account_id: int, body: AiChatBody, user: dict = Depends(get_cu
         if not acc:
             raise HTTPException(status_code=404, detail="Account not found")
 
-        if not acc["ai_enabled"] or not acc["ai_encrypted_token"]:
+        chat_cfg = acc.get("chat_settings") or {}
+        chat_enabled = chat_cfg.get("is_enabled", True)
+        if not acc["ai_enabled"] or not chat_enabled or not acc["ai_encrypted_token"]:
             raise HTTPException(status_code=400, detail="AI analyst is not enabled or API key is missing")
 
         api_key = decrypt_token(acc["ai_encrypted_token"])
-        model_name = acc["ai_model"] or "gemini-2.5-flash"
+        model_name = chat_cfg.get("ai_model") or acc["ai_model"] or "gemini-2.5-flash"
         clean_model = model_name.strip().removeprefix("models/")
         ai_context = acc["ai_company_context"] or ""
+        custom_chat_prompt = chat_cfg.get("system_prompt")
         is_uz = body.lang == "uz"
 
         if body.biData:
@@ -222,6 +229,9 @@ async def chat_ai(account_id: int, body: AiChatBody, user: dict = Depends(get_cu
                 "Правила:\n1. Отвечай на русском языке.\n2. Не проси данных — все цифры перед тобой.\n3. Дай 3-4 конкретные рекомендации РОПу.\n4. Выделяй важные цифры и этапы **жирным**."
             )
 
+            if custom_chat_prompt:
+                sys_instruction = f"{custom_chat_prompt.strip()}\n\n" + sys_instruction
+
             return await execute_gemini_call(clean_model, api_key, sys_instruction, body.history, body.message, is_uz)
 
         # Time Analytics Context
@@ -274,6 +284,9 @@ async def chat_ai(account_id: int, body: AiChatBody, user: dict = Depends(get_cu
             f"=== ТАБЛИЦА ЭТАПОВ ВОРОНКИ ===\n{table_text}\n\n"
             "Правила:\n1. Отвечай на русском языке.\n2. Проанализируй узкие места (задержки) и пропуски этапов.\n3. Дай 3-4 конкретные рекомендации РОПу.\n4. Выделяй важные цифры и этапы **жирным**."
         )
+
+        if custom_chat_prompt:
+            sys_instruction = f"{custom_chat_prompt.strip()}\n\n" + sys_instruction
 
         return await execute_gemini_call(clean_model, api_key, sys_instruction, body.history, body.message, is_uz)
 
