@@ -390,7 +390,7 @@ async def generate_ai_forensic_verdict(
     audit_math: Dict[str, Any],
     qc_insights: List[Dict[str, Any]],
     api_key: Optional[str] = None,
-    model_name: Optional[str] = "gemini-2.5-flash",
+    model_name: Optional[str] = "gemini-3.5-flash",
     company_context: Optional[str] = None,
     custom_system_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -461,7 +461,9 @@ async def generate_ai_forensic_verdict(
         return fallback_verdict()
 
     try:
-        clean_model = (model_name or "gemini-2.5-flash").strip().removeprefix("models/")
+        clean_model = (model_name or "gemini-3.5-flash").strip().removeprefix("models/")
+        if clean_model in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash-lite"):
+            clean_model = "gemini-3.5-flash"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}"
 
         breakdown = audit_math.get("breakdown", {})

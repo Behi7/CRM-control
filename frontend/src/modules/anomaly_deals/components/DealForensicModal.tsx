@@ -13,7 +13,8 @@ import {
   Sparkles,
   Flame,
   FileSpreadsheet,
-  ListTodo
+  ListTodo,
+  RefreshCw
 } from 'lucide-react';
 import { anomalyDealsApi, DealForensicDetail } from '../api/anomalyDeals.api';
 import { useLanguage } from '../../../i18n/LanguageContext';
@@ -44,6 +45,15 @@ export default function DealForensicModal({
       anomalyDealsApi.reviewLead(accountId, leadId, isReviewed),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deal-forensic', accountId, leadId] });
+      queryClient.invalidateQueries({ queryKey: ['anomaly-deals-list', accountId] });
+      queryClient.invalidateQueries({ queryKey: ['anomaly-stats', accountId] });
+    },
+  });
+
+  const reanalyzeMutation = useMutation({
+    mutationFn: () => anomalyDealsApi.reanalyzeLead(accountId, leadId),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['deal-forensic', accountId, leadId], updated);
       queryClient.invalidateQueries({ queryKey: ['anomaly-deals-list', accountId] });
       queryClient.invalidateQueries({ queryKey: ['anomaly-stats', accountId] });
     },
@@ -152,12 +162,27 @@ export default function DealForensicModal({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => reanalyzeMutation.mutate()}
+              disabled={reanalyzeMutation.isPending}
+              title={lang === 'uz' ? 'Qayta tekshirish' : 'Перепроверить анализ'}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 text-xs font-medium transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={reanalyzeMutation.isPending ? 'animate-spin text-violet-600' : ''} />
+              <span className="hidden sm:inline">
+                {reanalyzeMutation.isPending
+                  ? (lang === 'uz' ? 'Tahlil qilinmoqda...' : 'Анализирую...')
+                  : (lang === 'uz' ? 'Qayta tekshirish' : 'Обновить анализ')}
+              </span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Навигация по классам (вкладкам) */}

@@ -12,7 +12,7 @@ from app.modules.anomaly_deals.schemas import (
 )
 from app.modules.anomaly_deals.service import (
     get_anomaly_stats, get_anomaly_deals_list, get_deal_forensic_detail,
-    run_batch_audit, set_audit_reviewed
+    run_batch_audit, set_audit_reviewed, reanalyze_single_deal
 )
 
 router = APIRouter(tags=["Anomaly Deals"])
@@ -92,6 +92,19 @@ async def deal_forensic_endpoint(
     detail = await get_deal_forensic_detail(session, account_id, lead_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Lead not found or not closed in loss")
+    return detail
+
+@router.post("/accounts/{account_id}/anomaly-deals/leads/{lead_id}/reanalyze", response_model=DealForensicDetailDto)
+async def reanalyze_deal_endpoint(
+    account_id: int,
+    lead_id: int,
+    session: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    check_account_access(user, account_id)
+    detail = await reanalyze_single_deal(session, account_id, lead_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Lead not found")
     return detail
 
 @router.post("/accounts/{account_id}/anomaly-deals/batch-analyze")

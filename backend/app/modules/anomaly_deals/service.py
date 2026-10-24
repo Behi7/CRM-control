@@ -11,7 +11,8 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.core.database import AsyncSessionLocal
 from app.models import (
     Account, Lead, Pipeline, Stage, AmoUser, Tag, LeadTag,
-    LeadStageHistory, LeadStageSkip, QcCallEvaluation, DealAnomalyAudit, LeadTask
+    LeadStageHistory, LeadStageSkip, QcCallEvaluation, DealAnomalyAudit, LeadTask,
+    QcSettings
 )
 from app.core.security import decrypt_token
 from app.modules.anomaly_deals.schemas import (
@@ -437,102 +438,30 @@ async def get_anomaly_deals_list(
     )
 
 
-async def ensure_lead_calls_synced(
+async def reanalyze_single_deal(
     session: AsyncSession,
     account_id: int,
-    lead: Lead
-) -> None:
-    """
-    On-Demand подгрузка звонков по конкретной сделке из AmoCRM,
-    если в локальной БД пока 0 звонков.
-    """
-    if not lead or not lead.external_id:
-        return
-
-    try:
-        acc_stmt = select(Account).where(Account.id == account_id)
-        acc = (await session.execute(acc_stmt)).scalar_one_or_none()
-        if not acc or not acc.encrypted_token or acc.status != "connected":
-            return
-
-        token = decrypt_token(acc.encrypted_token)
-        if not token:
-            return
-
-        headers = {"Authorization": f"Bearer {token}"}
-        url = f"https://{acc.subdomain}.{acc.base_domain}/api/v4/leads/{lead.external_id}/notes"
-
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                url,
-                headers=headers,
-                params={"filter[note_type]": "call_in,call_out", "limit": 250}
-            )
-            if resp.status_code != 200 or not resp.text:
-                return
-
-            notes = resp.json().get("_embedded", {}).get("notes", [])
-            if not notes:
-                return
-
-            call_notes = [n for n in notes if n.get("note_type") in ("call_in", "call_out")]
-            if not call_notes:
-                return
-
-            now_utc = datetime.now(timezone.utc)
-            records = []
-            for n in call_notes:
-                note_id = str(n.get("id"))
-                params = n.get("params") or {}
-                duration = int(params.get("duration") or 0)
-                raw_link = params.get("link")
-                link = raw_link.strip() if isinstance(raw_link, str) and raw_link.strip().startswith("http") else None
-                phone = str(params.get("phone") or "")
-                direction = "in" if n.get("note_type") == "call_in" else "out"
-                ts = n.get("created_at") or int(now_utc.timestamp())
-                call_date = datetime.fromtimestamp(ts, tz=timezone.utc)
-                call_status = params.get("call_status")
-
-                status = "skipped_historical"
-                skip_reason = "Архивный звонок"
-                if call_status is not None:
-                    try:
-                        cs_int = int(call_status)
-                        if cs_int != 4:
-                            status = "skipped_not_answered"
-                            skip_reason = "Разговор не состоялся"
-                    except (ValueError, TypeError):
-                        pass
-                if status != "skipped_not_answered" and not link:
-                    status = "skipped_no_audio"
-                    skip_reason = "Нет ссылки на аудиозапись"
-
-                records.append({
-                    "account_id": account_id,
-                    "external_call_id": note_id,
-                    "lead_id": lead.id,
-                    "pipeline_id": lead.pipeline_id,
-                    "amo_user_id": lead.responsible_user_id,
-                    "phone": phone,
-                    "call_direction": direction,
-                    "call_date": call_date,
-                    "duration_seconds": duration,
-                    "recording_url": link,
-                    "status": status,
-                    "skip_reason": skip_reason,
-                    "created_at": now_utc,
-                })
-
-            if records:
-                insert_stmt = insert(QcCallEvaluation).values(records).on_conflict_do_nothing(
-                    index_elements=["account_id", "external_call_id"]
-                )
-                await session.execute(insert_stmt)
-                await session.commit()
-                logger.info(f"On-demand synced {len(records)} calls for lead #{lead.id} ({lead.name})")
-
-    except Exception as e:
-        logger.warning(f"Failed on-demand call sync for lead #{lead.id}: {e}")
+    lead_id: int,
+) -> Optional[DealForensicDetailDto]:
+    """Принудительный пересчет аудита для конкретной сделки."""
+    lead_stmt = select(Lead).where(Lead.account_id == account_id, Lead.id == lead_id)
+    lead_obj = (await session.execute(lead_stmt)).scalar_one_or_none()
+    if not lead_obj:
+        return None
+    acc_stmt = select(Account).where(Account.id == account_id)
+    acc_obj = (await session.execute(acc_stmt)).scalar_one_or_none()
+    api_k = decrypt_token(acc_obj.ai_encrypted_token) if acc_obj and acc_obj.ai_encrypted_token else None
+    await run_single_deal_audit(
+        session=session,
+        account_id=account_id,
+        lead=lead_obj,
+        api_key=api_k,
+        model_name=(acc_obj.anomaly_settings or {}).get("ai_model") or acc_obj.ai_model if acc_obj else "gemini-3.5-flash",
+        company_context=acc_obj.ai_company_context if acc_obj else None,
+        anomaly_settings=acc_obj.anomaly_settings if acc_obj else None,
+        force_ai=True,
+    )
+    return await get_deal_forensic_detail(session, account_id, lead_id)
 
 
 async def get_deal_forensic_detail(
@@ -573,7 +502,7 @@ async def get_deal_forensic_detail(
             account_id=account_id,
             lead=lead_obj,
             api_key=api_k,
-            model_name=(acc_obj.anomaly_settings or {}).get("ai_model") or acc_obj.ai_model if acc_obj else "gemini-2.5-flash",
+            model_name=(acc_obj.anomaly_settings or {}).get("ai_model") or acc_obj.ai_model if acc_obj else "gemini-3.5-flash",
             company_context=acc_obj.ai_company_context if acc_obj else None,
             anomaly_settings=acc_obj.anomaly_settings if acc_obj else None,
             force_ai=True,
@@ -615,16 +544,33 @@ async def get_deal_forensic_detail(
             )
         )
 
-    # Загружаем звонки из Quality Control
+    # Загружаем звонки из Quality Control (только из локальной БД)
     calls_stmt = (
         select(QcCallEvaluation)
         .where(QcCallEvaluation.account_id == account_id, QcCallEvaluation.lead_id == lead_id)
         .order_by(QcCallEvaluation.call_date.asc())
     )
     calls_rows = (await session.execute(calls_stmt)).scalars().all()
-    if not calls_rows:
-        await ensure_lead_calls_synced(session, account_id, lead)
-        calls_rows = (await session.execute(calls_stmt)).scalars().all()
+
+    # Защита от рассинхрона (Self-Healing):
+    # Если старый аудит был рассчитан, когда звонков еще не было в БД (total_calls == 0),
+    # а сейчас звонки уже выгружены синхронизатором (len(calls_rows) > 0) —
+    # мгновенно пересчитываем аудит по актуальным данным!
+    if audit.score_breakdown and audit.score_breakdown.get("total_calls", 0) == 0 and len(calls_rows) > 0:
+        acc_stmt = select(Account).where(Account.id == account_id)
+        acc_obj = (await session.execute(acc_stmt)).scalar_one_or_none()
+        api_k = decrypt_token(acc_obj.ai_encrypted_token) if acc_obj and acc_obj.ai_encrypted_token else None
+        audit = await run_single_deal_audit(
+            session=session,
+            account_id=account_id,
+            lead=lead,
+            benchmarks=benchmarks,
+            api_key=api_k,
+            model_name=(acc_obj.anomaly_settings or {}).get("ai_model") or acc_obj.ai_model if acc_obj else "gemini-3.5-flash",
+            company_context=acc_obj.ai_company_context if acc_obj else None,
+            anomaly_settings=acc_obj.anomaly_settings if acc_obj else None,
+            force_ai=True,
+        )
     calls_summary = [
         CallEvaluationSummaryDto(
             id=c.id,
@@ -764,7 +710,7 @@ async def run_single_deal_audit(
     lead: Lead,
     benchmarks: Optional[Dict[int, float]] = None,
     api_key: Optional[str] = None,
-    model_name: Optional[str] = "gemini-2.5-flash",
+    model_name: Optional[str] = "gemini-3.5-flash",
     company_context: Optional[str] = None,
     anomaly_settings: Optional[Dict[str, Any]] = None,
     force_ai: bool = False,
@@ -869,12 +815,9 @@ async def run_single_deal_audit(
     skips_stmt = select(LeadStageSkip).where(LeadStageSkip.lead_id == lead.id)
     skips = (await session.execute(skips_stmt)).scalars().all()
 
-    # Загружаем звонки
+    # Загружаем звонки (только из локальной БД)
     calls_stmt = select(QcCallEvaluation).where(QcCallEvaluation.account_id == account_id, QcCallEvaluation.lead_id == lead.id)
     calls = (await session.execute(calls_stmt)).scalars().all()
-    if not calls:
-        await ensure_lead_calls_synced(session, account_id, lead)
-        calls = (await session.execute(calls_stmt)).scalars().all()
 
     # Загружаем задачи по сделке
     tasks_stmt = (
@@ -1026,7 +969,14 @@ async def run_batch_audit(
         logger.info(f"Account #{account_id}: Anomaly audit skipped because backfill is not completed ({acc.backfill_status})")
         return 0
 
-    # 3. Базовый курсор времени (как в контроле качества):
+    # 3. Вотермарка синхронизации звонков (Data Watermark):
+    # Модуль берет сделку на аудит только тогда, когда воркер подтвердил выгрузку звонков в БД!
+    qc_stmt = select(QcSettings.last_call_synced_at).where(QcSettings.account_id == account_id)
+    last_call_synced_at = (await session.execute(qc_stmt)).scalar_one_or_none()
+    if not last_call_synced_at:
+        logger.info(f"Account #{account_id}: Anomaly audit waiting for initial calls sync watermark.")
+        return 0
+
     now_utc = datetime.now(timezone.utc)
     anomaly_cfg = dict(acc.anomaly_settings or {})
     cursor_str = anomaly_cfg.get("last_anomaly_audited_at")
@@ -1054,15 +1004,22 @@ async def run_batch_audit(
         await session.commit()
         return 0
 
+    # Если курсор времени уже догнал вотермарку звонков — новых готовых сделок быть не может, ждем следующего прогона воркера
+    if cursor_dt >= last_call_synced_at:
+        return 0
+
     api_key = decrypt_token(acc.ai_encrypted_token) if acc.ai_encrypted_token else None
-    model_name = (anomaly_cfg.get("ai_model") if anomaly_cfg else None) or acc.ai_model or "gemini-2.5-flash"
+    model_name = (anomaly_cfg.get("ai_model") if anomaly_cfg else None) or acc.ai_model or "gemini-3.5-flash"
     company_context = acc.ai_company_context
 
-    # 4. Ищем сделки со статусом lost, закрытые ПОСЛЕ курсора (строго после бэкфила и вне периода "Стоп")
+    # 4. Ищем сделки со статусом lost:
+    # - Закрытые ПОСЛЕ курсора (строго после нажатия "Старт", отсекаем период "Стоп")
+    # - И закрытые ДО вотермарки синхронизации звонков (все звонки на момент закрытия 100% в БД!)
     query = select(Lead).where(
         Lead.account_id == account_id,
         Lead.status == "lost",
-        Lead.crm_closed_at >= cursor_dt
+        Lead.crm_closed_at >= cursor_dt,
+        Lead.crm_closed_at <= last_call_synced_at
     )
     if pipeline_id:
         query = query.where(Lead.pipeline_id == pipeline_id)
@@ -1072,13 +1029,13 @@ async def run_batch_audit(
         audited_leads = select(DealAnomalyAudit.lead_id).where(DealAnomalyAudit.account_id == account_id)
         query = query.where(Lead.id.not_in(audited_leads))
 
-    # Сортируем последовательно от более старых к новым в пределах активного окна
+    # Сортируем последовательно от более старых к новым в пределах подтвержденного окна
     query = query.order_by(Lead.crm_closed_at.asc(), Lead.id.asc()).limit(limit)
     leads = (await session.execute(query)).scalars().all()
 
     if not leads:
-        # Все сделки в окне проаудированы — продвигаем курсор на текущее время
-        anomaly_cfg["last_anomaly_audited_at"] = now_utc.isoformat()
+        # Все сделки в подтвержденном окне проаудированы — продвигаем курсор ровно до вотермарки звонков
+        anomaly_cfg["last_anomaly_audited_at"] = last_call_synced_at.isoformat()
         acc.anomaly_settings = anomaly_cfg
         flag_modified(acc, "anomaly_settings")
         await session.commit()
@@ -1087,6 +1044,7 @@ async def run_batch_audit(
     benchmarks_cache: Dict[int, Dict[int, float]] = {}
     processed_count = 0
     earliest_pending_qc_time: Optional[datetime] = None
+    latest_processed_closed_at: Optional[datetime] = None
 
     for lead in leads:
         # 5. Защита синхронизации с контролем качества (QC Dependency Guard):
@@ -1120,14 +1078,19 @@ async def run_batch_audit(
             force_ai=False,
         )
         processed_count += 1
+        if lead.crm_closed_at:
+            if latest_processed_closed_at is None or lead.crm_closed_at > latest_processed_closed_at:
+                latest_processed_closed_at = lead.crm_closed_at
 
     # Продвижение курсора:
     # Если какие-то сделки ждали QC, курсор ставим на время самой ранней ожидающей сделки, чтобы не потерять её.
-    # Если все обработаны без ожидания, сдвигаем курсор на now_utc.
+    # Иначе сдвигаем курсор до времени закрытия последней обработанной сделки (или до last_call_synced_at)
     if earliest_pending_qc_time:
         anomaly_cfg["last_anomaly_audited_at"] = earliest_pending_qc_time.isoformat()
-    elif processed_count > 0:
-        anomaly_cfg["last_anomaly_audited_at"] = now_utc.isoformat()
+    elif latest_processed_closed_at:
+        anomaly_cfg["last_anomaly_audited_at"] = latest_processed_closed_at.isoformat()
+    elif processed_count == 0:
+        anomaly_cfg["last_anomaly_audited_at"] = last_call_synced_at.isoformat()
 
     acc.anomaly_settings = anomaly_cfg
     flag_modified(acc, "anomaly_settings")

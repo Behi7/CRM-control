@@ -183,6 +183,14 @@ export const anomalyDealsApi = {
       `/accounts/${accountId}/anomaly-deals/leads/${leadId}/forensic`
     ),
 
+  reanalyzeLead: (accountId: number, leadId: number) =>
+    baseApi<DealForensicDetail>(
+      `/accounts/${accountId}/anomaly-deals/leads/${leadId}/reanalyze`,
+      {
+        method: 'POST',
+      }
+    ),
+
   batchAnalyze: (
     accountId: number,
     data: { pipelineId?: number; limit?: number; forceReanalyze?: boolean }
