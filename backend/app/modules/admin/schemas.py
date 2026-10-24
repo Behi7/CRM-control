@@ -34,6 +34,8 @@ class UpdateAiSettingsDto(BaseModel):
     anomalyLossReasonFieldId: Optional[str] = None
     anomalyIgnoredReasons: Optional[list[str]] = None
     anomalySystemPrompt: Optional[str] = None
+    predictionsEnabled: Optional[bool] = None
+    crmNodesEnabled: Optional[bool] = None
 
 class TestAiDto(BaseModel):
     model: str

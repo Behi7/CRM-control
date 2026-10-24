@@ -19,6 +19,8 @@ import {
   Trash2,
   Filter,
   MessageSquare,
+  Cpu,
+  Network,
 } from 'lucide-react';
 import RulesSettingsTab from '../modules/quality_control/components/RulesSettingsTab';
 
@@ -26,7 +28,7 @@ interface AiSettingsModalProps {
   accountId: number;
   subdomain?: string;
   onClose: () => void;
-  initialTab?: 'general' | 'chat' | 'qc' | 'anomalies';
+  initialTab?: 'general' | 'chat' | 'qc' | 'anomalies' | 'predictions' | 'crm_nodes';
 }
 
 const DEFAULT_CHAT_SYSTEM_PROMPT = `Ты — ведущий Бизнес-Аналитик (BI Analyst) и эксперт по воронкам продаж amoCRM.
@@ -155,8 +157,8 @@ export default function AiSettingsModal({
   const qc = useQueryClient();
   const { t, lang } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'chat' | 'qc' | 'anomalies'>(
-    initialTab === 'general' || initialTab === 'chat' || initialTab === 'qc' || initialTab === 'anomalies'
+  const [activeTab, setActiveTab] = useState<'general' | 'chat' | 'qc' | 'anomalies' | 'predictions' | 'crm_nodes'>(
+    initialTab === 'general' || initialTab === 'chat' || initialTab === 'qc' || initialTab === 'anomalies' || initialTab === 'predictions' || initialTab === 'crm_nodes'
       ? initialTab
       : 'general'
   );
@@ -188,6 +190,12 @@ export default function AiSettingsModal({
   const [ignoredReasons, setIgnoredReasons] = useState<string[]>([]);
   const [customReasonInput, setCustomReasonInput] = useState<string>('');
   const [anomalySystemPrompt, setAnomalySystemPrompt] = useState<string>('');
+
+  // Predictions settings
+  const [predictionsEnabled, setPredictionsEnabled] = useState(true);
+
+  // CRM Nodes settings
+  const [crmNodesEnabled, setCrmNodesEnabled] = useState(true);
 
   // Status & tests
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -247,6 +255,10 @@ export default function AiSettingsModal({
           setLossReasonFieldId(candidate.id);
         }
       }
+
+      // Predictions & CRM Nodes settings
+      setPredictionsEnabled(settingsQuery.data.predictionsEnabled ?? true);
+      setCrmNodesEnabled(settingsQuery.data.crmNodesEnabled ?? true);
     }
   }, [settingsQuery.data]);
 
@@ -315,6 +327,8 @@ export default function AiSettingsModal({
         anomalyLossReasonFieldId: lossReasonFieldId || null,
         anomalyIgnoredReasons: ignoredReasons,
         anomalySystemPrompt: anomalySystemPrompt.trim() ? anomalySystemPrompt.trim() : null,
+        predictionsEnabled: predictionsEnabled,
+        crmNodesEnabled: crmNodesEnabled,
       };
       if (token.trim()) {
         payload.aiToken = token.trim();
@@ -401,6 +415,32 @@ export default function AiSettingsModal({
           >
             <AlertTriangle size={14} />
             <span>{t('ai_tab_anomalies')}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('predictions')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'predictions'
+                ? 'bg-purple-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Cpu size={14} />
+            <span>{t('ai_tab_predictions')}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('crm_nodes')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'crm_nodes'
+                ? 'bg-purple-600 text-white shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Network size={14} />
+            <span>{t('ai_tab_crm_nodes')}</span>
           </button>
         </div>
 
@@ -1110,6 +1150,38 @@ export default function AiSettingsModal({
                       </p>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* TAB 5: PREDICTIONS */}
+              {activeTab === 'predictions' && (
+                <div className="space-y-5">
+                  <ModuleStatusCard
+                    icon={<Cpu size={20} />}
+                    title={t('ai_tab_predictions')}
+                    description={t('ai_module_predictions_desc')}
+                    enabled={predictionsEnabled}
+                    onToggle={() => setPredictionsEnabled(!predictionsEnabled)}
+                    activeText={t('ai_status_active')}
+                    disabledText={t('ai_status_disabled')}
+                    disabledNotice={t('ai_module_disabled_hint')}
+                  />
+                </div>
+              )}
+
+              {/* TAB 6: CRM NODES */}
+              {activeTab === 'crm_nodes' && (
+                <div className="space-y-5">
+                  <ModuleStatusCard
+                    icon={<Network size={20} />}
+                    title={t('ai_tab_crm_nodes')}
+                    description={t('ai_module_crm_nodes_desc')}
+                    enabled={crmNodesEnabled}
+                    onToggle={() => setCrmNodesEnabled(!crmNodesEnabled)}
+                    activeText={t('ai_status_active')}
+                    disabledText={t('ai_status_disabled')}
+                    disabledNotice={t('ai_module_disabled_hint')}
+                  />
                 </div>
               )}
             </div>

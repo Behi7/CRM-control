@@ -148,8 +148,12 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
   const isAiGlobalEnabled = currentAccObj?.aiEnabled !== false;
   const isQcEnabled = isAiGlobalEnabled && (currentAccObj?.qcEnabled !== false);
   const isAnomalyEnabled = isAiGlobalEnabled && (currentAccObj?.anomalyEnabled !== false);
+  const isPredictionsEnabled = isAiGlobalEnabled && (currentAccObj?.predictionsEnabled !== false);
+  const isCrmNodesEnabled = isAiGlobalEnabled && (currentAccObj?.crmNodesEnabled !== false);
   const showQcItem = role === 'admin' || isQcEnabled;
   const showAnomalyItem = role === 'admin' || isAnomalyEnabled;
+  const showPredictionsItem = role === 'admin' || isPredictionsEnabled;
+  const showCrmNodesItem = role === 'admin' || isCrmNodesEnabled;
 
   const amoAccountName = currentAccObj?.subdomain || 'AmoCRM';
   const fullDomain = currentAccObj?.subdomain
@@ -353,53 +357,57 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               </button>
             )}
 
-            <button
-              onClick={() => {
-                setMobileOpen(false);
-                navigate(predictionsUrl);
-              }}
-              className={`${
-                collapsed
-                  ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
-                  : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
-              } transition-all cursor-pointer ${
-                isPredictionsActive
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-950/50'
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-              title={labels.app03}
-            >
-              <Cpu size={20} className="shrink-0" />
-              {!collapsed && (
-                <div className="overflow-hidden flex-1">
-                  <span className="text-xs font-semibold truncate">{labels.app03}</span>
-                </div>
-              )}
-            </button>
+            {showPredictionsItem && (
+              <button
+                onClick={() => {
+                  setMobileOpen(false);
+                  navigate(predictionsUrl);
+                }}
+                className={`${
+                  collapsed
+                    ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
+                    : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
+                } transition-all cursor-pointer ${
+                  isPredictionsActive
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-950/50'
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+                title={labels.app03}
+              >
+                <Cpu size={20} className="shrink-0" />
+                {!collapsed && (
+                  <div className="overflow-hidden flex-1">
+                    <span className="text-xs font-semibold truncate">{labels.app03}</span>
+                  </div>
+                )}
+              </button>
+            )}
 
-            <button
-              onClick={() => {
-                setMobileOpen(false);
-                navigate(crmNodesUrl);
-              }}
-              className={`${
-                collapsed
-                  ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
-                  : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
-              } transition-all cursor-pointer ${
-                isCrmNodesActive
-                  ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md shadow-teal-950/50'
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-              title={labels.crmNodes}
-            >
-              <Network size={20} className="shrink-0" />
-              {!collapsed && (
-                <div className="overflow-hidden flex-1">
-                  <span className="text-xs font-semibold truncate">{labels.crmNodes}</span>
-                </div>
-              )}
-            </button>
+            {showCrmNodesItem && (
+              <button
+                onClick={() => {
+                  setMobileOpen(false);
+                  navigate(crmNodesUrl);
+                }}
+                className={`${
+                  collapsed
+                    ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
+                    : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
+                } transition-all cursor-pointer ${
+                  isCrmNodesActive
+                    ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md shadow-teal-950/50'
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+                title={labels.crmNodes}
+              >
+                <Network size={20} className="shrink-0" />
+                {!collapsed && (
+                  <div className="overflow-hidden flex-1">
+                    <span className="text-xs font-semibold truncate">{labels.crmNodes}</span>
+                  </div>
+                )}
+              </button>
+            )}
 
             {showAnomalyItem && (
               <button

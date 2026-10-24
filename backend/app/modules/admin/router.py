@@ -21,6 +21,8 @@ router = APIRouter(prefix="/admin", tags=["Admin"], dependencies=[Depends(requir
 def serialize_account(acc: Account) -> dict:
     anomaly_cfg = dict(acc.anomaly_settings or {})
     chat_cfg = dict(acc.chat_settings or {})
+    pred_cfg = dict(acc.predictions_settings or {})
+    nodes_cfg = dict(acc.crm_nodes_settings or {})
     qc_enabled = bool(acc.qc_settings.is_enabled) if getattr(acc, "qc_settings", None) else False
     return {
         "id": acc.id,
@@ -45,6 +47,8 @@ def serialize_account(acc: Account) -> dict:
         "qcEnabled": qc_enabled,
         "anomalyEnabled": bool(anomaly_cfg.get("is_enabled", True)),
         "chatEnabled": bool(chat_cfg.get("is_enabled", True)),
+        "predictionsEnabled": bool(pred_cfg.get("is_enabled", True)),
+        "crmNodesEnabled": bool(nodes_cfg.get("is_enabled", True)),
     }
 
 @router.get("/accounts")
@@ -293,6 +297,8 @@ async def get_ai_settings(account_id: int, db: AsyncSession = Depends(get_db)):
 
     anomaly_cfg = acc.anomaly_settings or {}
     chat_cfg = acc.chat_settings or {}
+    pred_cfg = acc.predictions_settings or {}
+    nodes_cfg = acc.crm_nodes_settings or {}
 
     return {
         "accountId": acc.id,
@@ -314,6 +320,8 @@ async def get_ai_settings(account_id: int, db: AsyncSession = Depends(get_db)):
         "anomalyLossReasonFieldId": anomaly_cfg.get("loss_reason_field_id"),
         "anomalyIgnoredReasons": anomaly_cfg.get("ignored_reasons", []),
         "anomalySystemPrompt": anomaly_cfg.get("system_prompt"),
+        "predictionsEnabled": pred_cfg.get("is_enabled", True),
+        "crmNodesEnabled": nodes_cfg.get("is_enabled", True),
         "customFields": custom_fields,
     }
 
@@ -417,6 +425,20 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
     if dto.qcDisabledPipelineIds is not None:
         qc.disabled_pipeline_ids = dto.qcDisabledPipelineIds
 
+    # Predictions settings
+    cur_predictions = dict(acc.predictions_settings or {})
+    if dto.predictionsEnabled is not None:
+        cur_predictions["is_enabled"] = dto.predictionsEnabled
+        acc.predictions_settings = cur_predictions
+        flag_modified(acc, "predictions_settings")
+
+    # CRM Nodes settings
+    cur_crm_nodes = dict(acc.crm_nodes_settings or {})
+    if dto.crmNodesEnabled is not None:
+        cur_crm_nodes["is_enabled"] = dto.crmNodesEnabled
+        acc.crm_nodes_settings = cur_crm_nodes
+        flag_modified(acc, "crm_nodes_settings")
+
     await db.commit()
     await db.refresh(qc)
 
@@ -440,6 +462,8 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         "anomalyLossReasonFieldId": acc.anomaly_settings.get("loss_reason_field_id") if acc.anomaly_settings else None,
         "anomalyIgnoredReasons": acc.anomaly_settings.get("ignored_reasons", []) if acc.anomaly_settings else [],
         "anomalySystemPrompt": acc.anomaly_settings.get("system_prompt") if acc.anomaly_settings else None,
+        "predictionsEnabled": acc.predictions_settings.get("is_enabled", True) if acc.predictions_settings else True,
+        "crmNodesEnabled": acc.crm_nodes_settings.get("is_enabled", True) if acc.crm_nodes_settings else True,
     }
 
 @router.get("/notifications")

@@ -32,6 +32,8 @@ class Account(Base):
     ai_company_context = Column(Text, nullable=True)
     anomaly_settings = Column(JSONB, nullable=True, default=dict)
     chat_settings = Column(JSONB, nullable=True, default=dict)
+    predictions_settings = Column(JSONB, nullable=True, default=dict)
+    crm_nodes_settings = Column(JSONB, nullable=True, default=dict)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (

@@ -31,6 +31,8 @@ def list_accounts_bi(user: dict):
             a.ai_enabled AS "aiEnabled",
             a.chat_settings AS "chatSettings",
             a.anomaly_settings AS "anomalySettings",
+            a.predictions_settings AS "predictionsSettings",
+            a.crm_nodes_settings AS "crmNodesSettings",
             COALESCE(q.is_enabled, false) AS "qcEnabled",
             COUNT(l.id) AS "totalLeads",
             COUNT(l.custom_fields) AS "enrichedLeads",
@@ -51,6 +53,8 @@ def list_accounts_bi(user: dict):
             d = dict(r)
             chat_s = d.pop("chatSettings", None) or {}
             anom_s = d.pop("anomalySettings", None) or {}
+            pred_s = d.pop("predictionsSettings", None) or {}
+            nodes_s = d.pop("crmNodesSettings", None) or {}
             if isinstance(chat_s, str):
                 try:
                     chat_s = json.loads(chat_s)
@@ -61,8 +65,20 @@ def list_accounts_bi(user: dict):
                     anom_s = json.loads(anom_s)
                 except Exception:
                     anom_s = {}
+            if isinstance(pred_s, str):
+                try:
+                    pred_s = json.loads(pred_s)
+                except Exception:
+                    pred_s = {}
+            if isinstance(nodes_s, str):
+                try:
+                    nodes_s = json.loads(nodes_s)
+                except Exception:
+                    nodes_s = {}
             d["chatEnabled"] = bool(chat_s.get("is_enabled", True))
             d["anomalyEnabled"] = bool(anom_s.get("is_enabled", True))
+            d["predictionsEnabled"] = bool(pred_s.get("is_enabled", True))
+            d["crmNodesEnabled"] = bool(nodes_s.get("is_enabled", True))
             d["qcEnabled"] = bool(d.get("qcEnabled", False))
             d["aiEnabled"] = bool(d.get("aiEnabled", False))
             results.append(d)

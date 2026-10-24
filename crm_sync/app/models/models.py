@@ -35,6 +35,8 @@ class Account(Base):
     ai_company_context = Column(Text, nullable=True)
     anomaly_settings = Column(JSONB, nullable=True, default=dict)
     chat_settings = Column(JSONB, nullable=True, default=dict)
+    predictions_settings = Column(JSONB, nullable=True, default=dict)
+    crm_nodes_settings = Column(JSONB, nullable=True, default=dict)
 
     pipelines = relationship('Pipeline', back_populates='account', cascade='all, delete-orphan')
     leads = relationship('Lead', back_populates='account', cascade='all, delete-orphan')

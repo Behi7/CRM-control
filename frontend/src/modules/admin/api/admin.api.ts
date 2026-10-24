@@ -28,6 +28,8 @@ export interface AiSettingsResponse {
   anomalyLossReasonFieldId?: string | null;
   anomalyIgnoredReasons?: string[];
   anomalySystemPrompt?: string | null;
+  predictionsEnabled?: boolean;
+  crmNodesEnabled?: boolean;
   customFields?: CustomFieldDefinitionDto[];
 }
 
@@ -50,6 +52,8 @@ export interface PatchAiSettingsDto {
   anomalyLossReasonFieldId?: string | null;
   anomalyIgnoredReasons?: string[];
   anomalySystemPrompt?: string | null;
+  predictionsEnabled?: boolean;
+  crmNodesEnabled?: boolean;
 }
 
 export const adminApi = {
