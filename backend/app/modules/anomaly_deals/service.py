@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import httpx
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -552,25 +551,6 @@ async def get_deal_forensic_detail(
     )
     calls_rows = (await session.execute(calls_stmt)).scalars().all()
 
-    # Защита от рассинхрона (Self-Healing):
-    # Если старый аудит был рассчитан, когда звонков еще не было в БД (total_calls == 0),
-    # а сейчас звонки уже выгружены синхронизатором (len(calls_rows) > 0) —
-    # мгновенно пересчитываем аудит по актуальным данным!
-    if audit.score_breakdown and audit.score_breakdown.get("total_calls", 0) == 0 and len(calls_rows) > 0:
-        acc_stmt = select(Account).where(Account.id == account_id)
-        acc_obj = (await session.execute(acc_stmt)).scalar_one_or_none()
-        api_k = decrypt_token(acc_obj.ai_encrypted_token) if acc_obj and acc_obj.ai_encrypted_token else None
-        audit = await run_single_deal_audit(
-            session=session,
-            account_id=account_id,
-            lead=lead,
-            benchmarks=benchmarks,
-            api_key=api_k,
-            model_name=(acc_obj.anomaly_settings or {}).get("ai_model") or acc_obj.ai_model if acc_obj else "gemini-3.5-flash",
-            company_context=acc_obj.ai_company_context if acc_obj else None,
-            anomaly_settings=acc_obj.anomaly_settings if acc_obj else None,
-            force_ai=True,
-        )
     calls_summary = [
         CallEvaluationSummaryDto(
             id=c.id,
