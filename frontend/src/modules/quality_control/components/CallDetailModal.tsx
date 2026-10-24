@@ -49,7 +49,7 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
 
   if (isLoading || !call) {
     return (
-      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 flex items-center gap-3 text-slate-500 shadow-2xl">
           <Loader2 size={24} className="animate-spin text-blue-600" />
           <span>{lang === 'uz' ? 'Yuklanmoqda...' : 'Загрузка карточки звонка...'}</span>
@@ -67,7 +67,7 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
       : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30';
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-3xl w-full border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30">
@@ -108,10 +108,14 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
           </div>
 
           <div className="flex items-center gap-3">
-            {call.status === 'completed' && (
+            {call.status === 'completed' ? (
               <div className={`px-3 py-1.5 rounded-xl font-bold text-base border flex items-center gap-1.5 ${scoreColor}`}>
                 <span>{score}</span>
                 <span className="text-xs font-normal opacity-75">/ 100</span>
+              </div>
+            ) : (
+              <div className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                {call.skipReason || (call.status === 'pending' ? (lang === 'uz' ? 'Kutilmoqda' : 'В очереди') : call.status)}
               </div>
             )}
             <button
@@ -222,6 +226,22 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
                         <span>{err}</span>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* If no verdict data (e.g. call was skipped or pending) */}
+              {!call.summary && !call.bottleneck && !call.recommendation && (!call.errorsList || call.errorsList.length === 0) && (
+                <div className="text-center py-10 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-2">
+                  <AlertTriangle size={28} className="mx-auto text-slate-400" />
+                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    {call.skipReason || (lang === 'uz' ? 'Qo‘ng‘iroq tahlil qilinmagan' : 'Звонок не оценивался регламентом')}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                    {call.status === 'skipped_historical' && (lang === 'uz' ? 'Tizimga ulanishdan oldingi arxiv qo‘ng‘iroq' : 'Архивный звонок, совершенный до запуска контроля качества')}
+                    {call.status === 'skipped_no_audio' && (lang === 'uz' ? 'Telefoniya tomonidan audio yozuv taqdim etilmagan' : 'Телефония не передала ссылку на аудиозапись')}
+                    {call.status === 'skipped_not_answered' && (lang === 'uz' ? 'Mijoz go‘shakni ko‘tarmagan yoki bekor qilgan' : 'Разговор не состоялся (недозвон / сброс)')}
+                    {call.status === 'pending' && (lang === 'uz' ? 'Navbatda, tez orada tahlil qilinadi' : 'Звонок находится в очереди на транскрибацию')}
                   </div>
                 </div>
               )}

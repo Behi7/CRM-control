@@ -14,10 +14,12 @@ import {
   Flame,
   FileSpreadsheet,
   ListTodo,
-  RefreshCw
+  RefreshCw,
+  FileText
 } from 'lucide-react';
 import { anomalyDealsApi, DealForensicDetail } from '../api/anomalyDeals.api';
 import { useLanguage } from '../../../i18n/LanguageContext';
+import CallDetailModal from '../../quality_control/components/CallDetailModal';
 
 interface DealForensicModalProps {
   accountId: number;
@@ -34,6 +36,7 @@ export default function DealForensicModal({
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'verdict' | 'timeline' | 'calls' | 'tasks' | 'penalty'>('verdict');
   const [copied, setCopied] = useState(false);
+  const [selectedCallId, setSelectedCallId] = useState<number | null>(null);
 
   const { data: detail, isLoading } = useQuery<DealForensicDetail>({
     queryKey: ['deal-forensic', accountId, leadId],
@@ -467,19 +470,30 @@ export default function DealForensicModal({
                           </span>
                           <span className="text-slate-400">({c.durationSeconds} сек)</span>
                         </div>
-                        {c.qcScore !== null && c.qcScore !== undefined && (
-                          <span
-                            className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                              c.qcScore >= 70
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : c.qcScore >= 50
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-rose-100 text-rose-700'
-                            }`}
+                        <div className="flex items-center gap-2">
+                          {c.qcScore !== null && c.qcScore !== undefined && (
+                            <span
+                              className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                                c.qcScore >= 70
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : c.qcScore >= 50
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-rose-100 text-rose-700'
+                              }`}
+                            >
+                              QC: {c.qcScore}%
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCallId(c.id)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-violet-700 bg-violet-100 hover:bg-violet-200 dark:text-violet-300 dark:bg-violet-950/60 dark:hover:bg-violet-900/60 rounded-lg transition-colors cursor-pointer"
+                            title={lang === 'uz' ? 'Qo‘ng‘iroq tahlili va yozuvini ko‘rish' : 'Посмотреть анализ и запись звонка'}
                           >
-                            QC: {c.qcScore}%
-                          </span>
-                        )}
+                            <FileText size={12} />
+                            <span>{lang === 'uz' ? 'Tahlil kartasi' : 'Детали анализа'}</span>
+                          </button>
+                        </div>
                       </div>
 
                       {c.summary && (
@@ -721,6 +735,15 @@ export default function DealForensicModal({
           </div>
         </div>
       </div>
+
+      {/* Call Detail Modal */}
+      {selectedCallId && (
+        <CallDetailModal
+          accountId={accountId}
+          callId={selectedCallId}
+          onClose={() => setSelectedCallId(null)}
+        />
+      )}
     </div>
   );
 }
