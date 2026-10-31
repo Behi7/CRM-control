@@ -20,6 +20,8 @@ class AnomalyStatsDto(BaseModel):
     criticalSlippedLeads: int = 0
     criticalLostBudget: float = 0.0
     criticalPercent: float = 0.0
+    fairCount: int = 0
+    warningCount: int = 0
     topStatedReasons: List[Dict[str, Any]] = []
     topRealReasons: List[Dict[str, Any]] = []
     topSlipManagers: List[Dict[str, Any]] = []

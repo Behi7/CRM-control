@@ -74,12 +74,15 @@ export default function AnomalyKpiCards({ stats }: AnomalyKpiCardsProps) {
           </div>
         </div>
         <div className="text-2xl font-bold text-slate-900 dark:text-white">
-          {Math.max(0, (stats?.totalAudited || 0) - (stats?.criticalSlippedLeads || 0))}
+          {stats?.fairCount ?? 0}
         </div>
-        <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-2">
-          {lang === 'uz'
-            ? 'Reglament va qo‘ng‘iroqlar qoidasi to‘liq bajarilgan'
-            : 'Регламент соблюден: вина менеджеров снята'}
+        <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-2 flex items-center justify-between gap-1">
+          <span>{lang === 'uz' ? 'Reglament buzilmagan' : 'Регламент соблюден: вины нет'}</span>
+          {(stats?.warningCount || 0) > 0 && (
+            <span className="text-amber-600 dark:text-amber-400 font-normal shrink-0">
+              {stats?.warningCount} {lang === 'uz' ? 'kamchilik' : 'с нарушениями'}
+            </span>
+          )}
         </div>
       </div>
     </div>

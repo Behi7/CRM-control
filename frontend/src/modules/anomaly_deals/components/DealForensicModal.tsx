@@ -682,14 +682,19 @@ export default function DealForensicModal({
                     </span>
                   </div>
 
-                  <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800">
-                    <span className="text-slate-600 dark:text-slate-400">
-                      Штраф за крупный чек при наличии косяков
-                    </span>
-                    <span className="font-bold text-slate-900 dark:text-white">
-                      +{detail.scoreBreakdown?.price_penalty || 0}
-                    </span>
-                  </div>
+                  {(detail.scoreBreakdown?.neglect_penalty || 0) > 0 && (
+                    <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800 text-rose-600 dark:text-rose-400">
+                      <span>Тотальный игнор лида (0 звонков и 0 задач)</span>
+                      <span className="font-bold">+{detail.scoreBreakdown?.neglect_penalty}</span>
+                    </div>
+                  )}
+
+                  {(detail.scoreBreakdown?.speed_penalty || 0) > 0 && (
+                    <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800 text-amber-600 dark:text-amber-400">
+                      <span>Запоздалый первый контакт (&gt;24 ч. с создания)</span>
+                      <span className="font-bold">+{detail.scoreBreakdown?.speed_penalty}</span>
+                    </div>
+                  )}
 
                   <div className="flex justify-between items-center py-2 font-bold text-sm">
                     <span className="text-slate-900 dark:text-white">Итоговый балл аномальности:</span>

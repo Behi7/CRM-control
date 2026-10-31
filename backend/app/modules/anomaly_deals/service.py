@@ -128,6 +128,19 @@ async def get_anomaly_stats(
 
     crit_pct = round((crit_count / total_audited * 100), 1) if total_audited > 0 else 0.0
 
+    # Честные счетчики обоснованных отказов (fair) и нарушений (warning)
+    levels_stmt = (
+        select(
+            func.count(case((DealAnomalyAudit.anomaly_level == "fair", 1))).label("fair_cnt"),
+            func.count(case((DealAnomalyAudit.anomaly_level == "warning", 1))).label("warn_cnt"),
+        )
+        .join(Lead, DealAnomalyAudit.lead_id == Lead.id)
+        .where(and_(*audit_filters))
+    )
+    levels_res = (await session.execute(levels_stmt)).one_or_none()
+    fair_count = levels_res[0] if levels_res else 0
+    warning_count = levels_res[1] if levels_res else 0
+
     # 4. Топ заявленных причин (отмазки менеджеров)
     stated_reasons_stmt = (
         select(
@@ -278,6 +291,8 @@ async def get_anomaly_stats(
         criticalSlippedLeads=crit_count,
         criticalLostBudget=crit_budget,
         criticalPercent=crit_pct,
+        fairCount=fair_count,
+        warningCount=warning_count,
         topStatedReasons=top_stated,
         topRealReasons=top_real,
         topSlipManagers=top_managers,
@@ -295,6 +310,8 @@ async def get_anomaly_deals_list(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     anomaly_level: Optional[str] = None,
+    manager_fault: Optional[str] = None,
+    is_reviewed: Optional[bool] = None,
     min_price: Optional[float] = None,
     search: Optional[str] = None,
     sort_by: Optional[str] = "newest",
@@ -328,6 +345,10 @@ async def get_anomaly_deals_list(
 
     if anomaly_level:
         filters.append(DealAnomalyAudit.anomaly_level == anomaly_level)
+    if manager_fault:
+        filters.append(DealAnomalyAudit.manager_fault == manager_fault)
+    if is_reviewed is not None:
+        filters.append(DealAnomalyAudit.is_reviewed == is_reviewed)
     if min_price:
         filters.append(Lead.price >= min_price)
     if search and search.strip():
@@ -727,7 +748,9 @@ async def run_single_deal_audit(
             "time_penalty": 0,
             "calls_penalty": 0,
             "skips_penalty": 0,
-            "price_penalty": 0,
+            "tasks_penalty": 0,
+            "neglect_penalty": 0,
+            "speed_penalty": 0,
         }
         verdict = {
             "real_loss_reason": real_reason,

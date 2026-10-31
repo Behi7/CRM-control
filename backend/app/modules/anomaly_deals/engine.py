@@ -186,12 +186,11 @@ def audit_lead_math(
     calls: List[Any],
     stage_benchmarks: Dict[int, float],
     stage_names: Dict[int, str],
-    avg_won_price: float = 0.0,
     tasks: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
     """
     Выполняет строгий математический аудит слитой сделки.
-    Применяет "Правило усилий" (Effort Check) для защиты добросовестных менеджеров.
+    Применяет "Умный Effort Shield" для объективной защиты при недозвоне.
     """
     time_penalty = 0
     stagnant_stages_info = []
@@ -202,30 +201,40 @@ def audit_lead_math(
     completed_calls = [c for c in calls if c.duration_seconds and c.duration_seconds >= 20]
     total_completed = len(completed_calls)
 
-    # Уникальные даты попыток звонков (в днях)
+    # Уникальные даты и временные интервалы попыток звонков
+    call_timestamps = []
     call_dates = set()
     for c in calls:
         if c.call_date:
-            call_dates.add(c.call_date.strftime("%Y-%m-%d"))
+            cd = c.call_date if c.call_date.tzinfo else c.call_date.replace(tzinfo=timezone.utc)
+            call_timestamps.append(cd)
+            call_dates.add(cd.strftime("%Y-%m-%d"))
     unique_call_days = len(call_dates)
 
-    # Проверяем "Правило усилий": менеджер звонил в разные дни 4+ раз
-    if total_calls >= 4 and unique_call_days >= 2:
+    # Проверка разнесения попыток по времени (интервал >= 3 часов между звонками)
+    has_time_spread = False
+    if len(call_timestamps) >= 2:
+        call_timestamps.sort()
+        for i in range(len(call_timestamps) - 1):
+            if (call_timestamps[i+1] - call_timestamps[i]).total_seconds() >= 3 * 3600:
+                has_time_spread = True
+                break
+
+    # "Умный Effort Shield" (активируется ТОЛЬКО если клиент ни разу не ответил на звонки: completed_calls == 0)
+    # Защищает честного менеджера при недозвоне, если он совершил >=4 попыток в >=2 разных дня с интервалом от 3 часов
+    if total_completed == 0 and total_calls >= 4 and unique_call_days >= 2 and has_time_spread:
         effort_shield_active = True
 
     # 2. Анализ этапов воронки
     for sh in stage_history:
         s_id = sh.stage_id
-        s_name = stage_names.get(s_id, f"Этап #{s_id}").lower()
         duration_hrs = (sh.duration_seconds or 0) / 3600.0
         bench_hrs = stage_benchmarks.get(s_id, 24.0)
         if bench_hrs <= 0:
             bench_hrs = 24.0
 
-        is_unreached_stage = any(w in s_name for w in ["недозвон", "не отвечает", "перезвон", "думает", "ожидание"])
-
-        # Если это этап недозвона/ожидания и менеджер проявил реальные усилия — снимаем штраф времени!
-        if is_unreached_stage and effort_shield_active:
+        # Если сработал честный Effort Shield (реальный недозвон), снимаем штраф зависания
+        if effort_shield_active:
             continue
 
         if duration_hrs > 4 * bench_hrs and duration_hrs >= 48:
@@ -257,7 +266,7 @@ def audit_lead_math(
     if total_calls == 0:
         calls_penalty += 40  # Слив без единой попытки звонка
     elif total_completed == 0:
-        if total_calls < 3 and not effort_shield_active:
+        if not effort_shield_active:
             calls_penalty += 25  # Бросил после 1-2 гудков без системных попыток
     else:
         if avg_qc_score is not None:
@@ -283,18 +292,45 @@ def audit_lead_math(
     if skips:
         skips_penalty = min(len(skips) * 15, 25)
 
-    # 5. Штраф за крупный чек при наличии косяков
-    price_penalty = 0
-    lead_price = float(lead.price or 0)
-    if avg_won_price > 0 and lead_price >= 1.5 * avg_won_price:
-        if time_penalty > 0 or calls_penalty > 0:
-            price_penalty = 15
-
-    # 6. Штраф за дисциплину задач (% жизни без задач)
+    # 5. Штраф за дисциплину задач (% жизни без задач)
     tasks_metrics = calculate_lead_tasks_metrics(lead, tasks)
     tasks_penalty = tasks_metrics["tasks_penalty"]
 
-    raw_score = time_penalty + calls_penalty + skips_penalty + price_penalty + tasks_penalty
+    # 6. Штраф за тотальный игнор (0 звонков И 0 задач)
+    neglect_penalty = 0
+    if total_calls == 0 and len(tasks or []) == 0:
+        neglect_penalty = 15
+
+    # 7. Штраф за запоздалый первый контакт (Speed-to-Lead > 24 часов)
+    speed_penalty = 0
+    created_at = lead.crm_created_at
+    if created_at:
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+
+        first_action_times = []
+        for c in calls:
+            if c.call_date:
+                cd = c.call_date if c.call_date.tzinfo else c.call_date.replace(tzinfo=timezone.utc)
+                first_action_times.append(cd)
+        for t in (tasks or []):
+            if t.task_created_at:
+                td = t.task_created_at if t.task_created_at.tzinfo else t.task_created_at.replace(tzinfo=timezone.utc)
+                first_action_times.append(td)
+
+        if first_action_times:
+            earliest_action = min(first_action_times)
+            hours_to_first_contact = (earliest_action - created_at).total_seconds() / 3600.0
+            if hours_to_first_contact > 24.0:
+                speed_penalty = 10
+        elif (total_calls == 0 and len(tasks or []) == 0):
+            closed_at = lead.crm_closed_at or datetime.now(timezone.utc)
+            if closed_at.tzinfo is None:
+                closed_at = closed_at.replace(tzinfo=timezone.utc)
+            if (closed_at - created_at).total_seconds() >= 24 * 3600:
+                speed_penalty = 10
+
+    raw_score = time_penalty + calls_penalty + skips_penalty + tasks_penalty + neglect_penalty + speed_penalty
 
     # Если сработал Effort Shield и нет других грубых нарушений — гарантируем справедливую оценку
     if effort_shield_active and calls_penalty == 0 and time_penalty == 0:
@@ -315,12 +351,17 @@ def audit_lead_math(
 
     # Формируем главный фактор (key_factor)
     key_factors = []
-    if total_calls == 0:
+    if neglect_penalty > 0:
+        key_factors.append("Тотальный игнор лида (0 звонков и 0 задач)")
+    elif total_calls == 0:
         key_factors.append("Закрыта без единого звонка клиенту")
     elif total_completed == 0 and not effort_shield_active:
-        key_factors.append(f"Всего {total_calls} гудка без попыток перезвона")
+        key_factors.append(f"Всего {total_calls} гудка без системных попыток связи")
     elif effort_shield_active and anomaly_level == "fair":
-        key_factors.append(f"Честный недозвон: {total_calls} звонков в разные дни, регламент соблюден")
+        key_factors.append(f"Честный недозвон: {total_calls} попыток в разные дни и время суток")
+
+    if speed_penalty > 0:
+        key_factors.append("Запоздалый первый контакт (>24 ч. с момента создания лида)")
 
     if stagnant_stages_info:
         top_stag = stagnant_stages_info[0]
@@ -350,8 +391,9 @@ def audit_lead_math(
             "time_penalty": time_penalty,
             "calls_penalty": calls_penalty,
             "skips_penalty": skips_penalty,
-            "price_penalty": price_penalty,
             "tasks_penalty": tasks_penalty,
+            "neglect_penalty": neglect_penalty,
+            "speed_penalty": speed_penalty,
             "tasks_metrics": tasks_metrics,
             "total_calls": total_calls,
             "completed_calls": total_completed,

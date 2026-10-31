@@ -20,6 +20,8 @@ export interface AnomalyStats {
   criticalSlippedLeads: number;
   criticalLostBudget: number;
   criticalPercent: number;
+  fairCount?: number;
+  warningCount?: number;
   topStatedReasons: Array<{ reason: string; count: number; budget: number }>;
   topRealReasons: Array<{ reason: string; count: number; budget: number }>;
   topSlipManagers: Array<{ name: string; criticalCount: number; lostBudget: number }>;
@@ -151,6 +153,8 @@ export const anomalyDealsApi = {
       dateFrom?: string;
       dateTo?: string;
       level?: string;
+      fault?: string;
+      isReviewed?: boolean;
       minPrice?: number;
       search?: string;
       sortBy?: 'newest' | 'score' | 'price';
@@ -166,6 +170,8 @@ export const anomalyDealsApi = {
     if (params.dateFrom) query.set('dateFrom', params.dateFrom);
     if (params.dateTo) query.set('dateTo', params.dateTo);
     if (params.level && params.level !== 'all') query.set('level', params.level);
+    if (params.fault && params.fault !== 'all') query.set('fault', params.fault);
+    if (params.isReviewed !== undefined) query.set('isReviewed', String(params.isReviewed));
     if (params.minPrice) query.set('minPrice', String(params.minPrice));
     if (params.search && params.search.trim()) query.set('search', params.search.trim());
     if (params.sortBy) query.set('sortBy', params.sortBy);

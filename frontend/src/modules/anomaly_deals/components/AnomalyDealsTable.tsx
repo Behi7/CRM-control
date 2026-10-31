@@ -24,6 +24,10 @@ interface AnomalyDealsTableProps {
   isLoading: boolean;
   levelFilter: 'all' | 'critical' | 'warning' | 'fair';
   onLevelFilterChange: (level: 'all' | 'critical' | 'warning' | 'fair') => void;
+  faultFilter?: 'all' | 'none' | 'medium' | 'high';
+  onFaultFilterChange?: (fault: 'all' | 'none' | 'medium' | 'high') => void;
+  reviewedFilter?: 'all' | 'unreviewed' | 'reviewed';
+  onReviewedFilterChange?: (status: 'all' | 'unreviewed' | 'reviewed') => void;
   sortBy?: 'newest' | 'score' | 'price';
   onSortByChange?: (val: 'newest' | 'score' | 'price') => void;
   onPageChange: (page: number) => void;
@@ -42,6 +46,10 @@ export default function AnomalyDealsTable({
   isLoading,
   levelFilter,
   onLevelFilterChange,
+  faultFilter = 'all',
+  onFaultFilterChange,
+  reviewedFilter = 'all',
+  onReviewedFilterChange,
   sortBy = 'newest',
   onSortByChange,
   onPageChange,
@@ -246,6 +254,100 @@ export default function AnomalyDealsTable({
               <CheckCircle2 size={12} />
               <span>{lang === 'uz' ? 'Oqlangan (<50%)' : 'Обоснованные (<50%)'}</span>
             </button>
+          </div>
+        </div>
+
+        {/* Дополнительные фильтры: вина менеджера и статус разбора РОПа */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 w-full pt-2.5 border-t border-slate-200/60 dark:border-slate-800/60">
+          {/* Фильтр: Кто виноват */}
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span className="font-semibold text-slate-700 dark:text-slate-300 mr-1">
+              {lang === 'uz' ? 'Xodim aybi:' : 'Вина менеджера:'}
+            </span>
+            <div className="flex items-center gap-1 p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold">
+              <button
+                onClick={() => onFaultFilterChange?.('all')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  faultFilter === 'all'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                {lang === 'uz' ? 'Barchasi' : 'Все'}
+              </button>
+              <button
+                onClick={() => onFaultFilterChange?.('none')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  faultFilter === 'none'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
+                }`}
+              >
+                <CheckCircle2 size={11} />
+                <span>{lang === 'uz' ? 'Aybsiz' : 'Соблюден (Не виновен)'}</span>
+              </button>
+              <button
+                onClick={() => onFaultFilterChange?.('medium')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  faultFilter === 'medium'
+                    ? 'bg-amber-500 text-white shadow-xs'
+                    : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
+                }`}
+              >
+                <AlertTriangle size={11} />
+                <span>{lang === 'uz' ? 'Qisman' : 'Частично'}</span>
+              </button>
+              <button
+                onClick={() => onFaultFilterChange?.('high')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  faultFilter === 'high'
+                    ? 'bg-rose-500 text-white shadow-xs'
+                    : 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+                }`}
+              >
+                <Flame size={11} />
+                <span>{lang === 'uz' ? 'Aybdor' : 'Виновен (Слив)'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Фильтр: Статус разбора РОПом */}
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span className="font-semibold text-slate-700 dark:text-slate-300 mr-1">
+              {lang === 'uz' ? 'Holat:' : 'Разбор РОПа:'}
+            </span>
+            <div className="flex items-center gap-1 p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold">
+              <button
+                onClick={() => onReviewedFilterChange?.('all')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  reviewedFilter === 'all'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                {lang === 'uz' ? 'Barchasi' : 'Все'}
+              </button>
+              <button
+                onClick={() => onReviewedFilterChange?.('unreviewed')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  reviewedFilter === 'unreviewed'
+                    ? 'bg-violet-600 text-white shadow-xs'
+                    : 'text-violet-600 dark:text-violet-400 hover:bg-violet-500/10'
+                }`}
+              >
+                {lang === 'uz' ? 'Yangi' : 'Новые'}
+              </button>
+              <button
+                onClick={() => onReviewedFilterChange?.('reviewed')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  reviewedFilter === 'reviewed'
+                    ? 'bg-slate-700 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                {lang === 'uz' ? 'Ko‘rib chiqilgan' : 'Разобранные'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

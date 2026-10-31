@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   ShieldAlert,
-  FileText,
   AlertTriangle,
 } from 'lucide-react';
 import { anomalyDealsApi } from '../api/anomalyDeals.api';
@@ -19,7 +18,7 @@ import AnomalyManagerCards from '../components/AnomalyManagerCards';
 import AnomalyDealsTable from '../components/AnomalyDealsTable';
 import DealForensicModal from '../components/DealForensicModal';
 
-type AnomalyTab = 'deals' | 'overview' | 'reasons';
+type AnomalyTab = 'deals' | 'overview';
 
 export default function AnomalyDealsPage() {
   const { lang } = useLanguage();
@@ -47,15 +46,15 @@ export default function AnomalyDealsPage() {
 
   // Табы (классы функционала)
   const paramTab = searchParams.get('tab');
-  const normalizedParamTab: AnomalyTab = paramTab === 'managers' ? 'deals' : (paramTab as AnomalyTab);
+  const normalizedParamTab: AnomalyTab = (paramTab === 'managers' || paramTab === 'reasons') ? 'deals' : (paramTab as AnomalyTab);
   const [activeTab, setActiveTab] = useState<AnomalyTab>(() =>
-    normalizedParamTab && ['deals', 'overview', 'reasons'].includes(normalizedParamTab) ? normalizedParamTab : 'deals'
+    normalizedParamTab && ['deals', 'overview'].includes(normalizedParamTab) ? normalizedParamTab : 'deals'
   );
 
   useEffect(() => {
     if (paramTab) {
-      const norm = paramTab === 'managers' ? 'deals' : (paramTab as AnomalyTab);
-      if (norm !== activeTab && ['deals', 'overview', 'reasons'].includes(norm)) {
+      const norm = (paramTab === 'managers' || paramTab === 'reasons') ? 'deals' : (paramTab as AnomalyTab);
+      if (norm !== activeTab && ['deals', 'overview'].includes(norm)) {
         setActiveTab(norm);
       }
     }
@@ -70,6 +69,8 @@ export default function AnomalyDealsPage() {
 
   // Локальные фильтры
   const [levelFilter, setLevelFilter] = useState<'all' | 'critical' | 'warning' | 'fair'>('all');
+  const [faultFilter, setFaultFilter] = useState<'all' | 'none' | 'medium' | 'high'>('all');
+  const [reviewedFilter, setReviewedFilter] = useState<'all' | 'unreviewed' | 'reviewed'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'score' | 'price'>('newest');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -134,6 +135,8 @@ export default function AnomalyDealsPage() {
       accountId,
       page,
       levelFilter,
+      faultFilter,
+      reviewedFilter,
       applied.pipelineId,
       effectiveManagerIds,
       applied.tagIds,
@@ -147,6 +150,8 @@ export default function AnomalyDealsPage() {
         page,
         pageSize: 15,
         level: levelFilter !== 'all' ? levelFilter : undefined,
+        fault: faultFilter !== 'all' ? faultFilter : undefined,
+        isReviewed: reviewedFilter === 'all' ? undefined : (reviewedFilter === 'reviewed'),
         pipelineId: applied.pipelineId || undefined,
         managers: effectiveManagerIds,
         tags: applied.tagIds.length > 0 ? applied.tagIds : undefined,
@@ -171,10 +176,6 @@ export default function AnomalyDealsPage() {
     overview: {
       label: lang === 'uz' ? 'Umumiy va KPI' : 'Обзор и KPI',
       icon: LayoutDashboard,
-    },
-    reasons: {
-      label: lang === 'uz' ? 'Rad sabablari (AI)' : 'Отмазки vs Реальность',
-      icon: FileText,
     },
   };
 
@@ -273,6 +274,16 @@ export default function AnomalyDealsPage() {
               setLevelFilter(lvl);
               setPage(1);
             }}
+            faultFilter={faultFilter}
+            onFaultFilterChange={(f) => {
+              setFaultFilter(f);
+              setPage(1);
+            }}
+            reviewedFilter={reviewedFilter}
+            onReviewedFilterChange={(r) => {
+              setReviewedFilter(r);
+              setPage(1);
+            }}
             sortBy={sortBy}
             onSortByChange={(s) => {
               setSortBy(s);
@@ -293,13 +304,6 @@ export default function AnomalyDealsPage() {
       {activeTab === 'overview' && (
         <div className="space-y-6">
           <AnomalyKpiCards stats={statsQuery.data} />
-          <AnomalyReasonsComparison stats={statsQuery.data} />
-        </div>
-      )}
-
-      {/* 3. Класс: Отмазки менеджеров vs Реальность */}
-      {activeTab === 'reasons' && (
-        <div className="space-y-6">
           <AnomalyReasonsComparison stats={statsQuery.data} />
         </div>
       )}
