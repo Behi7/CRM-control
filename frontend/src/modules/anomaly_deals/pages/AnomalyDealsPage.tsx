@@ -19,7 +19,7 @@ import AnomalyManagerCards from '../components/AnomalyManagerCards';
 import AnomalyDealsTable from '../components/AnomalyDealsTable';
 import DealForensicModal from '../components/DealForensicModal';
 
-type AnomalyTab = 'overview' | 'deals' | 'reasons';
+type AnomalyTab = 'deals' | 'overview' | 'reasons';
 
 export default function AnomalyDealsPage() {
   const { lang } = useLanguage();
@@ -49,13 +49,13 @@ export default function AnomalyDealsPage() {
   const paramTab = searchParams.get('tab');
   const normalizedParamTab: AnomalyTab = paramTab === 'managers' ? 'deals' : (paramTab as AnomalyTab);
   const [activeTab, setActiveTab] = useState<AnomalyTab>(() =>
-    normalizedParamTab && ['overview', 'deals', 'reasons'].includes(normalizedParamTab) ? normalizedParamTab : 'overview'
+    normalizedParamTab && ['deals', 'overview', 'reasons'].includes(normalizedParamTab) ? normalizedParamTab : 'deals'
   );
 
   useEffect(() => {
     if (paramTab) {
       const norm = paramTab === 'managers' ? 'deals' : (paramTab as AnomalyTab);
-      if (norm !== activeTab && ['overview', 'deals', 'reasons'].includes(norm)) {
+      if (norm !== activeTab && ['deals', 'overview', 'reasons'].includes(norm)) {
         setActiveTab(norm);
       }
     }
@@ -164,13 +164,13 @@ export default function AnomalyDealsPage() {
   )?.managerName;
 
   const tabLabels: Record<AnomalyTab, { label: string; icon: any }> = {
-    overview: {
-      label: lang === 'uz' ? 'Umumiy va KPI' : 'Обзор и KPI',
-      icon: LayoutDashboard,
-    },
     deals: {
       label: lang === 'uz' ? 'Bitimlar va menejerlar' : 'Реестр и менеджеры',
       icon: ShieldAlert,
+    },
+    overview: {
+      label: lang === 'uz' ? 'Umumiy va KPI' : 'Обзор и KPI',
+      icon: LayoutDashboard,
     },
     reasons: {
       label: lang === 'uz' ? 'Rad sabablari (AI)' : 'Отмазки vs Реальность',
@@ -242,15 +242,7 @@ export default function AnomalyDealsPage() {
         })}
       </div>
 
-      {/* 1. Класс: Обзор и KPI */}
-      {activeTab === 'overview' && (
-        <div className="space-y-6">
-          <AnomalyKpiCards stats={statsQuery.data} />
-          <AnomalyReasonsComparison stats={statsQuery.data} />
-        </div>
-      )}
-
-      {/* 2. Класс: Объединенный реестр сделок и менеджеры */}
+      {/* 1. Класс: Объединенный реестр сделок и менеджеры */}
       {activeTab === 'deals' && (
         <div className="space-y-6">
           {/* Сводные карточки менеджеров по срывам сделок (с возможностью фильтрации) */}
@@ -294,6 +286,14 @@ export default function AnomalyDealsPage() {
               setPage(1);
             }}
           />
+        </div>
+      )}
+
+      {/* 2. Класс: Обзор и KPI */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          <AnomalyKpiCards stats={statsQuery.data} />
+          <AnomalyReasonsComparison stats={statsQuery.data} />
         </div>
       )}
 
