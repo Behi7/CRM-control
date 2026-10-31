@@ -88,10 +88,6 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
         leads_cache: Dict[str, Optional[tuple]] = {}  # ext_id -> (id, pipeline_id, resp_user_id)
         users_cache: Dict[str, Optional[int]] = {}
 
-        disabled_pipeline_ids = set(qc_settings.disabled_pipeline_ids or [])
-        min_duration = qc_settings.min_duration_sec or 20
-        max_duration = qc_settings.max_duration_sec or 600
-
         while page <= MAX_CALL_PAGES:
             filter_params["page"] = page
             status, data = await crm_client.request(
@@ -201,15 +197,6 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
                 elif is_backfill or (call_date < job_started_at - timedelta(days=2)):
                     status_val = "skipped_historical"
                     skip_reason = "Архивный звонок (до активации КК)"
-                elif not qc_settings.is_enabled:
-                    status_val = "skipped_qc_disabled"
-                    skip_reason = "Контроль качества остановлен"
-                elif pipeline_id and pipeline_id in disabled_pipeline_ids:
-                    status_val = "skipped_pipeline"
-                    skip_reason = "Анализ отключён для данной воронки"
-                elif duration < min_duration or duration > max_duration:
-                    status_val = "skipped_duration"
-                    skip_reason = f"Длительность {duration} сек вне диапазона ({min_duration}-{max_duration} сек)"
                 else:
                     status_val = "pending"
                     skip_reason = None

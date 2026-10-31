@@ -250,7 +250,7 @@ def calculate_score_and_anomalies(
     return score, anomaly_points
 
 
-async def process_call_evaluation(session: AsyncSession, eval_id: int) -> bool:
+async def process_call_evaluation(session: AsyncSession, eval_id: int, force: bool = False) -> bool:
     """Обрабатывает один звонок (скачивает аудио, запускает Gemini, рассчитывает математический балл)."""
     stmt = select(QcCallEvaluation).where(QcCallEvaluation.id == eval_id)
     res = await session.execute(stmt)
@@ -270,12 +270,22 @@ async def process_call_evaluation(session: AsyncSession, eval_id: int) -> bool:
     if not qc_settings or not qc_settings.is_enabled:
         return False
 
-    disabled_pipelines = set(qc_settings.disabled_pipeline_ids or [])
-    if call_eval.pipeline_id and call_eval.pipeline_id in disabled_pipelines:
-        call_eval.status = "skipped_pipeline"
-        call_eval.skip_reason = "Анализ отключён для данной воронки"
-        await session.commit()
-        return True
+    if not force:
+        disabled_pipelines = set(qc_settings.disabled_pipeline_ids or [])
+        if call_eval.pipeline_id and call_eval.pipeline_id in disabled_pipelines:
+            call_eval.status = "skipped_pipeline"
+            call_eval.skip_reason = "Анализ отключён для данной воронки"
+            await session.commit()
+            return True
+
+        min_dur = qc_settings.min_duration_sec or 20
+        max_dur = qc_settings.max_duration_sec or 600
+        dur = call_eval.duration_seconds or 0
+        if dur < min_dur or dur > max_dur:
+            call_eval.status = "skipped_duration"
+            call_eval.skip_reason = f"Длительность {dur} сек вне диапазона ({min_dur}-{max_dur} сек)"
+            await session.commit()
+            return True
 
     gemini_key = decrypt_token(acc.ai_encrypted_token)
 

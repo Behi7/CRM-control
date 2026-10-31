@@ -647,7 +647,7 @@ async def trigger_call_analysis(
         raise HTTPException(status_code=403, detail="Модуль Контроль качества отключен")
 
     from app.modules.quality_control.service import process_call_evaluation
-    ok = await process_call_evaluation(db, call_id)
+    ok = await process_call_evaluation(db, call_id, force=True)
     if not ok:
         raise HTTPException(status_code=400, detail="Не удалось проанализировать звонок (проверьте наличие аудио и настройки ИИ)")
     return {"ok": True, "message": "Звонок успешно проанализирован"}

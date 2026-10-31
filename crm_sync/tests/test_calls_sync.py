@@ -42,7 +42,8 @@ async def test_run_calls_sync_disabled_qc(db_session, sample_account):
                 QcCallEvaluation.external_call_id == "9901",
             )
         )).scalar_one()
-        assert call.status == "skipped_qc_disabled"
+        # crm_sync is purely transport; saves valid calls as pending regardless of qc is_enabled
+        assert call.status == "pending"
 
 async def test_run_calls_sync_missing_qc_settings(db_session, sample_account):
     sample_account.anomaly_settings = {"calls_backfill_done": True}
@@ -214,16 +215,16 @@ async def test_run_calls_sync_filter_reasons(db_session, sample_account):
         assert ok is True
 
         c1 = (await db_session.execute(select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "1001"))).scalar_one()
-        assert c1.status == "skipped_pipeline"
+        assert c1.status == "pending"  # Pipeline filtering is evaluated by QC backend, not crm_sync
 
         c2 = (await db_session.execute(select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "1002"))).scalar_one()
         assert c2.status == "skipped_not_answered"
 
         c3 = (await db_session.execute(select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "1003"))).scalar_one()
-        assert c3.status == "skipped_duration"
+        assert c3.status == "pending"  # Duration filtering is evaluated by QC backend, not crm_sync
 
         c4 = (await db_session.execute(select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "1004"))).scalar_one()
-        assert c4.status == "skipped_duration"
+        assert c4.status == "pending"  # Duration filtering is evaluated by QC backend, not crm_sync
 
         c5 = (await db_session.execute(select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "1005"))).scalar_one()
         assert c5.status == "skipped_no_audio"
