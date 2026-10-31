@@ -841,11 +841,9 @@ async def run_single_deal_audit(
         tasks=tasks,
     )
 
-    # Smart AI Cost-Saver:
-    # Если математический балл < 40 (сделка без грубых нарушений / честный отказ), не тратим токены LLM!
-    # Вердикт формируется эвристикой за 0ms и 0 токенов.
-    # В Gemini идем только при anomaly_score >= 40 (реальные нарушения) или если force_ai=True.
-    effective_api_key = api_key if (audit_math["anomaly_score"] >= 40 or force_ai) else None
+    # AI-аудит через Gemini:
+    # Если API-ключ настроен — всегда вызываем Gemini для глубокого анализа
+    effective_api_key = api_key
 
     # Извлекаем содержательные инсайты из Контроля Качества (QC)
     qc_insights = []
@@ -884,15 +882,19 @@ async def run_single_deal_audit(
     )
 
     # Детерминированная математика Python (корректировка балла по степени вины менеджера):
+    # Списание или начисление баллов разрешено ТОЛЬКО после реального аудита ИИ!
+    # Если вердикт вынесен fallback-эвристикой (ИИ не запускался) — никаких корректировок, остается честный математический скор!
+    is_ai = verdict.get("is_ai", False)
     ai_fault = verdict.get("manager_guilt") or audit_math.get("manager_fault", "medium")
-    if ai_fault == "none":
-        # Менеджер старался, отказ объективен со стороны клиента / внешних обстоятельств
+
+    if is_ai and ai_fault == "none":
+        # Реальный ИИ детально изучил диалоги и подтвердил, что вины менеджера нет (клиент отказался сам)
         score_adjustment = -25
-    elif ai_fault == "high":
-        # Грубый обман или прямая халатность менеджера
+    elif is_ai and ai_fault == "high":
+        # Реальный ИИ подтвердил грубый слив или халатность менеджера
         score_adjustment = 20
     else:
-        # Средняя степень (упущение, затягивание сроков без злого умысла)
+        # Без вердикта ИИ (fallback) или средняя степень — никаких списаний, остается честный математический скор
         score_adjustment = 0
 
     verdict["score_adjustment"] = score_adjustment
@@ -1081,6 +1083,8 @@ async def run_batch_audit(
             force_ai=False,
         )
         processed_count += 1
+        if api_key:
+            await asyncio.sleep(2.0)
         if lead.crm_closed_at:
             if latest_processed_closed_at is None or lead.crm_closed_at > latest_processed_closed_at:
                 latest_processed_closed_at = lead.crm_closed_at

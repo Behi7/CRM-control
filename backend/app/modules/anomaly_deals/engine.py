@@ -345,6 +345,9 @@ def audit_lead_math(
     elif anomaly_score >= 50:
         anomaly_level = "warning"
         manager_fault = "medium"
+    elif anomaly_score > 0:
+        anomaly_level = "fair"
+        manager_fault = "medium"
     else:
         anomaly_level = "fair"
         manager_fault = "none"
@@ -485,11 +488,33 @@ async def generate_ai_forensic_verdict(
                 f"на этапе '{top_s['stage_name']}' в {top_s['factor']} раз дольше нормы."
             )
             rec = "Разобрать с менеджером соблюдение тайминга этапов. Клиент мог уйти к более оперативному конкуренту."
+        elif breakdown.get("skipped_stages_count", 0) > 0:
+            sk_cnt = breakdown["skipped_stages_count"]
+            real_reason = f"Срез воронки ({sk_cnt} пропущенных этапов)"
+            pivot = "Перевод сделки в отказ в обход обязательных этапов воронки"
+            summary = (
+                f"Менеджер закрыл сделку со статусом «{stated}», однако зафиксирован пропуск "
+                f"{sk_cnt} обязательных этапов квалификации воронки."
+            )
+            rec = "Проверить соблюдение менеджером регламента последовательного ведения этапов воронки."
+        elif breakdown.get("speed_penalty", 0) > 0:
+            real_reason = "Запоздалый первый контакт (>24 ч.)"
+            pivot = "Критическая задержка при взятии лида в работу"
+            summary = (
+                f"Менеджер закрыл сделку со статусом «{stated}», однако первый контакт с клиентом "
+                "состоялся с опозданием более чем на 24 часа с момента поступления лида."
+            )
+            rec = "Провести беседу по регламенту скорости первого ответа (Speed-to-Lead)."
+        elif score == 0:
+            real_reason = stated
+            pivot = "Закрытие сделки по решению клиента"
+            summary = f"Сделка закрыта со статусом «{stated}». Процессных нарушений по звонкам, этапам и задачам не зафиксировано."
+            rec = "Сделка закрыта штатно. Контроль на регулярной планерке."
         else:
             real_reason = stated
-            pivot = "Закрытие сделки в отказ"
-            summary = f"Сделка закрыта со статусом «{stated}». Индекс аномальности {score}%."
-            rec = "Контроль на регулярной планерке."
+            pivot = "Закрытие сделки с замечаниями по регламенту"
+            summary = f"Сделка закрыта со статусом «{stated}». Выявлены отклонения от регламента ведения."
+            rec = "Провести выборочный контроль коммуникации по сделке."
 
         return {
             "real_loss_reason": real_reason,
@@ -497,6 +522,7 @@ async def generate_ai_forensic_verdict(
             "pivot_point": pivot,
             "forensic_summary": summary,
             "rop_recommendation": rec,
+            "is_ai": False,
         }
 
     if not api_key:
@@ -562,12 +588,14 @@ async def generate_ai_forensic_verdict(
                 data = resp.json()
                 text_content = data["candidates"][0]["content"]["parts"][0]["text"]
                 parsed = json.loads(text_content)
+                fb = fallback_verdict()
                 return {
-                    "real_loss_reason": parsed.get("real_loss_reason") or fallback_verdict()["real_loss_reason"],
+                    "real_loss_reason": parsed.get("real_loss_reason") or fb["real_loss_reason"],
                     "manager_guilt": parsed.get("manager_guilt") or audit_math["manager_fault"],
-                    "pivot_point": parsed.get("pivot_point") or fallback_verdict()["pivot_point"],
-                    "forensic_summary": parsed.get("forensic_summary") or fallback_verdict()["forensic_summary"],
-                    "rop_recommendation": parsed.get("rop_recommendation") or fallback_verdict()["rop_recommendation"],
+                    "pivot_point": parsed.get("pivot_point") or fb["pivot_point"],
+                    "forensic_summary": parsed.get("forensic_summary") or fb["forensic_summary"],
+                    "rop_recommendation": parsed.get("rop_recommendation") or fb["rop_recommendation"],
+                    "is_ai": True,
                 }
             else:
                 logger.warning(f"Gemini API returned status {resp.status_code}: {resp.text}")
