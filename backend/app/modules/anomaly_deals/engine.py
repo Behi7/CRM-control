@@ -332,28 +332,26 @@ def audit_lead_math(
         neglect_penalty = 15
 
     # 7. Штраф за запоздалый первый контакт (Speed-to-Lead > 24 часов)
+    # Оценивается строго по реальному звонку клиенту (исключая фиктивные авто-задачи CRM-ботов)
     speed_penalty = 0
     created_at = lead.crm_created_at
     if created_at:
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
 
-        first_action_times = []
+        call_times = []
         for c in calls:
             if c.call_date:
                 cd = c.call_date if c.call_date.tzinfo else c.call_date.replace(tzinfo=timezone.utc)
-                first_action_times.append(cd)
-        for t in (tasks or []):
-            if t.task_created_at:
-                td = t.task_created_at if t.task_created_at.tzinfo else t.task_created_at.replace(tzinfo=timezone.utc)
-                first_action_times.append(td)
+                call_times.append(cd)
 
-        if first_action_times:
-            earliest_action = min(first_action_times)
-            hours_to_first_contact = (earliest_action - created_at).total_seconds() / 3600.0
+        if call_times:
+            earliest_call = min(call_times)
+            hours_to_first_contact = (earliest_call - created_at).total_seconds() / 3600.0
             if hours_to_first_contact > 24.0:
                 speed_penalty = 10
-        elif (total_calls == 0 and len(tasks or []) == 0):
+        else:
+            # Если звонков клиенту не было вовсе, а сделка прожила больше 24 часов
             closed_at = lead.crm_closed_at or datetime.now(timezone.utc)
             if closed_at.tzinfo is None:
                 closed_at = closed_at.replace(tzinfo=timezone.utc)
@@ -394,7 +392,7 @@ def audit_lead_math(
         key_factors.append(f"Честный недозвон: {total_calls} попыток в разные дни и время суток")
 
     if speed_penalty > 0:
-        key_factors.append("Запоздалый первый контакт (>24 ч. с момента создания лида)")
+        key_factors.append("Запоздалый первый звонок клиенту (>24 ч. с момента создания лида)")
 
     if stagnant_stages_info:
         top_stag = stagnant_stages_info[0]
@@ -530,13 +528,13 @@ async def generate_ai_forensic_verdict(
             )
             rec = "Проверить соблюдение менеджером регламента последовательного ведения этапов воронки."
         elif breakdown.get("speed_penalty", 0) > 0:
-            real_reason = "Запоздалый первый контакт (>24 ч.)"
-            pivot = "Критическая задержка при взятии лида в работу"
+            real_reason = "Запоздалый первый звонок клиенту (>24 ч.)"
+            pivot = "Первый звонок клиенту совершен с критической задержкой (>24 ч.)"
             summary = (
-                f"Менеджер закрыл сделку со статусом «{stated}», однако первый контакт с клиентом "
+                f"Менеджер закрыл сделку со статусом «{stated}», однако первый звонок клиенту "
                 "состоялся с опозданием более чем на 24 часа с момента поступления лида."
             )
-            rec = "Провести беседу по регламенту скорости первого ответа (Speed-to-Lead)."
+            rec = "Провести беседу по регламенту скорости первого звонка (Speed-to-Lead)."
         elif score == 0:
             real_reason = stated
             pivot = "Закрытие сделки по решению клиента"
