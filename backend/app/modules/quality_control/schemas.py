@@ -11,6 +11,7 @@ class QcSettingsDto(BaseModel):
     systemPrompt: Optional[str] = None
     disabledPipelineIds: Optional[List[int]] = []
     lastCallSyncedAt: Optional[datetime] = None
+    activatedAt: Optional[datetime] = None
 
 class UpdateQcSettingsDto(BaseModel):
     isEnabled: Optional[bool] = None

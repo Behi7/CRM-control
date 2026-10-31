@@ -271,6 +271,14 @@ async def process_call_evaluation(session: AsyncSession, eval_id: int, force: bo
         return False
 
     if not force:
+        # Проверяем, не был ли звонок совершен до активации КК (защита от сжигания токенов)
+        if qc_settings.activated_at and call_eval.call_date:
+            if call_eval.call_date < qc_settings.activated_at:
+                call_eval.status = "skipped_qc_disabled"
+                call_eval.skip_reason = "Звонок совершен до активации контроля качества"
+                await session.commit()
+                return True
+
         disabled_pipelines = set(qc_settings.disabled_pipeline_ids or [])
         if call_eval.pipeline_id and call_eval.pipeline_id in disabled_pipelines:
             call_eval.status = "skipped_pipeline"

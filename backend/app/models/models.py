@@ -312,6 +312,7 @@ class QcSettings(Base):
     disabled_pipeline_ids = Column(JSONB, nullable=True, default=list)
     system_prompt = Column(Text, nullable=True)
     last_call_synced_at = Column(DateTime(timezone=True), nullable=True)
+    activated_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 

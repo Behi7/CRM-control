@@ -92,6 +92,7 @@ async def get_qc_settings(
         systemPrompt=qc.system_prompt,
         disabledPipelineIds=qc.disabled_pipeline_ids or [],
         lastCallSyncedAt=qc.last_call_synced_at,
+        activatedAt=qc.activated_at,
     )
 
 @router.patch("/accounts/{account_id}/qc/settings", response_model=QcSettingsDto)
@@ -112,7 +113,22 @@ async def update_qc_settings(
 
     if dto.isEnabled is not None:
         if dto.isEnabled and not qc.is_enabled:
-            qc.last_call_synced_at = None
+            now_utc = datetime.now(timezone.utc)
+            qc.activated_at = now_utc
+            # Мгновенно переводим все звонки, накопившиеся во время паузы КК, в статус skipped_qc_disabled
+            skip_stmt = (
+                update(QcCallEvaluation)
+                .where(
+                    QcCallEvaluation.account_id == account_id,
+                    QcCallEvaluation.status == "pending",
+                    QcCallEvaluation.call_date < now_utc
+                )
+                .values(
+                    status="skipped_qc_disabled",
+                    skip_reason="Звонок совершен до активации контроля качества"
+                )
+            )
+            await db.execute(skip_stmt)
         qc.is_enabled = dto.isEnabled
     if dto.aiModel is not None:
         qc.ai_model = dto.aiModel.strip()
@@ -138,6 +154,7 @@ async def update_qc_settings(
         systemPrompt=qc.system_prompt,
         disabledPipelineIds=qc.disabled_pipeline_ids or [],
         lastCallSyncedAt=qc.last_call_synced_at,
+        activatedAt=qc.activated_at,
     )
 
 # ==========================================
