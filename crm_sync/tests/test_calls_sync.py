@@ -3,13 +3,7 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, AsyncMock
 from sqlalchemy import select
 from app.models import Account, Pipeline, Stage, Lead, AmoUser, QcSettings, QcCallEvaluation
-from app.sync.calls_sync import run_calls_sync, CALL_STATUS_DESCRIPTIONS
-
-def test_call_status_descriptions_mapping():
-    assert 1 in CALL_STATUS_DESCRIPTIONS
-    assert 6 in CALL_STATUS_DESCRIPTIONS
-    assert "автоответчик" in CALL_STATUS_DESCRIPTIONS[1]
-    assert "Не дозвонился" in CALL_STATUS_DESCRIPTIONS[6]
+from app.sync.calls_sync import run_calls_sync
 
 async def test_run_calls_sync_disabled_qc(db_session, sample_account):
     now = datetime.now(timezone.utc)
@@ -42,8 +36,9 @@ async def test_run_calls_sync_disabled_qc(db_session, sample_account):
                 QcCallEvaluation.external_call_id == "9901",
             )
         )).scalar_one()
-        # crm_sync is purely transport; saves valid calls as pending regardless of qc is_enabled
-        assert call.status == "pending"
+        # crm_sync is purely transport; saves calls as raw without business logic
+        assert call.status == "raw"
+        assert call.call_status == 4
 
 async def test_run_calls_sync_missing_qc_settings(db_session, sample_account):
     sample_account.anomaly_settings = {"calls_backfill_done": True}
@@ -129,7 +124,8 @@ async def test_run_calls_sync_success_pending_call(db_session, sample_account):
                 QcCallEvaluation.external_call_id == "9901",
             )
         )).scalar_one()
-        assert call.status == "pending"
+        assert call.status == "raw"
+        assert call.call_status == 4
         assert call.duration_seconds == 65
         assert call.phone == "+79991112233"
         assert call.recording_url == "https://storage.example.com/records/9901.mp3"
@@ -215,19 +211,24 @@ async def test_run_calls_sync_filter_reasons(db_session, sample_account):
         assert ok is True
 
         c1 = (await db_session.execute(select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "1001"))).scalar_one()
-        assert c1.status == "pending"  # Pipeline filtering is evaluated by QC backend, not crm_sync
+        assert c1.status == "raw"
+        assert c1.call_status == 4
 
         c2 = (await db_session.execute(select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "1002"))).scalar_one()
-        assert c2.status == "skipped_not_answered"
+        assert c2.status == "raw"
+        assert c2.call_status == 6
 
         c3 = (await db_session.execute(select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "1003"))).scalar_one()
-        assert c3.status == "pending"  # Duration filtering is evaluated by QC backend, not crm_sync
+        assert c3.status == "raw"
+        assert c3.call_status == 4
 
         c4 = (await db_session.execute(select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "1004"))).scalar_one()
-        assert c4.status == "pending"  # Duration filtering is evaluated by QC backend, not crm_sync
+        assert c4.status == "raw"
+        assert c4.call_status == 4
 
         c5 = (await db_session.execute(select(QcCallEvaluation).where(QcCallEvaluation.external_call_id == "1005"))).scalar_one()
-        assert c5.status == "skipped_no_audio"
+        assert c5.status == "raw"
+        assert c5.recording_url is None
 
 async def test_run_calls_sync_deduplication(db_session, sample_account):
     now = datetime.now(timezone.utc)

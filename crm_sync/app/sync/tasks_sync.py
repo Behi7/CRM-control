@@ -28,8 +28,9 @@ async def run_tasks_sync(session: AsyncSession, account_id: int) -> bool:
         if not amo_token:
             return False
 
+        cursor = dict(acc.backfill_cursor or {})
         anomaly_cfg = dict(acc.anomaly_settings or {})
-        last_synced_str = anomaly_cfg.get("last_tasks_synced_at")
+        last_synced_str = cursor.get("last_tasks_synced_at") or anomaly_cfg.get("last_tasks_synced_at")
 
         now_utc = datetime.now(timezone.utc)
         filter_params: Dict[str, Any] = {
@@ -149,7 +150,10 @@ async def run_tasks_sync(session: AsyncSession, account_id: int) -> bool:
                 break
             page += 1
 
-        # Обновляем курсор синхронизации задач
+        # Обновляем системный курсор синхронизации задач
+        cursor["last_tasks_synced_at"] = now_utc.isoformat()
+        acc.backfill_cursor = cursor
+        flag_modified(acc, "backfill_cursor")
         anomaly_cfg["last_tasks_synced_at"] = now_utc.isoformat()
         acc.anomaly_settings = anomaly_cfg
         flag_modified(acc, "anomaly_settings")

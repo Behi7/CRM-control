@@ -297,6 +297,7 @@ class QcCallEvaluation(Base):
     call_date = Column(DateTime(timezone=True), nullable=False)
     duration_seconds = Column(Integer, nullable=False)
     recording_url = Column(Text, nullable=True)
+    call_status = Column(Integer, nullable=True)
     status = Column(Text, nullable=False, default="completed")
     skip_reason = Column(Text, nullable=True)
     overall_score = Column(Integer, nullable=True)

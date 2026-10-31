@@ -317,6 +317,10 @@ async def list_qc_calls(
 ):
     check_account_access(user, account_id)
 
+    # Квалифицируем свежие звонки из crm_sync (если есть в статусе 'raw')
+    from app.modules.quality_control.service import qualify_raw_calls
+    await qualify_raw_calls(db, account_id=account_id, batch_size=200)
+
     # Base query joined with Lead, Pipeline, AmoUser
     stmt = (
         select(

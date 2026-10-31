@@ -15,21 +15,13 @@ from app.core.crm_client import crm_client
 
 logger = logging.getLogger("CallsSync")
 
-CALL_STATUS_DESCRIPTIONS = {
-    1: "Оставлено сообщение на автоответчик",
-    2: "Перезвонить позже",
-    3: "Нет на месте",
-    5: "Неверный номер",
-    6: "Не дозвонился / абонент не ответил",
-    7: "Номер занят",
-}
-
 async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
     """
-    Синхронизирует все звонки из AmoCRM и сохраняет их в БД (таблицу qc_call_evaluations).
-    Все звонки сохраняются в БД для модуля аномалий и аналитики.
-    Контроль качества (статус 'pending' для анализа нейросетью) активируется только
-    для свежих целевых звонков и только при включенном тумблере КК (is_enabled == True).
+    Транспортный воркер crm_sync:
+    Скачивает примечания звонков (call_in, call_out) из AmoCRM и сохраняет их в БД
+    с сырыми атрибутами (status='raw').
+    Никакой квалификации, проверок длительности или разметки причин пропуска здесь нет —
+    вся бизнес-логика выполняется в бэкенд-модуле контроля качества (quality_control).
     """
     try:
         # 1. Проверяем сам аккаунт и наличие токенов
@@ -49,15 +41,10 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
         if not amo_token:
             return False
 
-        # 2. Получаем или создаем настройки контроля качества (для порогов длительности и курсора)
+        # 2. Получаем курсор последней синхронизации звонков
         qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
         qc_res = await session.execute(qc_stmt)
         qc_settings = qc_res.scalar_one_or_none()
-        if not qc_settings:
-            qc_settings = QcSettings(account_id=account_id, is_enabled=False)
-            session.add(qc_settings)
-            await session.commit()
-            await session.refresh(qc_settings)
 
         # 3. Фиксируем временное окно и параметры синхронизации
         job_started_at = datetime.now(timezone.utc)
@@ -71,8 +58,9 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
 
         # Если бэкфилл уже выполнен и есть курсор — берем инкрементальную дельту
         is_backfill = not calls_backfill_done
-        if not is_backfill and qc_settings.last_call_synced_at:
-            window_from = qc_settings.last_call_synced_at - timedelta(minutes=5)
+        last_synced_at = qc_settings.last_call_synced_at if qc_settings else None
+        if not is_backfill and last_synced_at:
+            window_from = last_synced_at - timedelta(minutes=5)
             filter_params["filter[updated_at][from]"] = max(0, int(window_from.timestamp()))
             logger.info(f"Starting incremental calls sync for account #{account_id} ({acc.subdomain}) from {window_from.isoformat()}...")
         else:
@@ -83,7 +71,6 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
         MAX_CALL_PAGES = 500 if is_backfill else 50
         total_found = 0
         total_saved = 0
-        total_pending = 0
 
         leads_cache: Dict[str, Optional[tuple]] = {}  # ext_id -> (id, pipeline_id, resp_user_id)
         users_cache: Dict[str, Optional[int]] = {}
@@ -124,7 +111,7 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
             )
             existing_ids = set((await session.execute(existing_ids_stmt)).scalars().all())
 
-            batch_evals = []
+            batch_calls = []
 
             for note in call_notes:
                 total_found += 1
@@ -176,7 +163,7 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
                 if not amo_user_id:
                     amo_user_id = lead_resp_id
 
-                # Разметка статуса звонка:
+                # Сырой статус звонка из телефонии AmoCRM
                 raw_call_status = params.get("call_status")
                 call_status = None
                 if raw_call_status is not None:
@@ -185,24 +172,8 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
                     except (ValueError, TypeError):
                         call_status = None
 
-                status_val = "pending"
-                skip_reason = None
-
-                if call_status is not None and call_status != 4:
-                    status_val = "skipped_not_answered"
-                    skip_reason = CALL_STATUS_DESCRIPTIONS.get(call_status, f"код статуса {call_status}")
-                elif not link:
-                    status_val = "skipped_no_audio"
-                    skip_reason = "Нет ссылки на аудиозапись"
-                elif is_backfill or (call_date < job_started_at - timedelta(days=2)):
-                    status_val = "skipped_historical"
-                    skip_reason = "Архивный звонок (до активации КК)"
-                else:
-                    status_val = "pending"
-                    skip_reason = None
-                    total_pending += 1
-
-                batch_evals.append({
+                # Сохраняем сырой звонок: квалификацию в skipped/pending делает quality_control
+                batch_calls.append({
                     "account_id": account_id,
                     "external_call_id": note_id,
                     "lead_id": lead_id,
@@ -213,25 +184,27 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
                     "call_date": call_date,
                     "duration_seconds": duration,
                     "recording_url": link,
-                    "status": status_val,
-                    "skip_reason": skip_reason,
+                    "call_status": call_status,
+                    "status": "raw",
+                    "skip_reason": None,
                     "created_at": datetime.now(timezone.utc),
                 })
 
-            if batch_evals:
-                insert_stmt = insert(QcCallEvaluation).values(batch_evals).on_conflict_do_nothing(
+            if batch_calls:
+                insert_stmt = insert(QcCallEvaluation).values(batch_calls).on_conflict_do_nothing(
                     index_elements=["account_id", "external_call_id"]
                 )
                 await session.execute(insert_stmt)
                 await session.commit()
-                total_saved += len(batch_evals)
+                total_saved += len(batch_calls)
 
             if len(notes) < 250:
                 break
             page += 1
 
         # Обновляем курсор и флаг завершения бэкфилла
-        qc_settings.last_call_synced_at = job_started_at
+        if qc_settings:
+            qc_settings.last_call_synced_at = job_started_at
         if is_backfill:
             anomaly_cfg["calls_backfill_done"] = True
             acc.anomaly_settings = anomaly_cfg
@@ -240,7 +213,7 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
 
         logger.info(
             f"Completed calls sync for account #{account_id}: "
-            f"found={total_found}, saved={total_saved}, pending_queued={total_pending}, is_backfill={is_backfill}"
+            f"found={total_found}, saved={total_saved}, is_backfill={is_backfill}"
         )
         return True
 

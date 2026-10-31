@@ -2,7 +2,7 @@ import asyncio
 import base64
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
@@ -16,6 +16,15 @@ from app.models import (
 from app.core.security import decrypt_token
 
 logger = logging.getLogger("QCService")
+
+CALL_STATUS_DESCRIPTIONS = {
+    1: "Оставлено сообщение на автоответчик",
+    2: "Перезвонить позже",
+    3: "Нет на месте",
+    5: "Неверный номер",
+    6: "Не дозвонился / абонент не ответил",
+    7: "Номер занят",
+}
 
 async def get_active_rules(session: AsyncSession, account_id: int, pipeline_id: Optional[int]) -> List[Dict[str, Any]]:
     """Возвращает активные правила регламента (приоритет: воронка -> общие правила аккаунта -> fallback)."""
@@ -346,6 +355,98 @@ async def process_call_evaluation(session: AsyncSession, eval_id: int, force: bo
     return True
 
 
+async def qualify_raw_calls(session: AsyncSession, account_id: Optional[int] = None, batch_size: int = 500) -> int:
+    """
+    Квалифицирует сырые звонки из crm_sync (status='raw'):
+    - Проверяет статус ответа телефонии (call_status != 4 -> skipped_not_answered)
+    - Проверяет наличие ссылки на аудио (skipped_no_audio)
+    - Проверяет статус активности КК и дату активации (skipped_qc_disabled, skipped_historical)
+    - Проверяет исключенные воронки (skipped_pipeline)
+    - Проверяет длительность по порогам (skipped_duration)
+    - Целевые звонки переводит в статус 'pending' для анализа нейросетью.
+    """
+    stmt = select(QcCallEvaluation).where(QcCallEvaluation.status == "raw")
+    if account_id is not None:
+        stmt = stmt.where(QcCallEvaluation.account_id == account_id)
+    stmt = stmt.order_by(QcCallEvaluation.id.asc()).limit(batch_size)
+
+    raw_calls = (await session.execute(stmt)).scalars().all()
+    if not raw_calls:
+        return 0
+
+    now_utc = datetime.now(timezone.utc)
+    qc_settings_cache: Dict[int, Optional[QcSettings]] = {}
+    qualified_count = 0
+
+    for call in raw_calls:
+        acc_id = call.account_id
+        if acc_id not in qc_settings_cache:
+            qc_row = (await session.execute(
+                select(QcSettings).where(QcSettings.account_id == acc_id)
+            )).scalar_one_or_none()
+            qc_settings_cache[acc_id] = qc_row
+        qc_set = qc_settings_cache[acc_id]
+
+        # 1. Проверка ответа телефонии (недозвон / сброс)
+        if call.call_status is not None and call.call_status != 4:
+            call.status = "skipped_not_answered"
+            call.skip_reason = CALL_STATUS_DESCRIPTIONS.get(call.call_status, f"код статуса {call.call_status}")
+            qualified_count += 1
+            continue
+
+        # 2. Проверка ссылки на аудиозапись
+        if not call.recording_url:
+            call.status = "skipped_no_audio"
+            call.skip_reason = "Нет ссылки на аудиозапись"
+            qualified_count += 1
+            continue
+
+        # 3. Проверка активности модуля контроля качества
+        if not qc_set or not qc_set.is_enabled:
+            call.status = "skipped_qc_disabled"
+            call.skip_reason = "Контроль качества отключен"
+            qualified_count += 1
+            continue
+
+        # 4. Проверка даты активации КК или архивности (старше 2 дней до активации)
+        if qc_set.activated_at and call.call_date < qc_set.activated_at:
+            call.status = "skipped_historical"
+            call.skip_reason = "Архивный звонок (до активации КК)"
+            qualified_count += 1
+            continue
+        elif not qc_set.activated_at and call.call_date < (now_utc - timedelta(days=2)):
+            call.status = "skipped_historical"
+            call.skip_reason = "Архивный звонок (старше 2 дней)"
+            qualified_count += 1
+            continue
+
+        # 5. Исключенные воронки
+        disabled_pipes = set(qc_set.disabled_pipeline_ids or [])
+        if call.pipeline_id and call.pipeline_id in disabled_pipes:
+            call.status = "skipped_pipeline"
+            call.skip_reason = "Анализ отключён для данной воронки"
+            qualified_count += 1
+            continue
+
+        # 6. Пороги длительности звонка
+        min_dur = qc_set.min_duration_sec or 20
+        max_dur = qc_set.max_duration_sec or 600
+        dur = call.duration_seconds or 0
+        if dur < min_dur or dur > max_dur:
+            call.status = "skipped_duration"
+            call.skip_reason = f"Длительность {dur} сек вне диапазона ({min_dur}-{max_dur} сек)"
+            qualified_count += 1
+            continue
+
+        # Целевой звонок готов к анализу нейросетью
+        call.status = "pending"
+        call.skip_reason = None
+        qualified_count += 1
+
+    await session.commit()
+    return qualified_count
+
+
 async def process_pending_calls(session: AsyncSession, limit: int = 5) -> int:
     """Выбирает звонки в статусе 'pending' и прогоняет их через анализ (только для активных модулей)."""
     stmt = (
@@ -385,6 +486,9 @@ async def qc_background_worker():
     while True:
         try:
             async with AsyncSessionLocal() as session:
+                qualified = await qualify_raw_calls(session, batch_size=500)
+                if qualified > 0:
+                    logger.info(f"QC Worker qualified {qualified} raw calls.")
                 processed = await process_pending_calls(session, limit=3)
                 if processed > 0:
                     logger.info(f"QC Worker processed {processed} pending calls.")

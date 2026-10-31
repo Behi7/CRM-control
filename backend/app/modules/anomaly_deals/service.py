@@ -807,16 +807,34 @@ async def run_single_deal_audit(
     sh_stmt = select(LeadStageHistory).where(LeadStageHistory.lead_id == lead.id).order_by(LeadStageHistory.entered_at.asc())
     stage_history = (await session.execute(sh_stmt)).scalars().all()
 
-    # Загружаем названия этапов
-    stages_stmt = select(Stage.id, Stage.name).where(Stage.pipeline_id == lead.pipeline_id) if lead.pipeline_id else None
+    # Загружаем названия этапов и их порядок
+    stages_stmt = select(Stage.id, Stage.name, Stage.sort_order).where(Stage.pipeline_id == lead.pipeline_id) if lead.pipeline_id else None
     stage_names = {}
+    stage_sorts = {}
     if stages_stmt is not None:
-        for s_id, s_name in (await session.execute(stages_stmt)).all():
+        for s_id, s_name, s_sort in (await session.execute(stages_stmt)).all():
             stage_names[s_id] = s_name
+            stage_sorts[s_id] = s_sort if s_sort is not None else 0
 
-    # Загружаем пропуски
+    # Загружаем пропуски из БД или вычисляем динамически из истории переходов этапов
     skips_stmt = select(LeadStageSkip).where(LeadStageSkip.lead_id == lead.id)
-    skips = (await session.execute(skips_stmt)).scalars().all()
+    skips = list((await session.execute(skips_stmt)).scalars().all())
+    if not skips and len(stage_history) > 1 and stage_sorts:
+        for i in range(len(stage_history) - 1):
+            p_id = stage_history[i].stage_id
+            c_id = stage_history[i + 1].stage_id
+            if p_id in stage_sorts and c_id in stage_sorts:
+                diff = stage_sorts[c_id] - stage_sorts[p_id]
+                if abs(diff) > 1:
+                    lo, hi = min(stage_sorts[p_id], stage_sorts[c_id]), max(stage_sorts[p_id], stage_sorts[c_id])
+                    for sid, ssort in stage_sorts.items():
+                        if lo < ssort < hi:
+                            skips.append({
+                                "from_stage_id": p_id,
+                                "to_stage_id": c_id,
+                                "skipped_stage_id": sid,
+                                "direction": "forward" if diff > 0 else "backward",
+                            })
 
     # Загружаем звонки (только из локальной БД)
     calls_stmt = select(QcCallEvaluation).where(QcCallEvaluation.account_id == account_id, QcCallEvaluation.lead_id == lead.id)
