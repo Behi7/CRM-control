@@ -76,6 +76,8 @@ def calculate_lead_tasks_metrics(
     # 3. Собираем интервалы активных задач
     intervals: List[List[datetime]] = []
     overdue_count = 0
+    total_overdue_sec = 0.0
+    max_overdue_factor = 0.0
 
     for t in tasks:
         t_created = t.task_created_at
@@ -84,16 +86,26 @@ def calculate_lead_tasks_metrics(
 
         start = max(created_at, t_created)
 
-        if t.is_completed and t.task_closed_at:
+        # Честный интервал активного покрытия:
+        # Задача защищает сделку только до момента своего дедлайна complete_till.
+        # Если задача закрыта с опозданием (или вообще не закрыта вовремя), время просрочки
+        # является бесконтрольным простоем и НЕ считается активной работой.
+        if t.complete_till:
+            t_till = t.complete_till
+            if t_till.tzinfo is None:
+                t_till = t_till.replace(tzinfo=timezone.utc)
+            if t.is_completed and t.task_closed_at:
+                t_closed = t.task_closed_at
+                if t_closed.tzinfo is None:
+                    t_closed = t_closed.replace(tzinfo=timezone.utc)
+                end = min(t_closed, t_till)
+            else:
+                end = t_till
+        elif t.is_completed and t.task_closed_at:
             t_closed = t.task_closed_at
             if t_closed.tzinfo is None:
                 t_closed = t_closed.replace(tzinfo=timezone.utc)
             end = t_closed
-        elif t.complete_till:
-            t_till = t.complete_till
-            if t_till.tzinfo is None:
-                t_till = t_till.replace(tzinfo=timezone.utc)
-            end = t_till
         else:
             end = closed_at
 
@@ -101,7 +113,7 @@ def calculate_lead_tasks_metrics(
         if end > start:
             intervals.append([start, end])
 
-        # Проверка на просроченную задачу (>24 часов просрочки)
+        # Относительный анализ просрочки задачи (в % от жизни сделки и кратности срока):
         if t.complete_till:
             t_till = t.complete_till
             if t_till.tzinfo is None:
@@ -109,8 +121,18 @@ def calculate_lead_tasks_metrics(
             actual_end = t.task_closed_at or closed_at
             if actual_end.tzinfo is None:
                 actual_end = actual_end.replace(tzinfo=timezone.utc)
-            if (actual_end - t_till).total_seconds() >= 86400:
+
+            if actual_end > t_till:
+                overdue_sec = (actual_end - t_till).total_seconds()
+                total_overdue_sec += overdue_sec
                 overdue_count += 1
+
+                planned_sec = max(900.0, (t_till - t_created).total_seconds())
+                task_factor = round(overdue_sec / planned_sec, 2)
+                if task_factor > max_overdue_factor:
+                    max_overdue_factor = task_factor
+
+    overdue_lifetime_percent = min(100.0, max(0.0, round((total_overdue_sec / lifetime_sec) * 100.0, 1)))
 
     if not intervals:
         return {
@@ -119,6 +141,8 @@ def calculate_lead_tasks_metrics(
             "tasks_idle_percent": 100.0,
             "max_idle_gap_hours": lifetime_hours,
             "overdue_tasks_count": overdue_count,
+            "overdue_lifetime_percent": overdue_lifetime_percent,
+            "max_overdue_factor": max_overdue_factor,
             "tasks_penalty": 30,
             "is_fast_closed": False,
         }
@@ -150,7 +174,7 @@ def calculate_lead_tasks_metrics(
     max_gap_sec = max(gap_seconds) if gap_seconds else 0.0
     max_gap_hours = round(max_gap_sec / 3600.0, 1)
 
-    # 4. Градация штрафа за простой без задач
+    # 4. Относительная градация штрафа за простой без задач (в % от жизни сделки)
     tasks_penalty = 0
     if idle_percent > 60.0:
         tasks_penalty = 30
@@ -161,11 +185,12 @@ def calculate_lead_tasks_metrics(
     else:
         tasks_penalty = 0
 
-    # Бонус за критический непрерывный провал (лид бросили надолго)
-    if (max_gap_sec / lifetime_sec) >= 0.40 and max_gap_hours >= 48:
-        tasks_penalty = min(tasks_penalty + 5, 35)
-
-    if overdue_count >= 2:
+    # Относительный штраф за просроченные задачи:
+    if overdue_lifetime_percent >= 30.0 or max_overdue_factor >= 2.0:
+        tasks_penalty = min(tasks_penalty + 15, 35)
+    elif overdue_lifetime_percent >= 15.0 or max_overdue_factor >= 1.0 or overdue_count >= 2:
+        tasks_penalty = min(tasks_penalty + 10, 35)
+    elif overdue_count >= 1 and overdue_lifetime_percent >= 5.0:
         tasks_penalty = min(tasks_penalty + 5, 35)
 
     return {
@@ -174,6 +199,8 @@ def calculate_lead_tasks_metrics(
         "tasks_idle_percent": idle_percent,
         "max_idle_gap_hours": max_gap_hours,
         "overdue_tasks_count": overdue_count,
+        "overdue_lifetime_percent": overdue_lifetime_percent,
+        "max_overdue_factor": max_overdue_factor,
         "tasks_penalty": tasks_penalty,
         "is_fast_closed": False,
     }
@@ -237,24 +264,27 @@ def audit_lead_math(
         if effort_shield_active:
             continue
 
-        if duration_hrs > 4 * bench_hrs and duration_hrs >= 48:
-            time_penalty += 30
-            stagnant_stages_info.append({
-                "stage_name": stage_names.get(s_id, f"Этап #{s_id}"),
-                "duration_hours": round(duration_hrs, 1),
-                "benchmark_hours": bench_hrs,
-                "factor": round(duration_hrs / bench_hrs, 1),
-                "severity": "critical"
-            })
-        elif duration_hrs > 2 * bench_hrs and duration_hrs >= 24:
-            time_penalty += 15
-            stagnant_stages_info.append({
-                "stage_name": stage_names.get(s_id, f"Этап #{s_id}"),
-                "duration_hours": round(duration_hrs, 1),
-                "benchmark_hours": bench_hrs,
-                "factor": round(duration_hrs / bench_hrs, 1),
-                "severity": "moderate"
-            })
+        # Относительный анализ зависания на этапе (в коэффициентах превышения нормы воронки):
+        factor = round(duration_hrs / bench_hrs, 1)
+        if duration_hrs >= 0.25:  # Защита от секундных микро-переходов
+            if factor >= 3.0:
+                time_penalty += 30
+                stagnant_stages_info.append({
+                    "stage_name": stage_names.get(s_id, f"Этап #{s_id}"),
+                    "duration_hours": round(duration_hrs, 1),
+                    "benchmark_hours": bench_hrs,
+                    "factor": factor,
+                    "severity": "critical"
+                })
+            elif factor >= 1.5:
+                time_penalty += 15
+                stagnant_stages_info.append({
+                    "stage_name": stage_names.get(s_id, f"Этап #{s_id}"),
+                    "duration_hours": round(duration_hrs, 1),
+                    "benchmark_hours": bench_hrs,
+                    "factor": factor,
+                    "severity": "moderate"
+                })
 
     time_penalty = min(time_penalty, 40)
 
@@ -376,7 +406,9 @@ def audit_lead_math(
     if skips:
         key_factors.append(f"Срез воронки ({len(skips)} пропущенных этапов)")
 
-    if tasks_metrics["tasks_idle_percent"] >= 50.0 and not tasks_metrics["is_fast_closed"]:
+    if tasks_metrics.get("overdue_lifetime_percent", 0) >= 15.0:
+        key_factors.append(f"Просрочка задач заняла {tasks_metrics['overdue_lifetime_percent']}% жизни сделки")
+    elif tasks_metrics["tasks_idle_percent"] >= 30.0 and not tasks_metrics["is_fast_closed"]:
         if tasks_metrics["tasks_count"] == 0:
             key_factors.append(f"Прожила {tasks_metrics['lifetime_hours']} ч. без единой задачи")
         else:
@@ -416,7 +448,7 @@ DEFAULT_ANOMALY_SYSTEM_PROMPT = """Ты — беспристрастный и о
 1. Если менеджер указал отмазку ('Недозвон', 'Клиент передумал', 'Дорого'), но по факту не звонил или сделка неделями висела без движения — прямо разоблачи отмазку.
 2. ЕСЛИ по результатам Контроля Качества (QC) видно, что в разговоре менеджер допустил критические ошибки, проигнорировал возражения клиента или упустил инициативу — зафиксируй вину менеджера, даже если позже совершались звонки по уже потерянному клиенту.
 3. ЕСЛИ клиент объективно отказался сам (нет потребности, уехал, форс-мажор) или действительно не выходил на связь при добросовестных попытках менеджера (звонки в разные дни без нарушений регламента) — встань на защиту менеджера и сними с него вину.
-4. ОБРАТИ ВНИМАНИЕ НА ДИСЦИПЛИНУ ЗАДАЧ (tasks_metrics): если сделка провела большую часть времени без задач (tasks_idle_percent > 50%), укажи это как причину утери контакта и халатности менеджера.
+4. ОБРАТИ ВНИМАНИЕ НА ДИСЦИПЛИНУ ЗАДАЧ (tasks_metrics): если сделка провела существенное время без задач (tasks_idle_percent > 30%) или задачи закрывались с критической просрочкой дедлайнов (overdue_lifetime_percent > 15%), укажи это как доказательство утери контроля над лидом и халатности менеджера.
 5. Укажи конкретную поворотную точку (pivot_point) — где и когда сделка фактически умерла.
 6. Дай РОПу четкую рекомендацию: стоит ли попытаться спасти лида другим менеджером или списать в архив."""
 
@@ -546,6 +578,9 @@ async def generate_ai_forensic_verdict(
                 "unique_call_days": breakdown.get("unique_call_days", 0),
                 "tasks_idle_percent": breakdown.get("tasks_metrics", {}).get("tasks_idle_percent", 0),
                 "max_idle_gap_hours": breakdown.get("tasks_metrics", {}).get("max_idle_gap_hours", 0),
+                "overdue_tasks_count": breakdown.get("tasks_metrics", {}).get("overdue_tasks_count", 0),
+                "overdue_lifetime_percent": breakdown.get("tasks_metrics", {}).get("overdue_lifetime_percent", 0),
+                "max_overdue_factor": breakdown.get("tasks_metrics", {}).get("max_overdue_factor", 0),
             },
             "bottlenecks": [
                 f"Зависание на этапе '{s['stage_name']}': {s['duration_hours']} ч. (норма {s['benchmark_hours']} ч., превышение в {s['factor']} раз)"
