@@ -434,7 +434,7 @@ async def qualify_raw_calls(session: AsyncSession, account_id: Optional[int] = N
         dur = call.duration_seconds or 0
         if dur < min_dur or dur > max_dur:
             call.status = "skipped_duration"
-            call.skip_reason = f"Длительность {dur} сек вне диапазона ({min_dur}-{max_dur} сек)"
+            call.skip_reason = "Вне диапазона автоматического анализа"
             qualified_count += 1
             continue
 

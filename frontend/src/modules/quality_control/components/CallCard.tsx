@@ -111,7 +111,9 @@ export default function CallCard({ call, onOpenDetail }: CallCardProps) {
             </div>
           ) : (
             <div className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">
-              {call.skipReason || (lang === 'uz' ? 'O\'tkazib yuborilgan' : 'Пропущен')}
+              {call.status === 'skipped_duration'
+                ? (lang === 'uz' ? 'Avto-tahlil oralig‘ida emas' : 'Вне авто-анализа')
+                : call.skipReason || (lang === 'uz' ? 'O\'tkazib yuborilgan' : 'Пропущен')}
             </div>
           )}
         </div>

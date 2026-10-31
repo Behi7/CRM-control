@@ -115,7 +115,9 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
               </div>
             ) : (
               <div className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                {call.skipReason || (call.status === 'pending' ? (lang === 'uz' ? 'Kutilmoqda' : 'В очереди') : call.status)}
+                {call.status === 'skipped_duration'
+                  ? (lang === 'uz' ? 'Avto-tahlil oralig‘ida emas' : 'Вне авто-анализа')
+                  : call.skipReason || (call.status === 'pending' ? (lang === 'uz' ? 'Kutilmoqda' : 'В очереди') : call.status)}
               </div>
             )}
             <button
@@ -235,9 +237,12 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
                 <div className="text-center py-10 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-2">
                   <AlertTriangle size={28} className="mx-auto text-slate-400" />
                   <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    {call.skipReason || (lang === 'uz' ? 'Qo‘ng‘iroq tahlil qilinmagan' : 'Звонок не оценивался регламентом')}
+                    {call.status === 'skipped_duration'
+                      ? (lang === 'uz' ? 'Qo‘ng‘iroq avtomatik tahlil qilinmagan' : 'Звонок не оценивался автоматически')
+                      : call.skipReason || (lang === 'uz' ? 'Qo‘ng‘iroq tahlil qilinmagan' : 'Звонок не оценивался регламентом')}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                    {call.status === 'skipped_duration' && (lang === 'uz' ? 'Qo‘ng‘iroq davomiyligi avtomatik tekshiruv filtriga kiritilmagan' : 'Длительность звонка не вошла в рамки автоматического анализа')}
                     {call.status === 'skipped_historical' && (lang === 'uz' ? 'Tizimga ulanishdan oldingi arxiv qo‘ng‘iroq' : 'Архивный звонок, совершенный до запуска контроля качества')}
                     {call.status === 'skipped_no_audio' && (lang === 'uz' ? 'Telefoniya tomonidan audio yozuv taqdim etilmagan' : 'Телефония не передала ссылку на аудиозапись')}
                     {call.status === 'skipped_not_answered' && (lang === 'uz' ? 'Mijoz go‘shakni ko‘tarmagan yoki bekor qilgan' : 'Разговор не состоялся (недозвон / сброс)')}
