@@ -842,8 +842,9 @@ async def run_single_deal_audit(
     )
 
     # AI-аудит через Gemini:
-    # Если API-ключ настроен — всегда вызываем Gemini для глубокого анализа
-    effective_api_key = api_key
+    # К ИИ отправляем сделки с реальными нарушениями (anomaly_score >= 40) или по принудительному пересчету РОПа (force_ai).
+    # Сделки с легкими нарушениями или чистые (< 40) оформляются фактологически без траты токенов и лимитов API.
+    effective_api_key = api_key if (audit_math["anomaly_score"] >= 40 or force_ai) else None
 
     # Извлекаем содержательные инсайты из Контроля Качества (QC)
     qc_insights = []
