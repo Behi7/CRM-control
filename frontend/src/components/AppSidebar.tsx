@@ -177,13 +177,13 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
   };
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-slate-900 text-slate-100 border-r border-slate-800 select-none">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-r border-slate-200 dark:border-slate-800 select-none">
       {/* Brand header */}
-      <div className="h-16 px-3 flex items-center justify-between border-b border-slate-800/80">
+      <div className="h-16 px-3 flex items-center justify-between border-b border-slate-200 dark:border-slate-800/80">
         {!collapsed && (
           <div className="flex items-center gap-2 overflow-hidden pl-1 flex-1 min-w-0 mr-2">
             <div
-              className="font-bold text-sm tracking-tight text-white leading-tight truncate capitalize"
+              className="font-bold text-sm tracking-tight text-slate-900 dark:text-white leading-tight truncate capitalize"
               title={role === 'admin' ? (lang === 'uz' ? 'Analitika' : 'Аналитика') : fullDomain}
             >
               {role === 'admin' ? (lang === 'uz' ? 'Analitika' : 'Аналитика') : amoAccountName}
@@ -202,7 +202,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
         )}
         <button
           onClick={toggleCollapsed}
-          className={`hidden lg:flex w-10 h-10 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer items-center justify-center shrink-0 ${
+          className={`hidden lg:flex w-10 h-10 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors cursor-pointer items-center justify-center shrink-0 ${
             collapsed ? 'mx-auto' : ''
           }`}
         >
@@ -212,13 +212,13 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
 
       {/* Account Switcher (only for admin) */}
       {role === 'admin' && accounts.length > 0 && (
-        <div className="p-3 border-b border-slate-800/80">
+        <div className="p-3 border-b border-slate-200 dark:border-slate-800/80">
           {!collapsed ? (
             <div>
               <select
                 value={activeAccountId}
                 onChange={(e) => handleAccountChange(Number(e.target.value))}
-                className="w-full bg-slate-800/90 hover:bg-slate-800 text-slate-100 text-xs font-medium rounded-lg px-2.5 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer truncate"
+                className="w-full bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-medium rounded-lg px-2.5 py-2 border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer truncate"
               >
                 {accounts.map((acc: any) => (
                   <option key={acc.id} value={acc.id}>
@@ -237,8 +237,8 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                   <div
                     className={`mt-2.5 p-2.5 rounded-xl text-[11px] leading-snug border ${
                       isStale
-                        ? 'bg-yellow-500/10 text-yellow-200 border-yellow-500/30'
-                        : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/30'
+                        ? 'bg-yellow-500/10 text-yellow-800 dark:text-yellow-200 border-yellow-500/30'
+                        : 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 border-emerald-500/30'
                     }`}
                   >
                     <div className="font-semibold">
@@ -271,7 +271,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               return (
                 <div className="flex justify-center">
                   <div
-                    className="w-10 h-10 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center relative cursor-pointer transition-colors shrink-0"
+                    className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 flex items-center justify-center relative cursor-pointer transition-colors shrink-0"
                     title={tip}
                     onClick={
                       accounts.length > 1
@@ -282,10 +282,10 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                         : undefined
                     }
                   >
-                    <Building2 size={18} className="text-blue-400 shrink-0" />
+                    <Building2 size={18} className="text-blue-500 dark:text-blue-400 shrink-0" />
                     {currentAccObj && (
                       <span
-                        className={`absolute top-1 right-1 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
+                        className={`absolute top-1 right-1 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${
                           isStale ? 'bg-amber-400' : 'bg-emerald-400'
                         }`}
                       />
@@ -302,7 +302,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
       <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
         <div>
           {!collapsed && role === 'admin' && (
-            <div className="px-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <div className="px-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
               {labels.appsSection}
             </div>
           )}
@@ -319,7 +319,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
               } transition-all cursor-pointer ${
                 isAnalyticsActive
                   ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-950/50'
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white'
               }`}
               title={labels.appAnalytics}
             >
@@ -344,7 +344,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                 } transition-all cursor-pointer ${
                   isQcActive
                     ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-950/50'
-                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white'
                 }`}
                 title={labels.qcApp}
               >
@@ -370,7 +370,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                 } transition-all cursor-pointer ${
                   isPredictionsActive
                     ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-950/50'
-                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white'
                 }`}
                 title={labels.app03}
               >
@@ -396,7 +396,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                 } transition-all cursor-pointer ${
                   isCrmNodesActive
                     ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md shadow-teal-950/50'
-                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white'
                 }`}
                 title={labels.crmNodes}
               >
@@ -422,7 +422,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                 } transition-all cursor-pointer ${
                   isAnomalyDealsActive
                     ? 'bg-gradient-to-r from-amber-600 to-rose-600 text-white shadow-md shadow-amber-950/50'
-                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white'
                 }`}
                 title={labels.anomalyDeals}
               >
@@ -440,7 +440,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
         {role === 'admin' && (
           <div>
             {!collapsed && (
-              <div className="px-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <div className="px-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 {labels.adminSection}
               </div>
             )}
@@ -456,8 +456,8 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                     : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
                 } transition-all cursor-pointer ${
                   isClientsActive
-                    ? 'bg-slate-800 text-white font-semibold'
-                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white'
                 }`}
                 title={labels.clients}
               >
@@ -476,8 +476,8 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                     : 'w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left'
                 } transition-all cursor-pointer ${
                   isNotifsActive
-                    ? 'bg-slate-800 text-white font-semibold'
-                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white'
                 }`}
                 title={labels.notifs}
               >
@@ -487,7 +487,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                 </div>
                 {notifsQuery.data && notifsQuery.data.length > 0 && (
                   collapsed ? (
-                    <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-slate-900" />
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white dark:ring-slate-900" />
                   ) : (
                     <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                       {notifsQuery.data.length}
@@ -501,7 +501,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
       </div>
 
       {/* Footer controls */}
-      <div className="p-3 border-t border-slate-800/80">
+      <div className="p-3 border-t border-slate-200 dark:border-slate-800/80">
         {!collapsed ? (
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
@@ -510,7 +510,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
             </div>
             <button
               onClick={logout}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-slate-300 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-slate-600 hover:text-red-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-red-400 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
               title={labels.logout}
             >
               <LogOut size={15} className="shrink-0" />
@@ -522,14 +522,14 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
             <button
               type="button"
               onClick={() => setLang(lang === 'ru' ? 'uz' : 'ru')}
-              className="w-10 h-10 mx-auto rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              className="w-10 h-10 mx-auto rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
             >
               {lang.toUpperCase()}
             </button>
             <ThemeToggle className="w-10 h-10 rounded-xl shrink-0" />
             <button
               onClick={logout}
-              className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+              className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-red-400 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
             >
               <LogOut size={18} className="shrink-0" />
             </button>
@@ -551,11 +551,11 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
         </div>
       </aside>
 
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-slate-900 text-white z-40 px-4 flex items-center justify-between border-b border-slate-800">
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-white dark:bg-slate-900 text-slate-900 dark:text-white z-40 px-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-2">
           <button
             onClick={() => setMobileOpen(true)}
-            className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-800 cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
           >
             <Menu size={22} />
           </button>
@@ -578,7 +578,7 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
           >
             <button
               onClick={() => setMobileOpen(false)}
-              className="m-4 p-2 rounded-full bg-slate-900 text-white cursor-pointer"
+              className="m-4 p-2 rounded-full bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-md cursor-pointer"
             >
               <X size={20} />
             </button>
