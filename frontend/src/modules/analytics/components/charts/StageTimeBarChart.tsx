@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, AlertTriangle, ChevronRight, Zap } from 'lucide-react';
+import { Clock, ChevronRight, Zap } from 'lucide-react';
 import { useLanguage } from '../../../../i18n/LanguageContext';
 import { StageStatItem } from '../StagesStatsTable';
 
@@ -19,14 +19,6 @@ export default function StageTimeBarChart({ items = [], onStageClick }: StageTim
     ...workingStages.map((s) => s.avgSecondsActual || 0),
     1,
   );
-
-  // Find bottleneck stage (stage with maximum actual duration > 0)
-  const bottleneck = workingStages.reduce<StageStatItem | null>((max, s) => {
-    const dur = s.avgSecondsActual || 0;
-    if (dur <= 0) return max;
-    if (!max || dur > (max.avgSecondsActual || 0)) return s;
-    return max;
-  }, null);
 
   const totalCycleSeconds = workingStages.reduce(
     (sum, s) => sum + (s.avgSecondsActual || 0),
@@ -48,7 +40,7 @@ export default function StageTimeBarChart({ items = [], onStageClick }: StageTim
           </div>
           <div>
             <h4 className="font-bold text-sm text-slate-900 dark:text-white leading-tight">
-              {lang === 'uz' ? 'Bosqichlar tezligi va tor joylar' : 'Скорость прохождения этапов и узкие места'}
+              {lang === 'uz' ? 'Bosqichlar tezligi' : 'Скорость прохождения этапов'}
             </h4>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
               {lang === 'uz'
@@ -69,23 +61,12 @@ export default function StageTimeBarChart({ items = [], onStageClick }: StageTim
               </span>
             </div>
           )}
-
-          {bottleneck && (
-            <div className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20 flex items-center gap-1.5 animate-in fade-in-50">
-              <AlertTriangle size={13} className="text-rose-500 shrink-0" />
-              <span className="truncate max-w-[240px]">
-                {lang === 'uz' ? 'Tor joy: ' : 'Затык: '}
-                <strong className="font-bold">{bottleneck.name}</strong> ({formatDuration(bottleneck.avgSecondsActual)})
-              </span>
-            </div>
-          )}
         </div>
       </div>
 
       {/* Horizontal Stage Bars List */}
       <div className="space-y-2.5">
         {workingStages.map((stage, idx) => {
-          const isBottleneck = bottleneck?.stageId === stage.stageId;
           const durSeconds = stage.avgSecondsActual || 0;
           const widthPct = durSeconds > 0 ? Math.max(6, Math.min(100, Math.round((durSeconds / maxDuration) * 100))) : 3;
 
@@ -105,12 +86,6 @@ export default function StageTimeBarChart({ items = [], onStageClick }: StageTim
                   <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                     {stage.name}
                   </span>
-                  {isBottleneck && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 uppercase tracking-wide shrink-0 flex items-center gap-1">
-                      <AlertTriangle size={10} />
-                      {lang === 'uz' ? 'Tor joy' : 'Узкое место'}
-                    </span>
-                  )}
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 text-xs">
@@ -135,9 +110,7 @@ export default function StageTimeBarChart({ items = [], onStageClick }: StageTim
               <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-lg h-6 p-0.5 relative flex items-center overflow-hidden">
                 <div
                   className={`h-full rounded-md transition-all duration-500 flex items-center px-2 text-[11px] font-bold select-none ${
-                    isBottleneck
-                      ? 'bg-gradient-to-r from-amber-500 via-rose-500 to-rose-600 text-white shadow-xs'
-                      : durSeconds > 0
+                    durSeconds > 0
                       ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'
                       : 'bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
                   }`}

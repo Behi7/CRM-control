@@ -12,7 +12,6 @@ import {
   Target,
   Sparkles,
   ChevronDown,
-  AlertTriangle,
 } from 'lucide-react';
 import { analyticsApi, FilterParams } from '../api/analytics.api';
 import { userApi } from '@/api/client';
@@ -318,13 +317,6 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
                     <div className="space-y-4">
                       {allStatsQuery.data.pipelines.map((p) => {
                         const isExpanded = !!expandedPipelines[p.pipelineId];
-                        const workingStages = (p.items || []).filter(
-                          (s) => s.externalId !== '142' && s.externalId !== '143' && (s.avgSecondsActual || 0) > 0,
-                        );
-                        const bottleneck = workingStages.reduce<any>((max, s) => {
-                          if (!max || (s.avgSecondsActual || 0) > (max.avgSecondsActual || 0)) return s;
-                          return max;
-                        }, null);
 
                         return (
                           <div
@@ -348,14 +340,6 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
                                     <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
                                       {p.pipelineName}
                                     </h3>
-                                    {bottleneck && !isExpanded && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
-                                        <AlertTriangle size={11} className="text-rose-500 shrink-0" />
-                                        <span className="truncate max-w-[220px]">
-                                          {lang === 'uz' ? 'Tor joy: ' : 'Затык: '}{bottleneck.name} ({formatDuration(bottleneck.avgSecondsActual)})
-                                        </span>
-                                      </span>
-                                    )}
                                   </div>
                                   <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                                     <span>{p.items?.length || 0} {lang === 'uz' ? 'bosqich' : 'этапов'}</span>
