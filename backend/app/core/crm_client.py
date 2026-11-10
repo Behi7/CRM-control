@@ -29,6 +29,27 @@ def _amocrm_safe_getaddrinfo(host, port, *args, **kwargs):
 if socket.getaddrinfo is not _amocrm_safe_getaddrinfo:
     socket.getaddrinfo = _amocrm_safe_getaddrinfo
 
+try:
+    from anyio._backends._asyncio import AsyncIOBackend
+    _orig_anyio_gai = AsyncIOBackend.getaddrinfo
+
+    @classmethod
+    async def _safe_anyio_gai(cls, host, port, *args, **kwargs):
+        res = await _orig_anyio_gai(host, port, *args, **kwargs)
+        new_res = []
+        for r in res:
+            af, st, pr, cn, sa = r
+            if isinstance(sa, tuple) and len(sa) >= 2 and sa[0] in _BLOCKED_AMOCRM_IPS:
+                new_sa = (_AMOCRM_FALLBACK_IP, sa[1]) + sa[2:]
+                new_res.append((af, st, pr, cn, new_sa))
+            else:
+                new_res.append(r)
+        return new_res
+
+    AsyncIOBackend.getaddrinfo = _safe_anyio_gai
+except Exception:
+    pass
+
 
 class CrmClient:
     @staticmethod

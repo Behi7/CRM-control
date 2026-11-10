@@ -85,6 +85,8 @@ async def create_account(dto: CreateAccountDto, db: AsyncSession = Depends(get_d
     clean_subdomain, base_domain = normalize_subdomain_and_base(dto.subdomain, dto.baseDomain)
     clean_token = dto.token.strip()
 
+    print(f"[Admin] create_account started: subdomain='{clean_subdomain}', base='{base_domain}', email='{dto.email}'")
+
     if not clean_subdomain:
         raise HTTPException(status_code=400, detail="Субдомен не может быть пустым")
     if not clean_token:
@@ -100,6 +102,7 @@ async def create_account(dto: CreateAccountDto, db: AsyncSession = Depends(get_d
         timeout=15.0,
         retries=2,
     )
+    print(f"[Admin] create_account: amoCRM responded with HTTP {resp.status_code}")
     if resp.status_code != 200:
         err_detail = "Неверный ответ от amoCRM"
         try:
