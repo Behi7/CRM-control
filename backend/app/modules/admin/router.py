@@ -23,7 +23,18 @@ def serialize_account(acc: Account) -> dict:
     chat_cfg = dict(acc.chat_settings or {})
     pred_cfg = dict(acc.predictions_settings or {})
     nodes_cfg = dict(acc.crm_nodes_settings or {})
-    qc_enabled = bool(acc.qc_settings.is_enabled) if getattr(acc, "qc_settings", None) else False
+    
+    # Safely inspect relationships to avoid triggering async lazy-loading (MissingGreenlet)
+    qc_rel = acc.__dict__.get("qc_settings")
+    qc_enabled = bool(qc_rel.is_enabled) if qc_rel else False
+    
+    users_rel = acc.__dict__.get("users") or []
+    viewer_users = [
+        {"id": u.id, "email": u.email, "role": u.role}
+        for u in users_rel
+        if getattr(u, "role", None) == "viewer"
+    ]
+
     return {
         "id": acc.id,
         "subdomain": acc.subdomain,
@@ -43,7 +54,7 @@ def serialize_account(acc: Account) -> dict:
         "aiModel": acc.ai_model,
         "aiCompanyContext": acc.ai_company_context,
         "createdAt": acc.created_at.isoformat() if acc.created_at else None,
-        "users": [{"id": u.id, "email": u.email, "role": u.role} for u in (acc.users or []) if u.role == "viewer"],
+        "users": viewer_users,
         "qcEnabled": qc_enabled,
         "anomalyEnabled": bool(anomaly_cfg.get("is_enabled", True)),
         "chatEnabled": bool(chat_cfg.get("is_enabled", True)),
@@ -182,15 +193,23 @@ async def create_account(dto: CreateAccountDto, db: AsyncSession = Depends(get_d
     db.add(new_user)
     await db.commit()
 
-    # Re-query with users
-    stmt = select(Account).options(selectinload(Account.users)).where(Account.id == account.id)
+    # Re-query with users and qc_settings
+    stmt = (
+        select(Account)
+        .options(selectinload(Account.users), selectinload(Account.qc_settings))
+        .where(Account.id == account.id)
+    )
     final_res = await db.execute(stmt)
     created = final_res.scalar_one()
     return serialize_account(created)
 
 @router.patch("/accounts/{account_id}")
 async def patch_account(account_id: int, dto: PatchAccountDto, db: AsyncSession = Depends(get_db)):
-    stmt = select(Account).options(selectinload(Account.users)).where(Account.id == account_id)
+    stmt = (
+        select(Account)
+        .options(selectinload(Account.users), selectinload(Account.qc_settings))
+        .where(Account.id == account_id)
+    )
     res = await db.execute(stmt)
     acc = res.scalar_one_or_none()
     if not acc:
