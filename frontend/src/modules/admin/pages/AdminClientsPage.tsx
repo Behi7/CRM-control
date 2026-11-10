@@ -320,16 +320,32 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
           setIsSubmitting(false);
           return;
         }
-        data.email = email;
+
+        let cleanSub = subdomain.trim();
+        let cleanBase = baseDomain;
+        if (cleanSub.includes('://')) cleanSub = cleanSub.split('://')[1];
+        cleanSub = cleanSub.split('/')[0].split('?')[0];
+        if (cleanSub.endsWith('.kommo.com')) {
+          cleanSub = cleanSub.slice(0, -10);
+          cleanBase = 'kommo.com';
+        } else if (cleanSub.endsWith('.amocrm.ru')) {
+          cleanSub = cleanSub.slice(0, -10);
+          cleanBase = 'amocrm.ru';
+        } else if (cleanSub.endsWith('.amocrm.com')) {
+          cleanSub = cleanSub.slice(0, -11);
+          cleanBase = 'amocrm.ru';
+        }
+
+        data.email = email.trim();
         data.password = password;
-        data.subdomain = subdomain;
-        data.token = token;
-        data.baseDomain = baseDomain;
+        data.subdomain = cleanSub;
+        data.token = token.trim();
+        data.baseDomain = cleanBase;
         if (tokenExpiresAt) data.tokenExpiresAt = tokenExpiresAt + 'T00:00:00Z';
       } else {
-        if (email && email !== initial.users?.[0]?.email) data.email = email;
+        if (email && email !== initial.users?.[0]?.email) data.email = email.trim();
         if (password) data.password = password;
-        if (token) data.token = token;
+        if (token) data.token = token.trim();
         if (tokenExpiresAt) data.tokenExpiresAt = tokenExpiresAt + 'T00:00:00Z';
       }
       await onSubmit(data);
@@ -419,7 +435,22 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
               <input
                 type="text"
                 value={subdomain}
-                onChange={(e) => setSubdomain(e.target.value)}
+                onChange={(e) => {
+                  let val = e.target.value.trim();
+                  if (val.includes('://')) val = val.split('://')[1];
+                  val = val.split('/')[0].split('?')[0];
+                  if (val.endsWith('.kommo.com')) {
+                    val = val.slice(0, -10);
+                    setBaseDomain('kommo.com');
+                  } else if (val.endsWith('.amocrm.ru')) {
+                    val = val.slice(0, -10);
+                    setBaseDomain('amocrm.ru');
+                  } else if (val.endsWith('.amocrm.com')) {
+                    val = val.slice(0, -11);
+                    setBaseDomain('amocrm.ru');
+                  }
+                  setSubdomain(val);
+                }}
                 disabled={!!initial}
                 placeholder="mycompany"
                 className="w-full p-2.5 text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"

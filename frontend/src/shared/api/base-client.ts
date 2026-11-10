@@ -59,9 +59,29 @@ export async function baseApi<T = any>(path: string, init: RequestInit = {}): Pr
     try {
       errData = await resp.json();
     } catch {
-      errData = { error: { code: 'UNKNOWN', message: resp.statusText } };
+      errData = null;
     }
-    throw new AppError(errData?.error?.code || 'UNKNOWN', errData?.error?.message || 'Request failed');
+    const message =
+      errData?.error?.message ||
+      (typeof errData?.detail === 'string'
+        ? errData.detail
+        : Array.isArray(errData?.detail) && errData.detail[0]?.msg
+          ? `${errData.detail[0].loc?.slice(1).join('.') || 'Поле'}: ${errData.detail[0].msg}`
+          : errData?.message) ||
+      resp.statusText ||
+      'Request failed';
+    const code =
+      errData?.error?.code ||
+      (resp.status === 401
+        ? 'UNAUTHORIZED'
+        : resp.status === 403
+          ? 'FORBIDDEN'
+          : resp.status === 404
+            ? 'NOT_FOUND'
+            : resp.status === 409
+              ? 'CONFLICT'
+              : 'UNKNOWN');
+    throw new AppError(code, message);
   }
   if (resp.status === 204) return null as any;
   return resp.json();

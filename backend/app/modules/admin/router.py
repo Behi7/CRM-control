@@ -62,21 +62,58 @@ async def list_accounts(db: AsyncSession = Depends(get_db)):
     accounts = res.scalars().all()
     return [serialize_account(a) for a in accounts]
 
+def normalize_subdomain_and_base(subdomain: str, base_domain: str = "amocrm.ru") -> tuple[str, str]:
+    sub = (subdomain or "").strip().lower()
+    base = (base_domain or "amocrm.ru").strip().lower()
+    if "://" in sub:
+        sub = sub.split("://", 1)[1]
+    sub = sub.split("/")[0].split("?")[0].strip()
+    if sub.endswith(".kommo.com"):
+        sub = sub[:-10]
+        base = "kommo.com"
+    elif sub.endswith(".amocrm.ru"):
+        sub = sub[:-10]
+        base = "amocrm.ru"
+    elif sub.endswith(".amocrm.com"):
+        sub = sub[:-11]
+        base = "amocrm.com"
+    sub = sub.strip(".")
+    return sub, base
+
 @router.post("/accounts")
 async def create_account(dto: CreateAccountDto, db: AsyncSession = Depends(get_db)):
-    clean_subdomain = dto.subdomain.strip().lower()
-    base_domain = dto.baseDomain.strip().lower()
+    clean_subdomain, base_domain = normalize_subdomain_and_base(dto.subdomain, dto.baseDomain)
+    clean_token = dto.token.strip()
+
+    if not clean_subdomain:
+        raise HTTPException(status_code=400, detail="Субдомен не может быть пустым")
+    if not clean_token:
+        raise HTTPException(status_code=400, detail="Токен авторизации не может быть пустым")
 
     # 1. Verify token with AmoCRM
     resp = await CrmClient.request(
         subdomain=clean_subdomain,
         base_domain=base_domain,
-        token=dto.token,
+        token=clean_token,
         method="GET",
-        path="/api/v4/account"
+        path="/api/v4/account",
+        timeout=15.0,
+        retries=2,
     )
     if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"amoCRM returned {resp.status_code}")
+        err_detail = "Неверный ответ от amoCRM"
+        try:
+            amo_err = resp.json()
+            err_detail = amo_err.get("detail") or amo_err.get("title") or resp.text[:200]
+        except Exception:
+            err_detail = resp.text[:200] or f"HTTP {resp.status_code}"
+
+        if resp.status_code == 401:
+            raise HTTPException(status_code=400, detail=f"Ошибка авторизации amoCRM (401): {err_detail}. Проверьте правильность токена.")
+        elif resp.status_code == 404:
+            raise HTTPException(status_code=400, detail=f"Субдомен '{clean_subdomain}.{base_domain}' не найден в amoCRM (404).")
+        else:
+            raise HTTPException(status_code=502, detail=f"amoCRM вернул ошибку {resp.status_code}: {err_detail}")
 
     amo_data = resp.json()
     ext_id = str(amo_data.get("id"))
@@ -98,7 +135,7 @@ async def create_account(dto: CreateAccountDto, db: AsyncSession = Depends(get_d
     if user_res.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already exists")
 
-    encrypted_token = encrypt_token(dto.token)
+    encrypted_token = encrypt_token(clean_token)
     pw_hash = hash_password(dto.password)
 
     token_expires_at = None
@@ -157,16 +194,25 @@ async def patch_account(account_id: int, dto: PatchAccountDto, db: AsyncSession 
         raise HTTPException(status_code=404, detail="Account not found")
 
     if dto.token:
+        clean_patch_token = dto.token.strip()
         resp = await CrmClient.request(
             subdomain=acc.subdomain,
             base_domain=acc.base_domain,
-            token=dto.token,
+            token=clean_patch_token,
             method="GET",
-            path="/api/v4/account"
+            path="/api/v4/account",
+            timeout=15.0,
+            retries=2,
         )
         if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"amoCRM returned {resp.status_code}")
-        acc.encrypted_token = encrypt_token(dto.token)
+            err_detail = "Неверный ответ от amoCRM"
+            try:
+                amo_err = resp.json()
+                err_detail = amo_err.get("detail") or amo_err.get("title") or resp.text[:200]
+            except Exception:
+                err_detail = resp.text[:200] or f"HTTP {resp.status_code}"
+            raise HTTPException(status_code=400, detail=f"Ошибка токена amoCRM ({resp.status_code}): {err_detail}")
+        acc.encrypted_token = encrypt_token(clean_patch_token)
         acc.token_status = "active"
         if dto.tokenExpiresAt:
             try:

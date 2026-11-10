@@ -1,9 +1,35 @@
 import asyncio
+import socket
 import time
 import re
 import httpx
 from typing import Optional, Dict, Any, Tuple
 from app.config import settings
+
+# AmoCRM cluster routing fix:
+# cfa.trunk.amocrm.ru (Selectel Russia 95.213.161.42, 95.213.201.60) drops HTTPS port 443
+# connections originating from foreign/cloud data centers (e.g. Oracle Cloud Frankfurt).
+# cfb.trunk.amocrm.ru (88.212.250.100, 23.111.41.254) is AmoCRM's official global Anycast
+# proxy that serves *.amocrm.ru with valid wildcard SSL and instant response (~0.1s).
+_BLOCKED_AMOCRM_IPS = {"95.213.161.42", "95.213.201.60"}
+_AMOCRM_FALLBACK_IP = "88.212.250.100"
+
+_orig_getaddrinfo = socket.getaddrinfo
+
+def _amocrm_safe_getaddrinfo(host, port, *args, **kwargs):
+    res = _orig_getaddrinfo(host, port, *args, **kwargs)
+    new_res = []
+    for r in res:
+        family, socktype, proto, canonname, sockaddr = r
+        if isinstance(sockaddr, tuple) and len(sockaddr) >= 2 and sockaddr[0] in _BLOCKED_AMOCRM_IPS:
+            new_sockaddr = (_AMOCRM_FALLBACK_IP, sockaddr[1]) + sockaddr[2:]
+            new_res.append((family, socktype, proto, canonname, new_sockaddr))
+        else:
+            new_res.append(r)
+    return new_res
+
+if socket.getaddrinfo is not _amocrm_safe_getaddrinfo:
+    socket.getaddrinfo = _amocrm_safe_getaddrinfo
 
 _SAFE_SUBDOMAIN_RE = re.compile(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$')
 _ALLOWED_BASE_DOMAINS = {"amocrm.ru", "amocrm.com", "kommo.com"}
