@@ -327,6 +327,7 @@ async def run_backfill(session: AsyncSession, account_id: int) -> bool:
                 backfill_error_at=None,
                 backfill_cursor=None,
                 last_synced_at=now_utc,
+                token_status="active",
             )
         )
         await session.commit()

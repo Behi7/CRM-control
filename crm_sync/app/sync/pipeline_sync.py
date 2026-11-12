@@ -115,6 +115,12 @@ async def sync_pipelines_and_stages(
             await session.rollback()
             return False
 
+        await session.execute(
+            update(Account)
+            .where(Account.id == account_id, Account.token_status != "active")
+            .values(token_status="active")
+        )
+
         await session.commit()
         logger.info(f"Successfully synced {len(pipes)} pipelines for account {account_id}")
         return True

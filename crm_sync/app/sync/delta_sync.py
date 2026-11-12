@@ -181,12 +181,14 @@ async def run_delta_sync(session: AsyncSession, account_id: int) -> bool:
 
             await session.commit()
 
-        # 3. Advance last_synced_at
+        # 3. Advance last_synced_at and restore token_status if it was falsely marked expired
         overlap_min = settings.SYNC_OVERLAP_MINUTES
         new_sync_time = job_started_at - timedelta(minutes=overlap_min)
 
         await session.execute(
-            update(Account).where(Account.id == account_id).values(last_synced_at=new_sync_time)
+            update(Account)
+            .where(Account.id == account_id)
+            .values(last_synced_at=new_sync_time, token_status="active")
         )
         await session.commit()
         logger.info(f"Completed delta sync for account {account_id}. Synced {leads_count} leads, {events_count} events.")

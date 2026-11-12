@@ -1,4 +1,5 @@
 import asyncio
+import http.cookiejar
 import socket
 import time
 import re
@@ -55,6 +56,17 @@ except Exception:
 _SAFE_SUBDOMAIN_RE = re.compile(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$')
 _ALLOWED_BASE_DOMAINS = {"amocrm.ru", "amocrm.com", "kommo.com"}
 
+
+class _NoOpCookieJar(http.cookiejar.CookieJar):
+    """Disables cookie storage and forwarding so session_id from one *.amocrm.ru subdomain never leaks to another."""
+
+    def extract_cookies(self, response, request):
+        return None
+
+    def add_cookie_header(self, request):
+        return None
+
+
 class CrmClient:
     def __init__(self, rps: int = 5):
         self.rps = rps
@@ -77,7 +89,8 @@ class CrmClient:
             async with self._client_lock:
                 if self._client is None or self._client.is_closed:
                     self._client = httpx.AsyncClient(
-                        timeout=30.0,
+                        timeout=httpx.Timeout(30.0, connect=8.0),
+                        cookies=_NoOpCookieJar(),
                         limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
                     )
         return self._client
