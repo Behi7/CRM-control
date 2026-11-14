@@ -65,6 +65,13 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
     },
   });
 
+  const seedDefaultMut = useMutation({
+    mutationFn: () => qcApi.seedDefaultRules(accountId, selectedPipelineId, lang),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['qc-rules', accountId] });
+    },
+  });
+
   const handleStartEdit = (rule: QcRule) => {
     setEditingRuleId(rule.id);
     setEditTitle(rule.title);
@@ -134,14 +141,31 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsAdding(!isAdding)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer shrink-0"
-        >
-          <Plus size={16} />
-          <span>{lang === 'uz' ? 'Yangi qoida qo\'shish' : 'Добавить закон проверки'}</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            disabled={seedDefaultMut.isPending}
+            onClick={() => seedDefaultMut.mutate()}
+            className="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+            title={lang === 'uz' ? 'Standart universal qoidalarni qo\'shish' : 'Вставить эталонные универсальные законы'}
+          >
+            {seedDefaultMut.isPending ? (
+              <Loader2 size={15} className="animate-spin text-purple-600 dark:text-purple-400" />
+            ) : (
+              <Sparkles size={15} className="text-purple-600 dark:text-purple-400" />
+            )}
+            <span>{lang === 'uz' ? 'Standart qoidalar' : 'Базовые законы'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsAdding(!isAdding)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer shrink-0"
+          >
+            <Plus size={16} />
+            <span>{lang === 'uz' ? 'Yangi qoida qo\'shish' : 'Добавить закон проверки'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Add New Rule Form */}
@@ -328,10 +352,31 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
           })}
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8 text-center text-slate-400">
-          {lang === 'uz'
-            ? 'Ushbu voronka uchun qoidalar hali yo\'q. "Yangi qoida qo\'shish" tugmasini bosing.'
-            : 'Для этой воронки пока нет правил. Нажмите «Добавить закон проверки» выше.'}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8 text-center text-slate-400 space-y-3">
+          <p>
+            {lang === 'uz'
+              ? 'Ushbu voronka uchun qoidalar hali yo\'q.'
+              : 'Для этой воронки пока нет законов проверки.'}
+          </p>
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <button
+              type="button"
+              disabled={seedDefaultMut.isPending}
+              onClick={() => seedDefaultMut.mutate()}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-xl inline-flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {seedDefaultMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              <span>{lang === 'uz' ? 'Standart qoidalarni yuklash' : 'Вставить базовые законы'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAdding(true)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Plus size={15} />
+              <span>{lang === 'uz' ? 'O\'z qoidangizni qo\'shish' : 'Добавить свой закон'}</span>
+            </button>
+          </div>
         </div>
       )}
     </div>

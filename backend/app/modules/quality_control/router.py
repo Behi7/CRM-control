@@ -230,6 +230,128 @@ async def create_qc_rule(
         updatedAt=rule.updated_at,
     )
 
+UNIVERSAL_DEFAULT_RULES_UZ = [
+    {
+        "title": "Mijoz bilan salomlashish va tanishish",
+        "description": "Menejer o'z ismini va kompaniya nomini aytdimi. Agar aytmagan bo'lsa — qoida buzilgan deb hisoblansin.",
+        "penalty_points": 10
+    },
+    {
+        "title": "Mijoz ehtiyojini aniqlash",
+        "description": "Mijoz ehtiyoji, qiziqishi va og'riqli nuqtalarini aniqlash uchun ochiq savollar berdimi.",
+        "penalty_points": 15
+    },
+    {
+        "title": "Mahsulot yoki xizmat taqdimoti",
+        "description": "Mijoz ehtiyojiga moslab mahsulot/xizmatning asosiy foydali tomonlari va yechimini tushuntirdimi.",
+        "penalty_points": 15
+    },
+    {
+        "title": "Narx yoki narxlar oralig'ini aytish",
+        "description": "Mijoz narx so'raganda aniq narx yoki vilkani aytdimi. Javobdan qochish — qoida buzilishi.",
+        "penalty_points": 20
+    },
+    {
+        "title": "Mijoz so'zini bo'lmaslik",
+        "description": "Mijoz gapirayotganda uning so'zini qo'pollik bilan bo'lmasdan oxirigacha eshitdimi.",
+        "penalty_points": 15
+    },
+    {
+        "title": "Keyingi qadamni belgilash",
+        "description": "Suhbat oxirida keyingi muloqotning aniq kuni va vaqti kelishildimi.",
+        "penalty_points": 25
+    },
+]
+
+UNIVERSAL_DEFAULT_RULES_RU = [
+    {
+        "title": "Поздоровался и представился",
+        "description": "Проверить, назвал ли менеджер имя и компанию. Если не назвал — считать нарушением.",
+        "penalty_points": 10
+    },
+    {
+        "title": "Выявил потребности клиента",
+        "description": "Задал ли менеджер открытые вопросы для выявления болей и потребностей клиента.",
+        "penalty_points": 15
+    },
+    {
+        "title": "Презентация решения под запрос",
+        "description": "Презентовал ли менеджер продукт/услугу через выгоды для конкретной ситуации клиента.",
+        "penalty_points": 15
+    },
+    {
+        "title": "Озвучил стоимость или вилку цен",
+        "description": "Четко ли ответил по цене при вопросе клиента. Уход от ответа — считать нарушением.",
+        "penalty_points": 20
+    },
+    {
+        "title": "Не перебивал клиента",
+        "description": "Внимательно ли выслушал клиента, не перебивая его речь.",
+        "penalty_points": 15
+    },
+    {
+        "title": "Зафиксировал следующий шаг",
+        "description": "Договорился ли менеджер о конкретной дате и времени следующего звонка/действия.",
+        "penalty_points": 25
+    },
+]
+
+@router.post("/accounts/{account_id}/qc/rules/default", response_model=List[QcRuleDto])
+async def seed_default_qc_rules(
+    account_id: int,
+    pipeline_id: Optional[int] = Query(default=None),
+    lang: str = Query(default="uz"),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    check_account_access(user, account_id)
+
+    sort_stmt = select(func.coalesce(func.max(QcRule.sort_order), 0)).where(
+        QcRule.account_id == account_id
+    )
+    if pipeline_id is not None:
+        sort_stmt = sort_stmt.where(QcRule.pipeline_id == pipeline_id)
+    else:
+        sort_stmt = sort_stmt.where(QcRule.pipeline_id.is_(None))
+    max_order = (await db.execute(sort_stmt)).scalar() or 0
+
+    defaults = UNIVERSAL_DEFAULT_RULES_UZ if lang == "uz" else UNIVERSAL_DEFAULT_RULES_RU
+
+    created_rules = []
+    for item in defaults:
+        max_order += 1
+        rule = QcRule(
+            account_id=account_id,
+            pipeline_id=pipeline_id,
+            title=item["title"],
+            description=item["description"],
+            penalty_points=item["penalty_points"],
+            sort_order=max_order,
+            is_active=True,
+        )
+        db.add(rule)
+        created_rules.append(rule)
+
+    await db.commit()
+    for r in created_rules:
+        await db.refresh(r)
+
+    return [
+        QcRuleDto(
+            id=r.id,
+            accountId=r.account_id,
+            pipelineId=r.pipeline_id,
+            title=r.title,
+            description=r.description,
+            penaltyPoints=r.penalty_points,
+            sortOrder=r.sort_order,
+            isActive=r.is_active,
+            createdAt=r.created_at,
+            updatedAt=r.updated_at,
+        )
+        for r in created_rules
+    ]
+
 @router.patch("/accounts/{account_id}/qc/rules/{rule_id}", response_model=QcRuleDto)
 async def update_qc_rule(
     account_id: int,

@@ -118,6 +118,24 @@ export const qcApi = {
     });
   },
 
+  seedDefaultRules: async (
+    accountId: number,
+    pipelineId?: number,
+    lang?: string
+  ): Promise<QcRule[]> => {
+    const params = new URLSearchParams();
+    if (pipelineId !== undefined) {
+      params.append('pipeline_id', String(pipelineId));
+    }
+    if (lang) {
+      params.append('lang', lang);
+    }
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return baseApi<QcRule[]>(`/accounts/${accountId}/qc/rules/default${query}`, {
+      method: 'POST',
+    });
+  },
+
   updateRule: async (accountId: number, ruleId: number, data: Partial<QcRule>): Promise<QcRule> => {
     return baseApi<QcRule>(`/accounts/${accountId}/qc/rules/${ruleId}`, {
       method: 'PATCH',
