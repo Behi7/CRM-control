@@ -247,18 +247,39 @@ async def patch_account(account_id: int, dto: PatchAccountDto, db: AsyncSession 
             raise HTTPException(status_code=400, detail=f"Ошибка токена amoCRM ({resp.status_code}): {err_detail}")
         acc.encrypted_token = encrypt_token(clean_patch_token)
         acc.token_status = "active"
-        if dto.tokenExpiresAt:
-            try:
-                acc.token_expires_at = datetime.fromisoformat(dto.tokenExpiresAt.replace("Z", "+00:00"))
-            except Exception:
-                pass
+
+    if dto.tokenExpiresAt:
+        try:
+            acc.token_expires_at = datetime.fromisoformat(dto.tokenExpiresAt.replace("Z", "+00:00"))
+        except Exception:
+            pass
 
     viewer = next((u for u in acc.users if u.role == "viewer"), None)
-    if viewer:
+    if dto.email:
+        clean_email = dto.email.strip().lower()
+        viewer_id = viewer.id if viewer else 0
+        existing_user_stmt = select(User).where(User.email == clean_email, User.id != viewer_id)
+        existing_user_res = await db.execute(existing_user_stmt)
+        if existing_user_res.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Email already exists")
+
+    if not viewer:
+        if dto.email or dto.password:
+            user_email = dto.email.strip().lower() if dto.email else f"user_{acc.id}@{acc.subdomain}.local"
+            user_pw = dto.password.strip() if dto.password and dto.password.strip() else "changeme123456"
+            new_viewer = User(
+                email=user_email,
+                password_hash=hash_password(user_pw),
+                role="viewer",
+                account_id=acc.id,
+            )
+            db.add(new_viewer)
+            acc.users.append(new_viewer)
+    else:
         if dto.email:
             viewer.email = dto.email.strip().lower()
-        if dto.password:
-            viewer.password_hash = hash_password(dto.password)
+        if dto.password and dto.password.strip():
+            viewer.password_hash = hash_password(dto.password.strip())
 
     await db.commit()
     return serialize_account(acc)

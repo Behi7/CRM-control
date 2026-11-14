@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { adminApi } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { Bell, Play, Square, Eye, Settings, Trash2, Bot, RefreshCw, X } from 'lucide-react';
+import { Bell, Play, Square, Eye, EyeOff, Settings, Trash2, Bot, RefreshCw, X } from 'lucide-react';
 import AiSettingsModal from '@/components/AiSettingsModal';
 
 export default function AdminClientsPage() {
@@ -292,8 +292,10 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
   const { t, lang } = useLanguage();
   const [email, setEmail] = useState(initial?.users?.[0]?.email || '');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [subdomain, setSubdomain] = useState(initial?.subdomain || '');
   const [token, setToken] = useState('');
+  const [showToken, setShowToken] = useState(false);
   const [tokenExpiresAt, setTokenExpiresAt] = useState(initial?.tokenExpiresAt?.split('T')[0] || '');
   const [baseDomain, setBaseDomain] = useState(initial?.baseDomain || 'amocrm.ru');
   const [err, setErr] = useState('');
@@ -337,16 +339,24 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
         }
 
         data.email = email.trim();
-        data.password = password;
+        data.password = password.trim();
         data.subdomain = cleanSub;
         data.token = token.trim();
         data.baseDomain = cleanBase;
         if (tokenExpiresAt) data.tokenExpiresAt = tokenExpiresAt + 'T00:00:00Z';
       } else {
-        if (email && email !== initial.users?.[0]?.email) data.email = email.trim();
-        if (password) data.password = password;
-        if (token) data.token = token.trim();
-        if (tokenExpiresAt) data.tokenExpiresAt = tokenExpiresAt + 'T00:00:00Z';
+        if (email && email.trim() !== initial.users?.[0]?.email) data.email = email.trim();
+        if (password && password.trim()) data.password = password.trim();
+        // Prevent accidental browser autofill collisions:
+        // Only send token if entered by user and NOT identical to the new password
+        const cleanToken = token.trim();
+        if (cleanToken && cleanToken !== password.trim()) {
+          data.token = cleanToken;
+        }
+        const initialDate = initial.tokenExpiresAt ? initial.tokenExpiresAt.split('T')[0] : '';
+        if (tokenExpiresAt && tokenExpiresAt !== initialDate) {
+          data.tokenExpiresAt = tokenExpiresAt + 'T00:00:00Z';
+        }
       }
       await onSubmit(data);
     } catch (e: any) {
@@ -394,7 +404,7 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
         </div>
 
         {/* Modal Form Body */}
-        <form onSubmit={submit} className="p-6 space-y-4">
+        <form onSubmit={submit} className="p-6 space-y-4" autoComplete="off">
           {err && (
             <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 text-xs rounded-xl font-medium">
               {err}
@@ -403,11 +413,18 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+              <label
+                htmlFor="client_user_email"
+                className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300"
+              >
                 {t('client_form_email')}
               </label>
               <input
+                id="client_user_email"
+                name="client_user_email"
                 type="email"
+                autoComplete="off"
+                data-lpignore="true"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="client@company.com"
@@ -416,24 +433,49 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+              <label
+                htmlFor="client_user_password"
+                className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300"
+              >
                 {t('client_form_password')} {initial ? `(${t('client_form_password_hint')})` : '(min 12)'}
               </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={initial ? '••••••••••••' : (lang === 'uz' ? 'Kirish paroli' : 'Пароль для входа')}
-                className="w-full p-2.5 text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              />
+              <div className="relative">
+                <input
+                  id="client_user_password"
+                  name="client_user_password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  data-lpignore="true"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={initial ? '••••••••••••' : (lang === 'uz' ? 'Kirish paroli' : 'Пароль для входа')}
+                  className="w-full p-2.5 pr-9 text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                  tabIndex={-1}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+              <label
+                htmlFor="client_crm_subdomain"
+                className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300"
+              >
                 {t('client_form_subdomain')} {initial && (lang === 'uz' ? '(o‘zgarmaydi)' : '(не изменяется)')}
               </label>
               <input
+                id="client_crm_subdomain"
+                name="client_crm_subdomain"
                 type="text"
+                autoComplete="off"
+                data-lpignore="true"
                 value={subdomain}
                 onChange={(e) => {
                   let val = e.target.value.trim();
@@ -458,10 +500,15 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+              <label
+                htmlFor="client_base_domain"
+                className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300"
+              >
                 Base Domain
               </label>
               <select
+                id="client_base_domain"
+                name="client_base_domain"
                 value={baseDomain}
                 onChange={(e) => setBaseDomain(e.target.value)}
                 disabled={!!initial}
@@ -473,24 +520,48 @@ function AccountForm({ initial, onCancel, onSubmit }: any) {
             </div>
 
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+              <label
+                htmlFor="amocrm_api_token"
+                className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300"
+              >
                 {t('client_form_token')}
               </label>
-              <input
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder={initial ? (lang === 'uz' ? 'O‘zgartirish uchun yangi tokenni kiriting (ixtiyoriy)' : 'Введите новый токен для замены (необязательно)') : 'eyJhbGciOi...'}
-                className="w-full p-2.5 text-xs font-mono border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              />
+              <div className="relative">
+                <input
+                  id="amocrm_api_token"
+                  name="amocrm_api_token"
+                  type={showToken ? 'text' : 'password'}
+                  autoComplete="off"
+                  data-lpignore="true"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder={initial ? (lang === 'uz' ? 'O‘zgartirish uchun yangi tokenni kiriting (ixtiyoriy)' : 'Введите новый токен для замены (необязательно)') : 'eyJhbGciOi...'}
+                  className="w-full p-2.5 pr-9 text-xs font-mono border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowToken(!showToken)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                  tabIndex={-1}
+                  title={showToken ? 'Hide token' : 'Show token'}
+                >
+                  {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
 
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+              <label
+                htmlFor="amocrm_token_expires_at"
+                className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300"
+              >
                 {lang === 'uz' ? 'Token muddati tugashi' : 'Истечение токена (срок действия)'}
               </label>
               <input
+                id="amocrm_token_expires_at"
+                name="amocrm_token_expires_at"
                 type="date"
+                autoComplete="off"
                 value={tokenExpiresAt}
                 onChange={(e) => setTokenExpiresAt(e.target.value)}
                 className="w-full p-2.5 text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
