@@ -81,6 +81,88 @@ async def fetch_audio_bytes(url: str) -> Tuple[Optional[bytes], str]:
         return None, "audio/wav"
 
 
+def get_audio_duration_seconds(data: bytes, mime_type: str = "") -> float:
+    """
+    Быстро и точно вычисляет фактическую длительность аудиопотока в секундах (MP3 / WAV).
+    Работает на чистом Python без внешних зависимостей.
+    """
+    if not data or len(data) < 12:
+        return 0.0
+
+    # 1. WAV / RIFF format
+    if data.startswith(b"RIFF") and len(data) > 16 and data[8:12] == b"WAVE":
+        offset = 12
+        total_len = len(data)
+        byte_rate = 0
+        data_size = 0
+        while offset + 8 <= total_len:
+            chunk_id = data[offset:offset+4]
+            chunk_size = int.from_bytes(data[offset+4:offset+8], "little")
+            if chunk_id == b"fmt " and chunk_size >= 16:
+                byte_rate = int.from_bytes(data[offset+16:offset+20], "little")
+            elif chunk_id == b"data":
+                data_size = chunk_size
+                break
+            offset += 8 + chunk_size
+        if byte_rate > 0 and data_size > 0:
+            return float(data_size) / float(byte_rate)
+
+    # 2. MP3 format (ID3 skip + MPEG frame scanning)
+    offset = 0
+    total_len = len(data)
+    if data.startswith(b"ID3") and total_len > 10:
+        tag_size = (data[6] << 21) | (data[7] << 14) | (data[8] << 7) | data[9]
+        offset = 10 + tag_size
+
+    bitrate_map_v1_l3 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0]
+    bitrate_map_v2_l3 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0]
+    sample_rate_map_v1 = [44100, 48000, 32000, 0]
+    sample_rate_map_v2 = [22050, 24000, 16000, 0]
+    sample_rate_map_v25 = [11025, 12000, 8000, 0]
+
+    total_samples = 0
+    sample_rate = 0
+    frames = 0
+
+    while offset + 4 < total_len:
+        b1, b2, b3 = data[offset], data[offset+1], data[offset+2]
+        if b1 == 0xFF and (b2 & 0xE0) == 0xE0:
+            version_bits = (b2 >> 3) & 0x03
+            layer_bits = (b2 >> 1) & 0x03
+            bitrate_idx = (b3 >> 4) & 0x0F
+            sr_idx = (b3 >> 2) & 0x03
+            padding = (b3 >> 1) & 0x01
+
+            if layer_bits == 1 and bitrate_idx not in (0, 15) and sr_idx != 3:
+                if version_bits == 3:
+                    br = bitrate_map_v1_l3[bitrate_idx] * 1000
+                    sr = sample_rate_map_v1[sr_idx]
+                    spf = 1152
+                    frame_len = (144 * br // sr) + padding
+                elif version_bits in (0, 2):
+                    br = bitrate_map_v2_l3[bitrate_idx] * 1000
+                    sr = sample_rate_map_v2[sr_idx] if version_bits == 2 else sample_rate_map_v25[sr_idx]
+                    spf = 576
+                    frame_len = (72 * br // sr) + padding
+                else:
+                    offset += 1
+                    continue
+
+                if frame_len > 0 and offset + frame_len <= total_len:
+                    total_samples += spf
+                    sample_rate = sr
+                    frames += 1
+                    offset += frame_len
+                    continue
+        offset += 1
+
+    if sample_rate > 0 and frames > 0:
+        return total_samples / sample_rate
+
+    # Fallback по размеру файла (типичный битрейт телефонии 32 kbps)
+    return max(1.0, float(len(data) * 8) / 32000.0)
+
+
 async def evaluate_call_with_gemini(
     audio_bytes: bytes,
     mime_type: str,
@@ -279,16 +361,24 @@ async def process_call_evaluation(session: AsyncSession, eval_id: int, force: bo
                 return True
 
         disabled_pipelines = set(qc_settings.disabled_pipeline_ids or [])
-        if call_eval.pipeline_id and call_eval.pipeline_id in disabled_pipelines:
-            call_eval.status = "skipped_pipeline"
-            call_eval.skip_reason = "Анализ отключён для данной воронки"
-            await session.commit()
-            return True
+        if disabled_pipelines:
+            if not call_eval.pipeline_id and call_eval.lead_id:
+                lead_row = (await session.execute(
+                    select(Lead.pipeline_id).where(Lead.id == call_eval.lead_id)
+                )).first()
+                if lead_row and lead_row[0]:
+                    call_eval.pipeline_id = lead_row[0]
+
+            if call_eval.pipeline_id in disabled_pipelines or not call_eval.pipeline_id:
+                call_eval.status = "skipped_pipeline"
+                call_eval.skip_reason = "Анализ отключён для данной воронки"
+                await session.commit()
+                return True
 
         min_dur = qc_settings.min_duration_sec or 20
         max_dur = qc_settings.max_duration_sec or 600
         dur = call_eval.duration_seconds or 0
-        if dur < min_dur or dur > max_dur:
+        if dur > 0 and (dur < min_dur or dur > max_dur):
             call_eval.status = "skipped_duration"
             call_eval.skip_reason = f"Длительность {dur} сек вне диапазона ({min_dur}-{max_dur} сек)"
             await session.commit()
@@ -306,6 +396,22 @@ async def process_call_evaluation(session: AsyncSession, eval_id: int, force: bo
         call_eval.skip_reason = "Не удалось скачать аудиозапись по ссылке телефонии"
         await session.commit()
         return False
+
+    # Замеряем фактический хронометраж реального звука (а не время ожидания в очереди из AmoCRM)
+    actual_duration = get_audio_duration_seconds(audio_bytes, mime_type)
+    if actual_duration > 0:
+        call_eval.duration_seconds = int(round(actual_duration))
+
+    # Проверяем реальную длительность аудиозаписи по порогам настроек КК
+    if not force:
+        min_dur = qc_settings.min_duration_sec or 20
+        max_dur = qc_settings.max_duration_sec or 600
+        dur = call_eval.duration_seconds or 0
+        if dur < min_dur or dur > max_dur:
+            call_eval.status = "skipped_duration"
+            call_eval.skip_reason = f"Реальная длительность {dur} сек вне диапазона ({min_dur}-{max_dur} сек)"
+            await session.commit()
+            return True
 
     # 3. Анализ в Gemini
     analysis = await evaluate_call_with_gemini(
@@ -400,6 +506,11 @@ async def qualify_raw_calls(session: AsyncSession, account_id: Optional[int] = N
             call.skip_reason = CALL_STATUS_DESCRIPTIONS.get(call.call_status, f"код статуса {call.call_status}")
             qualified_count += 1
             continue
+        if call.duration_seconds is not None and call.duration_seconds <= 0:
+            call.status = "skipped_not_answered"
+            call.skip_reason = "Длительность звонка 0 сек (недозвон)"
+            qualified_count += 1
+            continue
 
         # 2. Проверка ссылки на аудиозапись
         if not call.recording_url:
@@ -415,13 +526,14 @@ async def qualify_raw_calls(session: AsyncSession, account_id: Optional[int] = N
             qualified_count += 1
             continue
 
-        # 4. Проверка даты активации КК или архивности (старше 2 дней до активации)
-        if qc_set.activated_at and call.call_date < qc_set.activated_at:
+        # 4. Проверка даты активации КК или архивности
+        act_time = qc_set.activated_at or qc_set.updated_at
+        if act_time and call.call_date < act_time:
             call.status = "skipped_historical"
             call.skip_reason = "Архивный звонок (до активации КК)"
             qualified_count += 1
             continue
-        elif not qc_set.activated_at and call.call_date < (now_utc - timedelta(days=2)):
+        elif not act_time and call.call_date < (now_utc - timedelta(days=2)):
             call.status = "skipped_historical"
             call.skip_reason = "Архивный звонок (старше 2 дней)"
             qualified_count += 1
@@ -429,11 +541,19 @@ async def qualify_raw_calls(session: AsyncSession, account_id: Optional[int] = N
 
         # 5. Исключенные воронки
         disabled_pipes = set(qc_set.disabled_pipeline_ids or [])
-        if call.pipeline_id and call.pipeline_id in disabled_pipes:
-            call.status = "skipped_pipeline"
-            call.skip_reason = "Анализ отключён для данной воронки"
-            qualified_count += 1
-            continue
+        if disabled_pipes:
+            if not call.pipeline_id and call.lead_id:
+                lead_row = (await session.execute(
+                    select(Lead.pipeline_id).where(Lead.id == call.lead_id)
+                )).first()
+                if lead_row and lead_row[0]:
+                    call.pipeline_id = lead_row[0]
+
+            if call.pipeline_id in disabled_pipes or not call.pipeline_id:
+                call.status = "skipped_pipeline"
+                call.skip_reason = "Анализ отключён для данной воронки"
+                qualified_count += 1
+                continue
 
         # 6. Пороги длительности звонка
         min_dur = qc_set.min_duration_sec or 20

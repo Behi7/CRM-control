@@ -493,22 +493,24 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         db.add(qc)
 
     if dto.qcEnabled is not None:
-        if dto.qcEnabled and not qc.is_enabled:
-            # Чистый старт: фиксируем курсор на текущем времени, чтобы не скачивать архив из AmoCRM
-            qc.last_call_synced_at = now_utc
-            # Старые звонки в очереди со статусом pending (накопившиеся до включения) переводим в skipped
-            await db.execute(
-                update(QcCallEvaluation)
-                .where(
-                    QcCallEvaluation.account_id == account_id,
-                    QcCallEvaluation.status == "pending",
-                    QcCallEvaluation.call_date < now_utc
+        if dto.qcEnabled:
+            if not qc.is_enabled or qc.activated_at is None:
+                # Чистый старт: фиксируем точку отсчета и курсор на текущем времени
+                qc.activated_at = now_utc
+                qc.last_call_synced_at = now_utc
+                # Старые звонки в очереди со статусом pending (накопившиеся до включения) переводим в skipped
+                await db.execute(
+                    update(QcCallEvaluation)
+                    .where(
+                        QcCallEvaluation.account_id == account_id,
+                        QcCallEvaluation.status == "pending",
+                        QcCallEvaluation.call_date < now_utc
+                    )
+                    .values(
+                        status="skipped_qc_disabled",
+                        skip_reason="Звонок совершен до активации контроля качества"
+                    )
                 )
-                .values(
-                    status="skipped_qc_disabled",
-                    skip_reason="Звонок совершен до активации контроля качества"
-                )
-            )
         elif not dto.qcEnabled and qc.is_enabled:
             # Остановка: все текущие pending звонки переводим в skipped_qc_disabled, чтобы очистить очередь воркера
             await db.execute(
