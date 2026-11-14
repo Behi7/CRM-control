@@ -94,6 +94,8 @@ async def evaluate_call_with_gemini(
     try:
         b64_data = base64.b64encode(audio_bytes).decode("utf-8")
         clean_model = (model_name or "gemini-2.5-flash").strip().removeprefix("models/")
+        if clean_model.startswith("gemin-"):
+            clean_model = "gemini-" + clean_model[6:]
 
         rules_formatted = "\n".join([
             f"- Law #{r.get('id') or (i+1)}: \"{r['title']}\"\n"
