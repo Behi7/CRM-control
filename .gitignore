@@ -57,3 +57,8 @@ htmlcov/
 htmlcov/
 .pytest_cache/
 call/
+
+# Локальные ассеты логотипов
+frontend/public/logo.png
+frontend/src/assets/
+frontend/src/vite-env.d.ts
