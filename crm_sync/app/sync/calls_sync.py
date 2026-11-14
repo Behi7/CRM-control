@@ -41,10 +41,14 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
         if not amo_token:
             return False
 
-        # 2. Получаем курсор последней синхронизации звонков
+        # 2. Получаем курсор последней синхронизации звонков (get_or_create QcSettings)
         qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
         qc_res = await session.execute(qc_stmt)
         qc_settings = qc_res.scalar_one_or_none()
+        if not qc_settings:
+            qc_settings = QcSettings(account_id=account_id)
+            session.add(qc_settings)
+            await session.flush()
 
         # 3. Фиксируем временное окно и параметры синхронизации
         job_started_at = datetime.now(timezone.utc)
@@ -56,10 +60,16 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
             "limit": 250,
         }
 
-        # Если бэкфилл уже выполнен и есть курсор — берем инкрементальную дельту
+        # Если бэкфилл уже выполнен — берем инкрементальную дельту по курсору
         is_backfill = not calls_backfill_done
-        last_synced_at = qc_settings.last_call_synced_at if qc_settings else None
-        if not is_backfill and last_synced_at:
+        if not is_backfill:
+            last_synced_at = qc_settings.last_call_synced_at
+            if not last_synced_at:
+                # Fallback если qc_settings только что создана, но бэкфилл уже отмечен выполненным:
+                # отталкиваемся от времени последней синхронизации сделок или берем последние 2 часа
+                last_synced_at = acc.last_synced_at or (job_started_at - timedelta(hours=2))
+            if last_synced_at and last_synced_at.tzinfo is None:
+                last_synced_at = last_synced_at.replace(tzinfo=timezone.utc)
             window_from = last_synced_at - timedelta(minutes=5)
             filter_params["filter[updated_at][from]"] = max(0, int(window_from.timestamp()))
             logger.info(f"Starting incremental calls sync for account #{account_id} ({acc.subdomain}) from {window_from.isoformat()}...")
@@ -205,6 +215,7 @@ async def run_calls_sync(session: AsyncSession, account_id: int) -> bool:
         # Обновляем курсор и флаг завершения бэкфилла
         if qc_settings:
             qc_settings.last_call_synced_at = job_started_at
+            qc_settings.updated_at = job_started_at
         if is_backfill:
             anomaly_cfg["calls_backfill_done"] = True
             acc.anomaly_settings = anomaly_cfg
