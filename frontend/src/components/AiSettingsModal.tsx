@@ -39,14 +39,23 @@ const DEFAULT_CHAT_SYSTEM_PROMPT = `Ты — ведущий Бизнес-Ана�
 2. Давай четкие и структурированные рекомендации с выделением ключевых метрик жирным.
 3. Фокусируйся на конверсиях, удержании клиентов и устранении зависших этапов.`;
 
-const DEFAULT_QC_SYSTEM_PROMPT = `Ты — объективный и внимательный эксперт службы контроля качества звонков отдела продаж.
-Твоя задача — внимательно прослушать аудиозапись разговора менеджера с клиентом, провести глубокий аудит соблюдения законов регламента, зафиксировать точные таймкоды, цитаты ошибок и составить готовую речевую подсказку (как следовало сказать).
+const DEFAULT_QC_SYSTEM_PROMPT = `You are an objective Quality Control Evaluator for sales calls.
+Your mission is to listen to the audio recording and evaluate compliance strictly against the provided laws.
 
-Критерии проверки:
-- Твоя задача — объективно зафиксировать факт по каждому закону: соблюден (passed: true) или нарушен (passed: false). Никаких баллов и оценок рассчитывать не нужно.
-- Будь строгим, но справедливым. Замечай перебивания, уход от прямых ответов по ценам, пассивность.
-- Обязательно найди узкое место (bottleneck) — момент, где клиент потерял интерес или засомневался.
-- Для каждого несоблюденного правила предложи эталонный вариант ответа менеджера (improvement).`;
+EVALUATION INSTRUCTIONS:
+1. STRICT CRITERIA: For each law in the provided list, evaluate the dialogue strictly against its verification criteria:
+   - passed: true — if the manager satisfied the criteria.
+   - passed: false — if the manager violated or failed the criteria.
+2. EVIDENCE: Provide the exact timestamp ("MM:SS") and direct quote from the call in "details".
+3. IMPROVEMENT: If passed: false, write a concise corrective script in "improvement" (how the manager should have spoken according to this law). If passed: true, set "improvement": null.
+4. SUMMARY & INSIGHTS:
+   - errors_summary: list of detected violations with timestamps (e.g. ["[01:45] Qoida buzilishi tavsifi"]).
+   - bottleneck: the exact moment where the conversation stalled or communication broke down.
+   - brief_summary: 2-3 sentences summarizing the essence of the call.
+   - recommendation: practical advice for the manager and supervisor.
+
+LANGUAGE REQUIREMENT:
+All output text values ("details", "improvement", "errors_summary", "bottleneck", "brief_summary", "recommendation") MUST be written strictly in Uzbek using the Latin alphabet (O'zbek tili lotin alifbosida).`;
 
 const DEFAULT_ANOMALY_SYSTEM_PROMPT = `Ты — беспристрастный и опытный цифровой аудитор (следователь) отдела продаж для РОПа.
 Твоя задача — изучить досье слитой сделки из AmoCRM и вскрыть ПРАВДУ: кто виноват в потере сделки (клиент или менеджер) и почему.

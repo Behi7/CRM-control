@@ -50,11 +50,11 @@ async def get_active_rules(session: AsyncSession, account_id: int, pipeline_id: 
         return [{"id": r.id, "title": r.title, "description": r.description, "penalty": r.penalty_points} for r in global_rules]
 
     return [
-        {"id": None, "title": "Поздоровался и представился", "description": "Назвал имя и компанию", "penalty": 10},
-        {"id": None, "title": "Выявил потребность и боли", "description": "Задал уточняющие вопросы", "penalty": 15},
-        {"id": None, "title": "Озвучил стоимость или вилку цен", "description": "Четко ответил по цене", "penalty": 20},
-        {"id": None, "title": "Не перебивал клиента", "description": "Слушал внимательно", "penalty": 15},
-        {"id": None, "title": "Назначил следующий шаг", "description": "Зафиксировал дедлайн или договоренность", "penalty": 25},
+        {"id": None, "title": "Mijoz bilan salomlashish va tanishish", "description": "Menejer o'z ismini va kompaniya nomini aytdimi", "penalty": 10},
+        {"id": None, "title": "Mijoz ehtiyojini aniqlash", "description": "Mijoz ehtiyoji va og'riqli nuqtalarini aniqlash uchun savollar berdimi", "penalty": 15},
+        {"id": None, "title": "Narx yoki narxlar oralig'ini aytish", "description": "Mijoz narx so'raganda aniq narx yoki vilkani aytdimi", "penalty": 20},
+        {"id": None, "title": "Mijoz so'zini bo'lmaslik", "description": "Mijoz fikrini oxirigacha diqqat bilan eshitdimi", "penalty": 15},
+        {"id": None, "title": "Keyingi qadamni belgilash", "description": "Keyingi muloqot vaqti yoki aniq kelishuvni qayd etdimi", "penalty": 25},
     ]
 
 
@@ -96,69 +96,69 @@ async def evaluate_call_with_gemini(
         clean_model = (model_name or "gemini-2.5-flash").strip().removeprefix("models/")
 
         rules_formatted = "\n".join([
-            f"- Закон {i+1} [ID={r.get('id') or (i+1)}]: \"{r['title']}\". Что проверить: {r.get('description') or 'проверить соблюдение'}."
+            f"- Law #{r.get('id') or (i+1)}: \"{r['title']}\"\n"
+            f"  Verification criteria: {r.get('description') or 'Verify compliance with the rule: ' + r['title']}."
             for i, r in enumerate(rules)
         ])
 
         base_instruction = (
             custom_prompt.strip()
             if (custom_prompt and custom_prompt.strip())
-            else """Ты — объективный, строгий и профессиональный эксперт службы контроля качества звонков отдела продаж.
-Твоя задача — внимательно прослушать аудиозапись разговора менеджера с клиентом, провести глубокий фактологический аудит диалога по законам регламента.
-Твоя цель — исключительно зафиксировать объективные факты: соблюдено правило (passed: true) или нарушено (passed: false), привести точные таймкоды и цитаты. Никаких баллов и оценок рассчитывать не нужно.
-Тебе НЕ нужно транскрибировать разговор целиком. Вместо этого сфокусируйся на точности аудита: таймкодах, цитатах ошибок и готовых скриптах (как менеджеру нужно было сказать правильно).
-Будь строгим, но объективным. Замечай перебивания клиента, уход от прямого ответа по ценам, пассивность, отсутствие инициативы."""
+            else """You are an objective Quality Control Evaluator for sales calls.
+Your mission is to listen to the audio recording and evaluate compliance strictly against the provided laws.
+
+EVALUATION INSTRUCTIONS:
+1. STRICT CRITERIA: For each law in the provided list, evaluate the dialogue strictly against its verification criteria:
+   - passed: true — if the manager satisfied the criteria.
+   - passed: false — if the manager violated or failed the criteria.
+2. EVIDENCE: Provide the exact timestamp ("MM:SS") and direct quote from the call in "details".
+3. IMPROVEMENT: If passed: false, write a concise corrective script in "improvement" (how the manager should have spoken according to this law). If passed: true, set "improvement": null.
+4. SUMMARY & INSIGHTS:
+   - errors_summary: list of detected violations with timestamps (e.g. ["[01:45] Qoida buzilishi tavsifi"]).
+   - bottleneck: the exact moment where the conversation stalled or communication broke down.
+   - brief_summary: 2-3 sentences summarizing the essence of the call.
+   - recommendation: practical advice for the manager and supervisor.
+
+LANGUAGE REQUIREMENT:
+All output text values ("details", "improvement", "errors_summary", "bottleneck", "brief_summary", "recommendation") MUST be written strictly in Uzbek using the Latin alphabet (O'zbek tili lotin alifbosida)."""
         )
 
         company_section = ""
         if company_context and company_context.strip():
-            company_section = f"\nКонтекст о компании и специфика бизнеса:\n{company_context.strip()}\n"
+            company_section = f"\nCompany Context & Business Specifics:\n{company_context.strip()}\n"
 
         system_instruction = f"""
 {base_instruction}
 {company_section}
-Законы регламента для проверки:
+Laws to verify:
 {rules_formatted}
 
-Инструкция проверки:
-- Для КАЖДОГО закона из списка определи: был ли он соблюдён менеджером (passed: true) или нарушен (passed: false).
-- В поле timestamp укажи точный таймкод (в формате "ММ:СС", например "01:24"), к которому относится соблюдение или нарушение данного правила (или null, если неприменимо).
-- В поле details укажи конкретную аргументацию с точной цитатой из звонка (что именно сказал менеджер или клиент).
-- В поле improvement (ОБЯЗАТЕЛЬНО для правил с passed: false): напиши готовый эталонный речевой скрипт для менеджера — как именно следовало сказать/поступить в этой ситуации. Если правило passed: true, укажи null.
-- В поле errors_summary: перечисли конкретные ошибки с указанием таймкода в квадратных скобках (например, "[01:15] Не назвал вилку цен", "[02:30] Перебил клиента").
-- В поле bottleneck: детально опиши узкое место (момент, где диалог дал сбой, клиент засомневался, возникло недопонимание или менеджер упустил инициативу) с указанием таймкода.
-- В поле brief_summary: краткая суть диалога (2-3 предложения).
-- В поле recommendation: конкретная рекомендация менеджеру и руководителю (РОПу) по улучшению конверсии.
-- Если звонок фактически не состоялся (гудки, автоответчик, сброс, абонент не взял трубку):
-  - Поставь всем правилам passed: false.
-  - В errors_summary укажи ["[00:00] Звонок не состоялся / абонент не ответил"].
-
-Верни ответ СТРОГО в формате JSON по следующей схеме:
+Return response STRICTLY in JSON format following this schema:
 {{
   "rules_evaluation": [
     {{
       "rule_id": 1,
-      "rule_title": "Поздоровался и представился",
+      "rule_title": "Qoida nomi",
       "passed": true,
       "timestamp": "00:04",
-      "details": "Менеджер поприветствовал: «Добрый день, компания Эксперт, меня зовут Алишер»",
+      "details": "Menejer qoidani bajardi: «...»",
       "improvement": null
     }},
     {{
       "rule_id": 2,
-      "rule_title": "Озвучил стоимость или вилку цен",
+      "rule_title": "Ikkinchi qoida nomi",
       "passed": false,
       "timestamp": "01:45",
-      "details": "На прямой вопрос клиента «Сколько это стоит?» менеджер ответил уклончиво: «Ну, там всё индивидуально...»",
-      "improvement": "Следовало назвать вилку: «Стоимость базового пакета от 500 000 сум, расширенного — 900 000 сум. Давайте я уточню детали...»"
+      "details": "Menejer qoidani buzdi: «...»",
+      "improvement": "Bunday vaziyatda menejer quyidagicha aytishi kerak edi: «...»"
     }}
   ],
   "errors_summary": [
-    "[01:45] Менеджер уклонился от прямого ответа на вопрос о стоимости"
+    "[01:45] Qoida buzilishi tavsifi"
   ],
-  "bottleneck": "На 01:45 клиент прямо спросил стоимость, менеджер замялся и не назвал даже ориентир.",
-  "brief_summary": "Первичный звонок от клиента по поводу продукта. Клиент интересовался условиями.",
-  "recommendation": "Менеджеру нужно уверенно называть ориентировочные цены и задавать встречный вопрос."
+  "bottleneck": "Suhbatdagi asosiy zaif nuqta (01:45 da...)",
+  "brief_summary": "Suhbatning qisqacha mazmuni (2-3 jumla)...",
+  "recommendation": "Menejer va ROP uchun tavsiya..."
 }}
 """
 
@@ -176,7 +176,7 @@ async def evaluate_call_with_gemini(
                             }
                         },
                         {
-                            "text": "Прослушай данный звонок и выполни аудит по указанным законам регламента. Ответ выдай строго в JSON."
+                            "text": "Listen to this call recording and evaluate it strictly against the provided laws. Return response strictly in JSON."
                         }
                     ]
                 }

@@ -194,14 +194,14 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
 
           <div>
             <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              {lang === 'uz' ? 'AI uchun izoh / nima tekshirilishi kerak' : 'Инструкция для ИИ (что именно проверить)'}
+              {lang === 'uz' ? 'AI uchun tekshiruv mezonlari (nima tekshirilishi kerak)' : 'Критерии проверки для ИИ (что проверить в диалоге)'}
             </label>
-            <input
-              type="text"
+            <textarea
+              rows={2}
               value={newDesc}
               onChange={(e) => setNewDesc(e.target.value)}
-              placeholder={lang === 'uz' ? 'Menejer ismini va kompaniya nomini aytdimi...' : 'Проверить, назвал ли менеджер имя и компанию в первые 20 секунд...'}
-              className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+              placeholder={lang === 'uz' ? 'Masalan: Menejer o\'z ismini va kompaniya nomini aytdimi. Agar aytmagan bo\'lsa — qoida buzilgan deb hisoblansin...' : 'Например: Проверить, назвал ли менеджер имя и компанию. Если не назвал — считать нарушением...'}
+              className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 resize-y"
             />
           </div>
 
@@ -256,12 +256,12 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
                         className="p-1.5 border border-slate-300 dark:border-slate-700 rounded text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                       />
                     </div>
-                    <input
-                      type="text"
+                    <textarea
+                      rows={2}
                       value={editDesc}
                       onChange={(e) => setEditDesc(e.target.value)}
-                      placeholder="Инструкция для ИИ..."
-                      className="w-full p-1.5 border border-slate-300 dark:border-slate-700 rounded text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                      placeholder={lang === 'uz' ? 'AI uchun tekshiruv mezonlari...' : 'Критерии проверки для ИИ...'}
+                      className="w-full p-1.5 border border-slate-300 dark:border-slate-700 rounded text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-y"
                     />
                     <div className="flex justify-end gap-2 pt-1">
                       <button
@@ -296,7 +296,7 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
                           </span>
                         </div>
                         {rule.description && (
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 whitespace-pre-wrap">
                             {rule.description}
                           </p>
                         )}
