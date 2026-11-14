@@ -12,12 +12,14 @@ import {
   Target,
   Sparkles,
   ChevronDown,
+  Lock,
 } from 'lucide-react';
 import { analyticsApi, FilterParams } from '../api/analytics.api';
 import { userApi } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
 import AiChatDrawer from '@/modules/ai_chat/components/AiChatDrawer';
+import ModuleUpsellView from '@/components/ModuleUpsellView';
 import { useFilterContext } from '@/shared/context/FilterContext';
 import FilterBar from '@/shared/components/FilterBar';
 import MultiSelectDropdown from '../components/filters/MultiSelectDropdown';
@@ -45,6 +47,7 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
   const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatUpsellOpen, setChatUpsellOpen] = useState(false);
   const [isWideScreen, setIsWideScreen] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1280 : true,
   );
@@ -144,6 +147,8 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
     queryFn: () => userApi.getAiStatus(effectiveAccountId!),
     enabled: !!effectiveAccountId,
   });
+
+  const chatVis = role === 'admin' ? 3 : Number((aiStatus.data as any)?.visibility ?? (aiStatus.data?.enabled ? 3 : 1));
 
   const prevSourcesRef = useRef<MultiSelectOption[]>([]);
 
@@ -425,8 +430,8 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
           )}
         </div>
 
-        {/* Docked AI Chat for Desktop (>= 1280px) */}
-        {aiStatus.data?.enabled && effectiveAccountId && isWideScreen && chatOpen && (
+        {/* Docked AI Chat for Desktop (>= 1280px) - Only if Active (Level 3) */}
+        {chatVis === 3 && aiStatus.data?.enabled && effectiveAccountId && isWideScreen && chatOpen && (
           <aside className="w-[420px] 2xl:w-[460px] shrink-0 sticky top-0 h-screen -my-4 lg:-my-6 -mr-4 lg:-mr-6 flex flex-col border-l border-slate-200 dark:border-slate-800 z-30 transition-all bg-white dark:bg-slate-900 overflow-hidden">
             <AiChatDrawer
               accountId={effectiveAccountId}
@@ -450,8 +455,8 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
           </aside>
         )}
 
-        {/* Floating AI Button (Green cloud) - Only if AI key configured */}
-        {aiStatus.data?.enabled && !chatOpen && (
+        {/* Floating AI Button - Active (Level 3) */}
+        {chatVis === 3 && aiStatus.data?.enabled && !chatOpen && (
           <button
             type="button"
             onClick={() => setChatOpen(true)}
@@ -466,8 +471,58 @@ export default function AnalyticsPage({ defaultTab = 'overview' }: AnalyticsPage
           </button>
         )}
 
-        {/* Drawer overlay for non-wide screens */}
-        {aiStatus.data?.enabled && effectiveAccountId && !isWideScreen && chatOpen && (
+        {/* Floating AI Button - Gray Teaser (Level 2) */}
+        {chatVis === 2 && !chatOpen && (
+          <button
+            type="button"
+            onClick={() => setChatUpsellOpen(true)}
+            title={lang === 'uz' ? 'AI-Tahlilchi (PRO Modul)' : 'ИИ-Аналитик (PRO Модуль)'}
+            className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 px-4 py-3 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold shadow-md hover:shadow-lg border border-slate-300 dark:border-slate-700 transition-all cursor-pointer group"
+          >
+            <Lock size={16} className="text-amber-500" />
+            <span className="text-sm opacity-90">{lang === 'uz' ? 'AI-Tahlilchi' : 'ИИ-Аналитик'}</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+              PRO
+            </span>
+          </button>
+        )}
+
+        {/* AI Chat Upsell Modal (when Level 2 teaser is clicked) */}
+        {chatUpsellOpen && (
+          <div
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+            onClick={() => setChatUpsellOpen(false)}
+          >
+            <div
+              className="relative max-w-2xl w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setChatUpsellOpen(false)}
+                className="absolute top-6 right-6 z-10 p-2 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer"
+              >
+                <XCircle size={20} />
+              </button>
+              <ModuleUpsellView
+                icon={<Sparkles size={36} />}
+                moduleName={lang === 'uz' ? 'AI-Biznes tahlilchi (Chat)' : 'ИИ-Бизнес-Аналитик (Чат)'}
+                tagline={lang === 'uz' ? 'AmoCRM ma’lumotlari bo‘yicha shaxsiy aqlli maslahatchi' : 'Персональный ИИ-консультант РОПа по воронкам и продажам'}
+                description={lang === 'uz'
+                  ? 'Savdo voronkalaringizdagi to‘siqlarni aniqlash, konversiyani oshirish va menejerlar ishini yaxshilash uchun sun’iy intellektga to‘g‘ridan-to‘g‘ri savol bering.'
+                  : 'Задавайте любые вопросы по воронкам, находите точки роста конверсии и получайте мгновенные рекомендации от искусственного интеллекта.'}
+                features={[
+                  lang === 'uz' ? 'Voronka bosqichlari va konversiya bo‘yicha chuqur tahlil' : 'Глубокий анализ этапов, времени зависания и причин падения конверсий',
+                  lang === 'uz' ? 'Menejerlar faoliyati bo‘yicha individual tavsiyalar' : 'Персональные рекомендации для РОПа по управлению отделом продаж',
+                  lang === 'uz' ? 'Tabiiy tilda savol berish va tezkor hisobotlar olish' : 'Интерактивный диалог на естественном языке с доступом к реальным цифрам CRM',
+                ]}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Drawer overlay for non-wide screens - Only if Active (Level 3) */}
+        {chatVis === 3 && aiStatus.data?.enabled && effectiveAccountId && !isWideScreen && chatOpen && (
           <AiChatDrawer
             accountId={effectiveAccountId}
             isOpen={chatOpen}

@@ -18,6 +18,7 @@ import FilterBar from '../../../shared/components/FilterBar';
 import QcManagerCards from '../components/QcManagerCards';
 import CallCard from '../components/CallCard';
 import CallDetailModal from '../components/CallDetailModal';
+import ModuleUpsellView from '../../../components/ModuleUpsellView';
 
 export default function QualityControlPage() {
   const { lang } = useLanguage();
@@ -41,7 +42,10 @@ export default function QualityControlPage() {
     staleTime: 60_000,
   });
   const currentAcc = accountsQuery.data?.find((a: any) => a.id === accountId);
-  const isQcDisabled = role === 'viewer' && currentAcc && (currentAcc.qcEnabled === false || currentAcc.aiEnabled === false);
+  const qcVis = role === 'admin' ? 3 : Number(currentAcc?.qcVisibility ?? (currentAcc?.qcEnabled ? 3 : 1));
+  const isQcLocked = role !== 'admin' && qcVis === 2;
+  const isQcHidden = role !== 'admin' && qcVis === 1;
+  const isQcDisabled = isQcLocked || isQcHidden;
 
   // Draft vs Applied filters for Call feed specifics
   const [draftScoreFilter, setDraftScoreFilter] = useState('all');
@@ -149,7 +153,26 @@ export default function QualityControlPage() {
 
   const totalPages = Math.ceil((callsQuery.data?.total || 0) / 15) || 1;
 
-  if (isQcDisabled) {
+  if (isQcLocked) {
+    return (
+      <ModuleUpsellView
+        icon={<Headphones size={36} />}
+        moduleName={lang === 'uz' ? 'Qo‘ng‘iroqlar sifat nazorati (AI Speech Analytics)' : 'Контроль качества звонков (AI Речевая аналитика)'}
+        tagline={lang === 'uz' ? '100% qo‘ng‘iroqlarni neyron tarmoq orqali avtomatik tekshirish' : 'Автоматический аудит 100% звонков менеджеров нейросетью'}
+        description={lang === 'uz'
+          ? 'Menejerlaringiz savdo skriptlariga qanchalik rioya qilayotganini aniqlang, nizolarni tezda bartaraf eting va yo‘qotilayotgan mijozlarni qutqaring.'
+          : 'Выявляйте критические ошибки менеджеров, несоблюдение регламентов продаж и спасайте сделки до того, как клиент уйдёт к конкурентам.'}
+        features={[
+          lang === 'uz' ? '100% qo‘ng‘iroqlarni avtomatik transkripsiya qilish va tekshirish' : 'Автоматическая транскрипция и проверка 100% аудиозаписей звонков',
+          lang === 'uz' ? 'Kompaniya reglamenti va qoidalari bo‘yicha aniq ballash tizimi (0–100)' : 'Оценка звонков по чек-листам и регламенту компании (0–100 баллов)',
+          lang === 'uz' ? 'Xavfli qo‘ng‘iroqlarni aniqlash va bitimlarni qutqarish doskasi' : 'Выявление конфликтных звонков и доска спасения рискованных сделок',
+          lang === 'uz' ? 'Menejerlar reytingi va xatolar dinamikasi tahlili' : 'Рейтинг менеджеров отдела продаж и детальная аналитика ошибок',
+        ]}
+      />
+    );
+  }
+
+  if (isQcHidden) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center shadow-sm">
@@ -157,12 +180,12 @@ export default function QualityControlPage() {
             <Headphones size={32} />
           </div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-            {lang === 'uz' ? 'Sifat nazorati moduli o‘chirilgan' : 'Модуль Контроль качества отключен'}
+            {lang === 'uz' ? 'Modul mavjud emas' : 'Модуль недоступен'}
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
             {lang === 'uz'
-              ? 'Ushbu modul administrator tomonidan vaqtincha to‘xtatilgan.'
-              : 'Этот модуль временно отключен администратором для данного аккаунта.'}
+              ? 'Ushbu modul sizning hisobingiz uchun ulanmagan.'
+              : 'Этот модуль в данный момент не подключен для вашего аккаунта.'}
           </p>
           <button
             onClick={() => navigate('/bi')}

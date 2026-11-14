@@ -17,6 +17,7 @@ import {
   Headphones,
   Network,
   AlertTriangle,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -145,15 +146,24 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
   const isAnomalyDealsActive = isPathActive('/admin/anomaly-deals') || isPathActive('/anomaly-deals');
 
   const currentAccObj = accounts.find((a: any) => a.id === activeAccountId) || accounts[0];
-  const isAiGlobalEnabled = currentAccObj?.aiEnabled !== false;
-  const isQcEnabled = isAiGlobalEnabled && (currentAccObj?.qcEnabled !== false);
-  const isAnomalyEnabled = isAiGlobalEnabled && (currentAccObj?.anomalyEnabled !== false);
-  const isPredictionsEnabled = isAiGlobalEnabled && (currentAccObj?.predictionsEnabled !== false);
-  const isCrmNodesEnabled = isAiGlobalEnabled && (currentAccObj?.crmNodesEnabled !== false);
-  const showQcItem = role === 'admin' || isQcEnabled;
-  const showAnomalyItem = role === 'admin' || isAnomalyEnabled;
-  const showPredictionsItem = role === 'admin' || isPredictionsEnabled;
-  const showCrmNodesItem = role === 'admin' || isCrmNodesEnabled;
+  
+  // 3-Level Visibility Resolution (1: Hidden, 2: Gray / Locked Teaser, 3: Active)
+  // Admin always has full access (Level 3)
+  const qcVis = role === 'admin' ? 3 : Number(currentAccObj?.qcVisibility ?? (currentAccObj?.qcEnabled ? 3 : 1));
+  const showQcItem = qcVis >= 2;
+  const isQcLocked = role !== 'admin' && qcVis === 2;
+
+  const predVis = role === 'admin' ? 3 : Number(currentAccObj?.predictionsVisibility ?? (currentAccObj?.predictionsEnabled ? 3 : 1));
+  const showPredictionsItem = predVis >= 2;
+  const isPredictionsLocked = role !== 'admin' && predVis === 2;
+
+  const nodesVis = role === 'admin' ? 3 : Number(currentAccObj?.crmNodesVisibility ?? (currentAccObj?.crmNodesEnabled ? 3 : 1));
+  const showCrmNodesItem = nodesVis >= 2;
+  const isCrmNodesLocked = role !== 'admin' && nodesVis === 2;
+
+  const anomalyVis = role === 'admin' ? 3 : Number(currentAccObj?.anomalyVisibility ?? (currentAccObj?.anomalyEnabled ? 3 : 1));
+  const showAnomalyItem = anomalyVis >= 2;
+  const isAnomalyLocked = role !== 'admin' && anomalyVis === 2;
 
   const amoAccountName = currentAccObj?.subdomain || 'AmoCRM';
   const fullDomain = currentAccObj?.subdomain
@@ -342,16 +352,35 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                     ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
                     : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
                 } transition-all cursor-pointer ${
-                  isQcActive
+                  isQcLocked
+                    ? isQcActive
+                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-600 dark:hover:text-slate-300 opacity-75 hover:opacity-100'
+                    : isQcActive
                     ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-950/50'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white'
                 }`}
-                title={labels.qcApp}
+                title={isQcLocked ? `${labels.qcApp} (PRO)` : labels.qcApp}
               >
-                <Headphones size={20} className="shrink-0" />
+                <div className="relative">
+                  <Headphones size={20} className={`shrink-0 ${isQcLocked ? 'grayscale opacity-70' : ''}`} />
+                  {collapsed && isQcLocked && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
+                      <Lock size={8} />
+                    </span>
+                  )}
+                </div>
                 {!collapsed && (
-                  <div className="overflow-hidden flex-1">
-                    <span className="text-xs font-semibold truncate">{labels.qcApp}</span>
+                  <div className="overflow-hidden flex-1 flex items-center justify-between gap-1.5">
+                    <span className={`text-xs font-semibold truncate ${isQcLocked ? 'text-slate-500 dark:text-slate-400' : ''}`}>
+                      {labels.qcApp}
+                    </span>
+                    {isQcLocked && (
+                      <span className="shrink-0 flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300/60 dark:border-slate-700">
+                        <Lock size={10} />
+                        <span>PRO</span>
+                      </span>
+                    )}
                   </div>
                 )}
               </button>
@@ -368,16 +397,35 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                     ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
                     : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
                 } transition-all cursor-pointer ${
-                  isPredictionsActive
+                  isPredictionsLocked
+                    ? isPredictionsActive
+                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-600 dark:hover:text-slate-300 opacity-75 hover:opacity-100'
+                    : isPredictionsActive
                     ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-950/50'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white'
                 }`}
-                title={labels.app03}
+                title={isPredictionsLocked ? `${labels.app03} (PRO)` : labels.app03}
               >
-                <Cpu size={20} className="shrink-0" />
+                <div className="relative">
+                  <Cpu size={20} className={`shrink-0 ${isPredictionsLocked ? 'grayscale opacity-70' : ''}`} />
+                  {collapsed && isPredictionsLocked && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
+                      <Lock size={8} />
+                    </span>
+                  )}
+                </div>
                 {!collapsed && (
-                  <div className="overflow-hidden flex-1">
-                    <span className="text-xs font-semibold truncate">{labels.app03}</span>
+                  <div className="overflow-hidden flex-1 flex items-center justify-between gap-1.5">
+                    <span className={`text-xs font-semibold truncate ${isPredictionsLocked ? 'text-slate-500 dark:text-slate-400' : ''}`}>
+                      {labels.app03}
+                    </span>
+                    {isPredictionsLocked && (
+                      <span className="shrink-0 flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300/60 dark:border-slate-700">
+                        <Lock size={10} />
+                        <span>PRO</span>
+                      </span>
+                    )}
                   </div>
                 )}
               </button>
@@ -394,16 +442,35 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                     ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
                     : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
                 } transition-all cursor-pointer ${
-                  isCrmNodesActive
+                  isCrmNodesLocked
+                    ? isCrmNodesActive
+                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-600 dark:hover:text-slate-300 opacity-75 hover:opacity-100'
+                    : isCrmNodesActive
                     ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md shadow-teal-950/50'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white'
                 }`}
-                title={labels.crmNodes}
+                title={isCrmNodesLocked ? `${labels.crmNodes} (PRO)` : labels.crmNodes}
               >
-                <Network size={20} className="shrink-0" />
+                <div className="relative">
+                  <Network size={20} className={`shrink-0 ${isCrmNodesLocked ? 'grayscale opacity-70' : ''}`} />
+                  {collapsed && isCrmNodesLocked && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
+                      <Lock size={8} />
+                    </span>
+                  )}
+                </div>
                 {!collapsed && (
-                  <div className="overflow-hidden flex-1">
-                    <span className="text-xs font-semibold truncate">{labels.crmNodes}</span>
+                  <div className="overflow-hidden flex-1 flex items-center justify-between gap-1.5">
+                    <span className={`text-xs font-semibold truncate ${isCrmNodesLocked ? 'text-slate-500 dark:text-slate-400' : ''}`}>
+                      {labels.crmNodes}
+                    </span>
+                    {isCrmNodesLocked && (
+                      <span className="shrink-0 flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300/60 dark:border-slate-700">
+                        <Lock size={10} />
+                        <span>PRO</span>
+                      </span>
+                    )}
                   </div>
                 )}
               </button>
@@ -420,16 +487,35 @@ export default function AppSidebarLayout({ children }: AppShellProps) {
                     ? 'w-10 h-10 mx-auto flex items-center justify-center rounded-xl shrink-0'
                     : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left'
                 } transition-all cursor-pointer ${
-                  isAnomalyDealsActive
+                  isAnomalyLocked
+                    ? isAnomalyDealsActive
+                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-600 dark:hover:text-slate-300 opacity-75 hover:opacity-100'
+                    : isAnomalyDealsActive
                     ? 'bg-gradient-to-r from-amber-600 to-rose-600 text-white shadow-md shadow-amber-950/50'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white'
                 }`}
-                title={labels.anomalyDeals}
+                title={isAnomalyLocked ? `${labels.anomalyDeals} (PRO)` : labels.anomalyDeals}
               >
-                <AlertTriangle size={20} className="shrink-0" />
+                <div className="relative">
+                  <AlertTriangle size={20} className={`shrink-0 ${isAnomalyLocked ? 'grayscale opacity-70' : ''}`} />
+                  {collapsed && isAnomalyLocked && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
+                      <Lock size={8} />
+                    </span>
+                  )}
+                </div>
                 {!collapsed && (
-                  <div className="overflow-hidden flex-1">
-                    <span className="text-xs font-semibold truncate">{labels.anomalyDeals}</span>
+                  <div className="overflow-hidden flex-1 flex items-center justify-between gap-1.5">
+                    <span className={`text-xs font-semibold truncate ${isAnomalyLocked ? 'text-slate-500 dark:text-slate-400' : ''}`}>
+                      {labels.anomalyDeals}
+                    </span>
+                    {isAnomalyLocked && (
+                      <span className="shrink-0 flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300/60 dark:border-slate-700">
+                        <Lock size={10} />
+                        <span>PRO</span>
+                      </span>
+                    )}
                   </div>
                 )}
               </button>

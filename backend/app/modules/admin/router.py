@@ -27,6 +27,12 @@ def serialize_account(acc: Account) -> dict:
     # Safely inspect relationships to avoid triggering async lazy-loading (MissingGreenlet)
     qc_rel = acc.__dict__.get("qc_settings")
     qc_enabled = bool(qc_rel.is_enabled) if qc_rel else False
+    qc_visibility = int(getattr(qc_rel, "visibility_level", 3 if qc_enabled else 1)) if qc_rel else 1
+    
+    anomaly_visibility = int(anomaly_cfg.get("visibility_level", 3 if anomaly_cfg.get("is_enabled", True) else 1))
+    chat_visibility = int(chat_cfg.get("visibility_level", 3 if chat_cfg.get("is_enabled", True) else 1))
+    pred_visibility = int(pred_cfg.get("visibility_level", 3 if pred_cfg.get("is_enabled", True) else 1))
+    nodes_visibility = int(nodes_cfg.get("visibility_level", 3 if nodes_cfg.get("is_enabled", True) else 1))
     
     users_rel = acc.__dict__.get("users") or []
     viewer_users = [
@@ -56,10 +62,15 @@ def serialize_account(acc: Account) -> dict:
         "createdAt": acc.created_at.isoformat() if acc.created_at else None,
         "users": viewer_users,
         "qcEnabled": qc_enabled,
+        "qcVisibility": qc_visibility,
         "anomalyEnabled": bool(anomaly_cfg.get("is_enabled", True)),
+        "anomalyVisibility": anomaly_visibility,
         "chatEnabled": bool(chat_cfg.get("is_enabled", True)),
+        "chatVisibility": chat_visibility,
         "predictionsEnabled": bool(pred_cfg.get("is_enabled", True)),
+        "predictionsVisibility": pred_visibility,
         "crmNodesEnabled": bool(nodes_cfg.get("is_enabled", True)),
+        "crmNodesVisibility": nodes_visibility,
     }
 
 @router.get("/accounts")
@@ -375,21 +386,26 @@ async def get_ai_settings(account_id: int, db: AsyncSession = Depends(get_db)):
         "hasToken": bool(acc.ai_encrypted_token),
         "aiCompanyContext": acc.ai_company_context or "",
         "chatEnabled": chat_cfg.get("is_enabled", True),
+        "chatVisibility": int(chat_cfg.get("visibility_level", 3 if chat_cfg.get("is_enabled", True) else 1)),
         "chatAiModel": chat_cfg.get("ai_model") or "",
         "chatSystemPrompt": chat_cfg.get("system_prompt"),
         "qcEnabled": qc.is_enabled if qc else False,
+        "qcVisibility": int(qc.visibility_level) if qc else 1,
         "qcAiModel": qc.ai_model or "" if qc else "",
         "qcMinDurationSec": qc.min_duration_sec if qc else 20,
         "qcMaxDurationSec": qc.max_duration_sec if qc else 600,
         "qcSystemPrompt": qc.system_prompt if qc else None,
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids if (qc and qc.disabled_pipeline_ids is not None) else [],
         "anomalyEnabled": anomaly_cfg.get("is_enabled", True),
+        "anomalyVisibility": int(anomaly_cfg.get("visibility_level", 3 if anomaly_cfg.get("is_enabled", True) else 1)),
         "anomalyAiModel": anomaly_cfg.get("ai_model") or "",
         "anomalyLossReasonFieldId": anomaly_cfg.get("loss_reason_field_id"),
         "anomalyIgnoredReasons": anomaly_cfg.get("ignored_reasons", []),
         "anomalySystemPrompt": anomaly_cfg.get("system_prompt"),
         "predictionsEnabled": pred_cfg.get("is_enabled", True),
+        "predictionsVisibility": int(pred_cfg.get("visibility_level", 3 if pred_cfg.get("is_enabled", True) else 1)),
         "crmNodesEnabled": nodes_cfg.get("is_enabled", True),
+        "crmNodesVisibility": int(nodes_cfg.get("visibility_level", 3 if nodes_cfg.get("is_enabled", True) else 1)),
         "customFields": custom_fields,
     }
 
@@ -418,6 +434,8 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         if dto.chatEnabled and not cur_chat.get("is_enabled", True):
             cur_chat["started_at"] = now_utc.isoformat()
         cur_chat["is_enabled"] = dto.chatEnabled
+    if dto.chatVisibility is not None:
+        cur_chat["visibility_level"] = max(1, min(3, dto.chatVisibility))
     if dto.chatAiModel is not None:
         cur_chat["ai_model"] = dto.chatAiModel.strip() or None
     if dto.chatSystemPrompt is not None:
@@ -433,6 +451,8 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
             cur_anomaly["last_anomaly_audited_at"] = now_utc.isoformat()
             cur_anomaly["started_at"] = now_utc.isoformat()
         cur_anomaly["is_enabled"] = dto.anomalyEnabled
+    if dto.anomalyVisibility is not None:
+        cur_anomaly["visibility_level"] = max(1, min(3, dto.anomalyVisibility))
     if dto.anomalyAiModel is not None:
         cur_anomaly["ai_model"] = dto.anomalyAiModel.strip() or None
     if dto.anomalyLossReasonFieldId is not None:
@@ -482,6 +502,8 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
                 )
             )
         qc.is_enabled = dto.qcEnabled
+    if dto.qcVisibility is not None:
+        qc.visibility_level = max(1, min(3, dto.qcVisibility))
     if dto.qcAiModel is not None:
         qc.ai_model = dto.qcAiModel.strip() or None
     if dto.qcMinDurationSec is not None:
@@ -497,15 +519,19 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
     cur_predictions = dict(acc.predictions_settings or {})
     if dto.predictionsEnabled is not None:
         cur_predictions["is_enabled"] = dto.predictionsEnabled
-        acc.predictions_settings = cur_predictions
-        flag_modified(acc, "predictions_settings")
+    if dto.predictionsVisibility is not None:
+        cur_predictions["visibility_level"] = max(1, min(3, dto.predictionsVisibility))
+    acc.predictions_settings = cur_predictions
+    flag_modified(acc, "predictions_settings")
 
     # CRM Nodes settings
     cur_crm_nodes = dict(acc.crm_nodes_settings or {})
     if dto.crmNodesEnabled is not None:
         cur_crm_nodes["is_enabled"] = dto.crmNodesEnabled
-        acc.crm_nodes_settings = cur_crm_nodes
-        flag_modified(acc, "crm_nodes_settings")
+    if dto.crmNodesVisibility is not None:
+        cur_crm_nodes["visibility_level"] = max(1, min(3, dto.crmNodesVisibility))
+    acc.crm_nodes_settings = cur_crm_nodes
+    flag_modified(acc, "crm_nodes_settings")
 
     await db.commit()
     await db.refresh(qc)
@@ -517,21 +543,26 @@ async def update_ai_settings(account_id: int, dto: UpdateAiSettingsDto, db: Asyn
         "hasToken": bool(acc.ai_encrypted_token),
         "aiCompanyContext": acc.ai_company_context or "",
         "chatEnabled": acc.chat_settings.get("is_enabled", True) if acc.chat_settings else True,
+        "chatVisibility": acc.chat_settings.get("visibility_level", 3 if acc.chat_settings.get("is_enabled", True) else 1) if acc.chat_settings else 1,
         "chatAiModel": acc.chat_settings.get("ai_model") or "" if acc.chat_settings else "",
         "chatSystemPrompt": acc.chat_settings.get("system_prompt") if acc.chat_settings else None,
         "qcEnabled": qc.is_enabled,
+        "qcVisibility": qc.visibility_level,
         "qcAiModel": qc.ai_model or "",
         "qcMinDurationSec": qc.min_duration_sec,
         "qcMaxDurationSec": qc.max_duration_sec,
         "qcSystemPrompt": qc.system_prompt,
         "qcDisabledPipelineIds": qc.disabled_pipeline_ids or [],
         "anomalyEnabled": acc.anomaly_settings.get("is_enabled", True) if acc.anomaly_settings else True,
+        "anomalyVisibility": acc.anomaly_settings.get("visibility_level", 3 if acc.anomaly_settings.get("is_enabled", True) else 1) if acc.anomaly_settings else 1,
         "anomalyAiModel": acc.anomaly_settings.get("ai_model") or "" if acc.anomaly_settings else "",
         "anomalyLossReasonFieldId": acc.anomaly_settings.get("loss_reason_field_id") if acc.anomaly_settings else None,
         "anomalyIgnoredReasons": acc.anomaly_settings.get("ignored_reasons", []) if acc.anomaly_settings else [],
         "anomalySystemPrompt": acc.anomaly_settings.get("system_prompt") if acc.anomaly_settings else None,
         "predictionsEnabled": acc.predictions_settings.get("is_enabled", True) if acc.predictions_settings else True,
+        "predictionsVisibility": acc.predictions_settings.get("visibility_level", 3 if acc.predictions_settings.get("is_enabled", True) else 1) if acc.predictions_settings else 1,
         "crmNodesEnabled": acc.crm_nodes_settings.get("is_enabled", True) if acc.crm_nodes_settings else True,
+        "crmNodesVisibility": acc.crm_nodes_settings.get("visibility_level", 3 if acc.crm_nodes_settings.get("is_enabled", True) else 1) if acc.crm_nodes_settings else 1,
     }
 
 @router.get("/notifications")

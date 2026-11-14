@@ -4,6 +4,7 @@ import { Network, Workflow, GitFork, Activity, Layers } from 'lucide-react';
 import { useLanguage } from '../../../i18n/LanguageContext';
 import { useAuth } from '../../../auth/AuthContext';
 import { adminApi, py2Api } from '../../../api/client';
+import ModuleUpsellView from '../../../components/ModuleUpsellView';
 
 export default function CrmNodesPage() {
   const { lang } = useLanguage();
@@ -20,9 +21,29 @@ export default function CrmNodesPage() {
     staleTime: 60_000,
   });
   const currentAcc = accountsQuery.data?.find((a: any) => a.id === accountId);
-  const isCrmNodesDisabled = role === 'viewer' && currentAcc && (currentAcc.crmNodesEnabled === false || currentAcc.aiEnabled === false);
+  const nodesVis = role === 'admin' ? 3 : Number(currentAcc?.crmNodesVisibility ?? (currentAcc?.crmNodesEnabled ? 3 : 1));
+  const isCrmNodesLocked = role !== 'admin' && nodesVis === 2;
+  const isCrmNodesHidden = role !== 'admin' && nodesVis === 1;
 
-  if (isCrmNodesDisabled) {
+  if (isCrmNodesLocked) {
+    return (
+      <ModuleUpsellView
+        icon={<Network size={36} />}
+        moduleName={lang === 'uz' ? 'CRM Tugunlari va Voronkalar arxitekturasi' : 'CRM Ноды и архитектура процессов'}
+        tagline={lang === 'uz' ? 'AmoCRM voronkalarini interaktiv vizual xaritada boshqarish' : 'Интерактивная карта воронок, узлов и автоматизаций AmoCRM'}
+        description={lang === 'uz'
+          ? 'Barcha voronkalar va bosqichlar orasidagi oqimlarni, robotlar va avtomatlashtirish qoidalarini yagona ko‘rgazmali xaritada ko‘ring.'
+          : 'Визуализируйте сложную структуру продаж, переходы между этапами воронок и логику автоматических триггеров в наглядном графе.'}
+        features={[
+          lang === 'uz' ? 'Barcha voronkalar va bosqichlarning interaktiv vizual sxemasi' : 'Интерактивная схема воронок, этапов и связей между ними',
+          lang === 'uz' ? 'Bosqichlar orasidagi o‘tish va to‘siqlarni tahlil qilish' : 'Анализ конверсионных переходов и узких мест в узлах воронки',
+          lang === 'uz' ? 'Avtomatlashtirish va robotlar samaradorligi nazorati' : 'Прозрачный контроль триггеров и логики распределения лидов',
+        ]}
+      />
+    );
+  }
+
+  if (isCrmNodesHidden) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center shadow-sm">
@@ -30,12 +51,12 @@ export default function CrmNodesPage() {
             <Network size={32} />
           </div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-            {lang === 'uz' ? 'CRM Tugunlari moduli o‘chirilgan' : 'Модуль CRM Ноды отключен'}
+            {lang === 'uz' ? 'Modul mavjud emas' : 'Модуль недоступен'}
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
             {lang === 'uz'
-              ? 'Ushbu modul administrator tomonidan vaqtincha to‘xtatilgan.'
-              : 'Этот модуль временно отключен администратором для данного аккаунта.'}
+              ? 'Ushbu modul sizning hisobingiz uchun ulanmagan.'
+              : 'Этот модуль в данный момент не подключен для вашего аккаунта.'}
           </p>
           <button
             onClick={() => navigate('/bi')}

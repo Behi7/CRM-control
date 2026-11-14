@@ -37,11 +37,19 @@ def get_ai_status(account_id: int, user: dict = Depends(get_current_user)):
             raise HTTPException(status_code=404, detail="Account not found")
 
         chat_cfg = acc.get("chat_settings") or {}
+        if isinstance(chat_cfg, str):
+            try:
+                import json
+                chat_cfg = json.loads(chat_cfg)
+            except Exception:
+                chat_cfg = {}
         chat_model = chat_cfg.get("ai_model") or acc["ai_model"] or "gemini-2.5-flash"
         chat_enabled = chat_cfg.get("is_enabled", True) if acc["ai_enabled"] else False
+        chat_visibility = int(chat_cfg.get("visibility_level", 3 if chat_enabled else 1))
 
         return {
             "enabled": bool(chat_enabled and acc["ai_encrypted_token"]),
+            "visibility": chat_visibility,
             "configured": bool(acc["ai_encrypted_token"]),
             "model": chat_model,
         }

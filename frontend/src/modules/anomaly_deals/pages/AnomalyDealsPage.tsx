@@ -17,6 +17,7 @@ import AnomalyReasonsComparison from '../components/AnomalyReasonsComparison';
 import AnomalyManagerCards from '../components/AnomalyManagerCards';
 import AnomalyDealsTable from '../components/AnomalyDealsTable';
 import DealForensicModal from '../components/DealForensicModal';
+import ModuleUpsellView from '../../../components/ModuleUpsellView';
 
 type AnomalyTab = 'deals' | 'overview';
 
@@ -42,7 +43,10 @@ export default function AnomalyDealsPage() {
     staleTime: 60_000,
   });
   const currentAcc = accountsQuery.data?.find((a: any) => a.id === accountId);
-  const isAnomalyDisabled = role === 'viewer' && currentAcc && (currentAcc.anomalyEnabled === false || currentAcc.aiEnabled === false);
+  const anomalyVis = role === 'admin' ? 3 : Number(currentAcc?.anomalyVisibility ?? (currentAcc?.anomalyEnabled ? 3 : 1));
+  const isAnomalyLocked = role !== 'admin' && anomalyVis === 2;
+  const isAnomalyHidden = role !== 'admin' && anomalyVis === 1;
+  const isAnomalyDisabled = isAnomalyLocked || isAnomalyHidden;
 
   // Табы (классы функционала)
   const paramTab = searchParams.get('tab');
@@ -179,7 +183,26 @@ export default function AnomalyDealsPage() {
     },
   };
 
-  if (isAnomalyDisabled) {
+  if (isAnomalyLocked) {
+    return (
+      <ModuleUpsellView
+        icon={<AlertTriangle size={36} />}
+        moduleName={lang === 'uz' ? 'Anomal va yo‘qotilgan bitimlar auditi' : 'Аудит аномальных и слитых сделок'}
+        tagline={lang === 'uz' ? 'Bitimlar nima sababdan boy berilganini AI orqali tekshirish' : 'ИИ-следователь и арбитраж реальных причин потери клиентов'}
+        description={lang === 'uz'
+          ? 'Menejerlar ko‘rsatgan soxta rad sabablarini fosh qiling, vazifasiz qolib ketgan bitimlarni toping va sotuvni oshiring.'
+          : 'Вскрывайте отговорки менеджеров («дорого», «недозвон»), находите сделки без задач и объективно определяйте вину менеджера vs клиента.'}
+        features={[
+          lang === 'uz' ? 'Rad etilgan bitimlarni AI orqali xolis tekshirish va sabablarni solishtirish' : 'Нейросетевой арбитраж слитых сделок: объективная оценка вины менеджера',
+          lang === 'uz' ? 'Vazifasiz qolib ketgan va qotib qolgan bitimlar (Tasks Idle) nazorati' : 'Контроль регламента ведения задач и выявление заброшенных лидов',
+          lang === 'uz' ? 'Bitim qachon va qayerda «o‘lganini» ko‘rsatuvchi burilish nuqtasi (Pivot Point)' : 'Определение поворотной точки (Pivot Point), где сделка была потеряна',
+          lang === 'uz' ? 'Yo‘qotilgan mijozlarni qayta jonlantirish bo‘yicha aniq tavsiyalar' : 'Рекомендации для РОПа по спасению и повторной передаче лидов',
+        ]}
+      />
+    );
+  }
+
+  if (isAnomalyHidden) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center shadow-sm">
@@ -187,12 +210,12 @@ export default function AnomalyDealsPage() {
             <AlertTriangle size={32} />
           </div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-            {lang === 'uz' ? 'Anomal bitimlar moduli o‘chirilgan' : 'Модуль Аномальные сделки отключен'}
+            {lang === 'uz' ? 'Modul mavjud emas' : 'Модуль недоступен'}
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
             {lang === 'uz'
-              ? 'Ushbu modul administrator tomonidan vaqtincha to‘xtatilgan.'
-              : 'Этот модуль временно отключен администратором для данного аккаунта.'}
+              ? 'Ushbu modul sizning hisobingiz uchun ulanmagan.'
+              : 'Этот модуль в данный момент не подключен для вашего аккаунта.'}
           </p>
           <button
             onClick={() => navigate('/bi')}

@@ -34,6 +34,7 @@ def list_accounts_bi(user: dict):
             a.predictions_settings AS "predictionsSettings",
             a.crm_nodes_settings AS "crmNodesSettings",
             COALESCE(q.is_enabled, false) AS "qcEnabled",
+            COALESCE(q.visibility_level, 1) AS "qcVisibility",
             COUNT(l.id) AS "totalLeads",
             COUNT(l.custom_fields) AS "enrichedLeads",
             COUNT(l.main_contact_id) AS "withContacts",
@@ -43,7 +44,7 @@ def list_accounts_bi(user: dict):
         LEFT JOIN qc_settings q ON q.account_id = a.id
         LEFT JOIN leads l ON l.account_id = a.id
         {where_clause}
-        GROUP BY a.id, q.is_enabled
+        GROUP BY a.id, q.is_enabled, q.visibility_level
         ORDER BY a.id ASC
     """)
     with engine.connect() as conn:
@@ -75,11 +76,31 @@ def list_accounts_bi(user: dict):
                     nodes_s = json.loads(nodes_s)
                 except Exception:
                     nodes_s = {}
-            d["chatEnabled"] = bool(chat_s.get("is_enabled", True))
-            d["anomalyEnabled"] = bool(anom_s.get("is_enabled", True))
-            d["predictionsEnabled"] = bool(pred_s.get("is_enabled", True))
-            d["crmNodesEnabled"] = bool(nodes_s.get("is_enabled", True))
-            d["qcEnabled"] = bool(d.get("qcEnabled", False))
+            chat_enabled = bool(chat_s.get("is_enabled", True))
+            chat_vis = int(chat_s.get("visibility_level", 3 if chat_enabled else 1))
+
+            anom_enabled = bool(anom_s.get("is_enabled", True))
+            anom_vis = int(anom_s.get("visibility_level", 3 if anom_enabled else 1))
+
+            pred_enabled = bool(pred_s.get("is_enabled", True))
+            pred_vis = int(pred_s.get("visibility_level", 3 if pred_enabled else 1))
+
+            nodes_enabled = bool(nodes_s.get("is_enabled", True))
+            nodes_vis = int(nodes_s.get("visibility_level", 3 if nodes_enabled else 1))
+
+            qc_enabled = bool(d.get("qcEnabled", False))
+            qc_vis = int(d.get("qcVisibility") or (3 if qc_enabled else 1))
+
+            d["chatEnabled"] = chat_enabled
+            d["chatVisibility"] = chat_vis
+            d["anomalyEnabled"] = anom_enabled
+            d["anomalyVisibility"] = anom_vis
+            d["predictionsEnabled"] = pred_enabled
+            d["predictionsVisibility"] = pred_vis
+            d["crmNodesEnabled"] = nodes_enabled
+            d["crmNodesVisibility"] = nodes_vis
+            d["qcEnabled"] = qc_enabled
+            d["qcVisibility"] = qc_vis
             d["aiEnabled"] = bool(d.get("aiEnabled", False))
             results.append(d)
         return results

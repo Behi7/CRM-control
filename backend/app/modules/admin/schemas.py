@@ -21,21 +21,26 @@ class UpdateAiSettingsDto(BaseModel):
     aiToken: Optional[str] = None
     aiCompanyContext: Optional[str] = None
     chatEnabled: Optional[bool] = None
+    chatVisibility: Optional[int] = None
     chatAiModel: Optional[str] = None
     chatSystemPrompt: Optional[str] = None
     qcEnabled: Optional[bool] = None
+    qcVisibility: Optional[int] = None
     qcAiModel: Optional[str] = None
     qcMinDurationSec: Optional[int] = None
     qcMaxDurationSec: Optional[int] = None
     qcSystemPrompt: Optional[str] = None
     qcDisabledPipelineIds: Optional[list[int]] = None
     anomalyEnabled: Optional[bool] = None
+    anomalyVisibility: Optional[int] = None
     anomalyAiModel: Optional[str] = None
     anomalyLossReasonFieldId: Optional[str] = None
     anomalyIgnoredReasons: Optional[list[str]] = None
     anomalySystemPrompt: Optional[str] = None
     predictionsEnabled: Optional[bool] = None
+    predictionsVisibility: Optional[int] = None
     crmNodesEnabled: Optional[bool] = None
+    crmNodesVisibility: Optional[int] = None
 
 class TestAiDto(BaseModel):
     model: str

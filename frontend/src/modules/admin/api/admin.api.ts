@@ -15,21 +15,26 @@ export interface AiSettingsResponse {
   hasToken: boolean;
   aiCompanyContext: string;
   chatEnabled?: boolean;
+  chatVisibility?: number;
   chatAiModel?: string;
   chatSystemPrompt?: string | null;
   qcEnabled?: boolean;
+  qcVisibility?: number;
   qcAiModel?: string;
   qcMinDurationSec?: number;
   qcMaxDurationSec?: number;
   qcSystemPrompt?: string | null;
   qcDisabledPipelineIds?: number[];
   anomalyEnabled?: boolean;
+  anomalyVisibility?: number;
   anomalyAiModel?: string;
   anomalyLossReasonFieldId?: string | null;
   anomalyIgnoredReasons?: string[];
   anomalySystemPrompt?: string | null;
   predictionsEnabled?: boolean;
+  predictionsVisibility?: number;
   crmNodesEnabled?: boolean;
+  crmNodesVisibility?: number;
   customFields?: CustomFieldDefinitionDto[];
 }
 
@@ -39,21 +44,26 @@ export interface PatchAiSettingsDto {
   aiToken?: string;
   aiCompanyContext?: string;
   chatEnabled?: boolean;
+  chatVisibility?: number;
   chatAiModel?: string;
   chatSystemPrompt?: string | null;
   qcEnabled?: boolean;
+  qcVisibility?: number;
   qcAiModel?: string;
   qcMinDurationSec?: number;
   qcMaxDurationSec?: number;
   qcSystemPrompt?: string | null;
   qcDisabledPipelineIds?: number[];
   anomalyEnabled?: boolean;
+  anomalyVisibility?: number;
   anomalyAiModel?: string;
   anomalyLossReasonFieldId?: string | null;
   anomalyIgnoredReasons?: string[];
   anomalySystemPrompt?: string | null;
   predictionsEnabled?: boolean;
+  predictionsVisibility?: number;
   crmNodesEnabled?: boolean;
+  crmNodesVisibility?: number;
 }
 
 export const adminApi = {

@@ -306,6 +306,7 @@ class QcSettings(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), unique=True, nullable=False)
     is_enabled = Column(Boolean, nullable=False, default=False)
+    visibility_level = Column(Integer, nullable=False, default=1)
     ai_model = Column(Text, nullable=True, default=None)
     min_duration_sec = Column(Integer, nullable=False, default=20)
     max_duration_sec = Column(Integer, nullable=False, default=600)

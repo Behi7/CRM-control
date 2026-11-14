@@ -21,6 +21,8 @@ import {
   MessageSquare,
   Cpu,
   Network,
+  Lock,
+  EyeOff,
 } from 'lucide-react';
 import RulesSettingsTab from '../modules/quality_control/components/RulesSettingsTab';
 
@@ -75,6 +77,8 @@ interface ModuleStatusCardProps {
   activeText: string;
   disabledText: string;
   disabledNotice?: string;
+  visibilityLevel?: 1 | 2 | 3;
+  onVisibilityChange?: (level: 1 | 2 | 3) => void;
 }
 
 function ModuleStatusCard({
@@ -86,16 +90,15 @@ function ModuleStatusCard({
   activeText,
   disabledText,
   disabledNotice,
+  visibilityLevel,
+  onVisibilityChange,
 }: ModuleStatusCardProps) {
+  const { t } = useLanguage();
+
   return (
-    <div className="space-y-2.5">
-      <div
-        className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
-          enabled
-            ? 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 shadow-2xs'
-            : 'bg-slate-100/70 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 opacity-90'
-        }`}
-      >
+    <div className="space-y-3 p-4 rounded-2xl border bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 shadow-2xs">
+      {/* Top row: Module Icon, Title, Description, and Backend execution switch */}
+      <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3.5 min-w-0">
           <div
             className={`p-2.5 rounded-xl shrink-0 transition-colors ${
@@ -127,23 +130,95 @@ function ModuleStatusCard({
           </div>
         </div>
 
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          onClick={onToggle}
-          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ml-2 ${
-            enabled ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
-          }`}
-        >
-          <span
-            aria-hidden="true"
-            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-              enabled ? 'translate-x-5' : 'translate-x-0'
+        {/* Backend Execution Switch */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-right hidden sm:block">
+            <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200 leading-tight">
+              {enabled ? t('ai_backend_active') : t('ai_backend_disabled')}
+            </div>
+            <div className="text-[10px] text-slate-400 dark:text-slate-500">
+              {t('ai_backend_status_title')}
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            onClick={onToggle}
+            title={enabled ? t('ai_backend_active') : t('ai_backend_disabled')}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ml-1 ${
+              enabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
             }`}
-          />
-        </button>
+          >
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                enabled ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
       </div>
+
+      {/* 3-Level Client Visibility Segmented Control */}
+      {visibilityLevel !== undefined && onVisibilityChange && (
+        <div className="pt-3 border-t border-slate-200/80 dark:border-slate-700/60">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              {t('ai_visibility_title')}
+            </span>
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+              {visibilityLevel === 1 && t('ai_vis_hidden_desc')}
+              {visibilityLevel === 2 && t('ai_vis_teaser_desc')}
+              {visibilityLevel === 3 && t('ai_vis_active_desc')}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-200/70 dark:bg-slate-900/60 rounded-xl">
+            {/* Level 1: Hidden */}
+            <button
+              type="button"
+              onClick={() => onVisibilityChange(1)}
+              className={`py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                visibilityLevel === 1
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs border border-slate-200 dark:border-slate-700'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <EyeOff size={14} className={visibilityLevel === 1 ? 'text-slate-600 dark:text-slate-400' : ''} />
+              <span>{t('ai_vis_hidden')}</span>
+            </button>
+
+            {/* Level 2: Gray / Teaser */}
+            <button
+              type="button"
+              onClick={() => onVisibilityChange(2)}
+              className={`py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                visibilityLevel === 2
+                  ? 'bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 shadow-xs border border-amber-300/80 dark:border-amber-800'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <Lock size={14} className={visibilityLevel === 2 ? 'text-amber-600 dark:text-amber-400' : ''} />
+              <span>{t('ai_vis_teaser')}</span>
+            </button>
+
+            {/* Level 3: Active */}
+            <button
+              type="button"
+              onClick={() => onVisibilityChange(3)}
+              className={`py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                visibilityLevel === 3
+                  ? 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 shadow-xs border border-emerald-300/80 dark:border-emerald-800'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <CheckCircle2 size={14} className={visibilityLevel === 3 ? 'text-emerald-600 dark:text-emerald-400' : ''} />
+              <span>{t('ai_vis_active')}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {!enabled && disabledNotice && (
         <div className="px-3.5 py-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/40 text-amber-800 dark:text-amber-300 text-xs rounded-xl flex items-center gap-2">
@@ -203,6 +278,13 @@ export default function AiSettingsModal({
 
   // CRM Nodes settings
   const [crmNodesEnabled, setCrmNodesEnabled] = useState(true);
+
+  // 3-Level Visibility settings for Client Account (1: Hidden, 2: Gray Teaser, 3: Active)
+  const [chatVisibility, setChatVisibility] = useState<1 | 2 | 3>(3);
+  const [qcVisibility, setQcVisibility] = useState<1 | 2 | 3>(3);
+  const [anomalyVisibility, setAnomalyVisibility] = useState<1 | 2 | 3>(3);
+  const [predictionsVisibility, setPredictionsVisibility] = useState<1 | 2 | 3>(3);
+  const [crmNodesVisibility, setCrmNodesVisibility] = useState<1 | 2 | 3>(3);
 
   // Status & tests
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -266,6 +348,13 @@ export default function AiSettingsModal({
       // Predictions & CRM Nodes settings
       setPredictionsEnabled(settingsQuery.data.predictionsEnabled ?? true);
       setCrmNodesEnabled(settingsQuery.data.crmNodesEnabled ?? true);
+
+      // Visibility levels (1: Hidden, 2: Gray Teaser, 3: Active)
+      setChatVisibility((settingsQuery.data.chatVisibility as 1 | 2 | 3) || (settingsQuery.data.chatEnabled ? 3 : 1));
+      setQcVisibility((settingsQuery.data.qcVisibility as 1 | 2 | 3) || (settingsQuery.data.qcEnabled ? 3 : 1));
+      setAnomalyVisibility((settingsQuery.data.anomalyVisibility as 1 | 2 | 3) || (settingsQuery.data.anomalyEnabled ? 3 : 1));
+      setPredictionsVisibility((settingsQuery.data.predictionsVisibility as 1 | 2 | 3) || (settingsQuery.data.predictionsEnabled ? 3 : 1));
+      setCrmNodesVisibility((settingsQuery.data.crmNodesVisibility as 1 | 2 | 3) || (settingsQuery.data.crmNodesEnabled ? 3 : 1));
     }
   }, [settingsQuery.data]);
 
@@ -321,21 +410,26 @@ export default function AiSettingsModal({
         aiModel: model.trim() || 'gemini-2.5-flash',
         aiCompanyContext: companyContext.trim(),
         chatEnabled: chatEnabled,
+        chatVisibility: chatVisibility,
         chatAiModel: chatModel.trim() || null,
         chatSystemPrompt: chatSystemPrompt.trim() || null,
         qcEnabled: qcEnabled,
+        qcVisibility: qcVisibility,
         qcAiModel: qcModel.trim() || null,
         qcMinDurationSec: Number(minDuration) || 20,
         qcMaxDurationSec: Number(maxDuration) || 600,
         qcSystemPrompt: qcSystemPrompt.trim() ? qcSystemPrompt.trim() : null,
         qcDisabledPipelineIds: disabledPipelineIds,
         anomalyEnabled: anomalyEnabled,
+        anomalyVisibility: anomalyVisibility,
         anomalyAiModel: anomalyModel.trim() || null,
         anomalyLossReasonFieldId: lossReasonFieldId || null,
         anomalyIgnoredReasons: ignoredReasons,
         anomalySystemPrompt: anomalySystemPrompt.trim() ? anomalySystemPrompt.trim() : null,
         predictionsEnabled: predictionsEnabled,
+        predictionsVisibility: predictionsVisibility,
         crmNodesEnabled: crmNodesEnabled,
+        crmNodesVisibility: crmNodesVisibility,
       };
       if (token.trim()) {
         payload.aiToken = token.trim();
@@ -593,6 +687,8 @@ export default function AiSettingsModal({
                     description={t('ai_module_chat_desc')}
                     enabled={chatEnabled}
                     onToggle={() => setChatEnabled(!chatEnabled)}
+                    visibilityLevel={chatVisibility}
+                    onVisibilityChange={(v) => setChatVisibility(v)}
                     activeText={t('ai_status_active')}
                     disabledText={t('ai_status_disabled')}
                     disabledNotice={t('ai_module_disabled_hint')}
@@ -662,6 +758,8 @@ export default function AiSettingsModal({
                     description={t('ai_module_qc_desc')}
                     enabled={qcEnabled}
                     onToggle={() => setQcEnabled(!qcEnabled)}
+                    visibilityLevel={qcVisibility}
+                    onVisibilityChange={(v) => setQcVisibility(v)}
                     activeText={t('ai_status_active')}
                     disabledText={t('ai_status_disabled')}
                     disabledNotice={t('ai_module_disabled_hint')}
@@ -891,6 +989,8 @@ export default function AiSettingsModal({
                     description={t('ai_module_anomalies_desc')}
                     enabled={anomalyEnabled}
                     onToggle={() => setAnomalyEnabled(!anomalyEnabled)}
+                    visibilityLevel={anomalyVisibility}
+                    onVisibilityChange={(v) => setAnomalyVisibility(v)}
                     activeText={t('ai_status_active')}
                     disabledText={t('ai_status_disabled')}
                     disabledNotice={t('ai_module_disabled_hint')}
@@ -1169,6 +1269,8 @@ export default function AiSettingsModal({
                     description={t('ai_module_predictions_desc')}
                     enabled={predictionsEnabled}
                     onToggle={() => setPredictionsEnabled(!predictionsEnabled)}
+                    visibilityLevel={predictionsVisibility}
+                    onVisibilityChange={(v) => setPredictionsVisibility(v)}
                     activeText={t('ai_status_active')}
                     disabledText={t('ai_status_disabled')}
                     disabledNotice={t('ai_module_disabled_hint')}
@@ -1185,6 +1287,8 @@ export default function AiSettingsModal({
                     description={t('ai_module_crm_nodes_desc')}
                     enabled={crmNodesEnabled}
                     onToggle={() => setCrmNodesEnabled(!crmNodesEnabled)}
+                    visibilityLevel={crmNodesVisibility}
+                    onVisibilityChange={(v) => setCrmNodesVisibility(v)}
                     activeText={t('ai_status_active')}
                     disabledText={t('ai_status_disabled')}
                     disabledNotice={t('ai_module_disabled_hint')}

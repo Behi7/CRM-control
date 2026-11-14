@@ -1,9 +1,10 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Sparkles, BrainCircuit, TrendingUp, ShieldAlert } from 'lucide-react';
+import { Sparkles, BrainCircuit, TrendingUp, ShieldAlert, Cpu } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useAuth } from '@/auth/AuthContext';
 import { adminApi, py2Api } from '@/api/client';
+import ModuleUpsellView from '@/components/ModuleUpsellView';
 
 export default function PredictionsPage() {
   const { lang } = useLanguage();
@@ -20,9 +21,29 @@ export default function PredictionsPage() {
     staleTime: 60_000,
   });
   const currentAcc = accountsQuery.data?.find((a: any) => a.id === accountId);
-  const isPredictionsDisabled = role === 'viewer' && currentAcc && (currentAcc.predictionsEnabled === false || currentAcc.aiEnabled === false);
+  const predVis = role === 'admin' ? 3 : Number(currentAcc?.predictionsVisibility ?? (currentAcc?.predictionsEnabled ? 3 : 1));
+  const isPredictionsLocked = role !== 'admin' && predVis === 2;
+  const isPredictionsHidden = role !== 'admin' && predVis === 1;
 
-  if (isPredictionsDisabled) {
+  if (isPredictionsLocked) {
+    return (
+      <ModuleUpsellView
+        icon={<Cpu size={36} />}
+        moduleName={lang === 'uz' ? 'AI-Prognozlar va ehtimollar' : 'AI-Прогнозы вероятности сделок'}
+        tagline={lang === 'uz' ? 'Bitimlar muvaffaqiyatini neyrotarmoq orqali bashorat qilish' : 'Предиктивная аналитика успешности сделок и выполнения плана'}
+        description={lang === 'uz'
+          ? 'Qaysi bitimlar muvaffaqiyatli yopilishi, qaysilari esa xavf ostida ekanligini sun’iy intellekt hisob-kitoblari orqali oldindan biling.'
+          : 'Используйте машинное обучение, чтобы прогнозировать вероятность закрытия каждой сделки и вовремя фокусировать менеджеров на горячих лидах.'}
+        features={[
+          lang === 'uz' ? 'Har bir bitim bo‘yicha yopilish ehtimoli skoringi (0–100%)' : 'Скоринг вероятности оплаты и закрытия каждой сделки в воронке',
+          lang === 'uz' ? 'Oylik savdo rejasini bajarish ehtimoli prognozi' : 'Прогнозирование выполнения общего плана продаж на текущий период',
+          lang === 'uz' ? 'Riskli bitimlar bo‘yicha tezkor xabardor qilish' : 'Раннее выявление рисков слива ключевых сделок с высоким чеком',
+        ]}
+      />
+    );
+  }
+
+  if (isPredictionsHidden) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center shadow-sm">
@@ -30,12 +51,12 @@ export default function PredictionsPage() {
             <BrainCircuit size={32} />
           </div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-            {lang === 'uz' ? 'AI-Prognozlar moduli o‘chirilgan' : 'Модуль AI-Прогнозы отключен'}
+            {lang === 'uz' ? 'Modul mavjud emas' : 'Модуль недоступен'}
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
             {lang === 'uz'
-              ? 'Ushbu modul administrator tomonidan vaqtincha to‘xtatilgan.'
-              : 'Этот модуль временно отключен администратором для данного аккаунта.'}
+              ? 'Ushbu modul sizning hisobingiz uchun ulanmagan.'
+              : 'Этот модуль в данный момент не подключен для вашего аккаунта.'}
           </p>
           <button
             onClick={() => navigate('/bi')}
