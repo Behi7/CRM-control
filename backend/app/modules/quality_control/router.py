@@ -439,9 +439,7 @@ async def list_qc_calls(
 ):
     check_account_access(user, account_id)
 
-    # Квалифицируем свежие звонки из crm_sync (если есть в статусе 'raw')
-    from app.modules.quality_control.service import qualify_raw_calls
-    await qualify_raw_calls(db, account_id=account_id, batch_size=200)
+    # Свежие звонки автоматически квалифицируются фоновым воркером qc_background_worker
 
     # Base query joined with Lead, Pipeline, AmoUser
     stmt = (
@@ -655,51 +653,35 @@ async def get_qc_stats(
     if d_to:
         base_conditions.append(QcCallEvaluation.call_date <= d_to)
 
-    # 1. Total & Analyzed calls
-    t_stmt = (
-        select(func.count(QcCallEvaluation.id))
+    # 1. Единый агрегированный SQL-запрос статистики вместо 4 раздельных
+    stats_stmt = (
+        select(
+            func.count(QcCallEvaluation.id).label("total_calls"),
+            func.count(case((QcCallEvaluation.status == "completed", 1))).label("analyzed_calls"),
+            func.coalesce(func.avg(case((QcCallEvaluation.status == "completed", QcCallEvaluation.overall_score))), 0).label("avg_score"),
+            func.coalesce(func.sum(case((QcCallEvaluation.status == "completed", QcCallEvaluation.anomaly_points))), 0).label("total_anomalies"),
+            func.count(case((and_(QcCallEvaluation.status == "completed", QcCallEvaluation.overall_score < 50), 1))).label("low_score_calls"),
+            func.count(case((and_(QcCallEvaluation.status == "completed", QcCallEvaluation.overall_score >= 75), 1))).label("high_score_calls"),
+        )
         .select_from(QcCallEvaluation)
         .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
         .where(*base_conditions)
     )
-    total_calls = (await db.execute(t_stmt)).scalar() or 0
+    s_row = (await db.execute(stats_stmt)).first()
+    total_calls = s_row.total_calls or 0
+    analyzed_calls = s_row.analyzed_calls or 0
+    avg_score = float(s_row.avg_score or 0)
+    total_anomalies = int(s_row.total_anomalies or 0)
+    low_score_calls = s_row.low_score_calls or 0
+    high_score_calls = s_row.high_score_calls or 0
 
-    a_stmt = (
-        select(
-            func.count(QcCallEvaluation.id),
-            func.avg(QcCallEvaluation.overall_score),
-            func.sum(QcCallEvaluation.anomaly_points)
-        )
-        .select_from(QcCallEvaluation)
-        .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
-        .where(*base_conditions, QcCallEvaluation.status == "completed")
-    )
-    a_res = await db.execute(a_stmt)
-    analyzed_calls, avg_score, sum_anomalies = a_res.first() or (0, 0, 0)
-
-    # 2. Low score (<50) and High score (>=75) calls
-    low_stmt = (
-        select(func.count(QcCallEvaluation.id))
-        .select_from(QcCallEvaluation)
-        .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
-        .where(*base_conditions, QcCallEvaluation.status == "completed", QcCallEvaluation.overall_score < 50)
-    )
-    low_score_calls = (await db.execute(low_stmt)).scalar() or 0
-
-    high_stmt = (
-        select(func.count(QcCallEvaluation.id))
-        .select_from(QcCallEvaluation)
-        .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
-        .where(*base_conditions, QcCallEvaluation.status == "completed", QcCallEvaluation.overall_score >= 75)
-    )
-    high_score_calls = (await db.execute(high_stmt)).scalar() or 0
-
-    # 3. Top mistakes
+    # 2. Top mistakes
     mistakes_stmt = (
         select(QcCallEvaluation.errors_list)
         .select_from(QcCallEvaluation)
         .outerjoin(Lead, QcCallEvaluation.lead_id == Lead.id)
         .where(*base_conditions, QcCallEvaluation.status == "completed", QcCallEvaluation.errors_list.isnot(None))
+        .order_by(QcCallEvaluation.call_date.desc())
         .limit(100)
     )
     m_res = await db.execute(mistakes_stmt)
@@ -762,7 +744,7 @@ async def get_qc_stats(
         totalCalls=total_calls,
         analyzedCalls=analyzed_calls or 0,
         avgScore=round(float(avg_score or 0), 1),
-        totalAnomalies=0,
+        totalAnomalies=total_anomalies,
         lowScoreCalls=low_score_calls,
         highScoreCalls=high_score_calls,
         topMistakes=top_mistakes,
@@ -782,6 +764,16 @@ async def trigger_call_analysis(
     db: AsyncSession = Depends(get_db),
 ):
     check_account_access(user, account_id)
+
+    # Защита от BOLA/IDOR: проверка принадлежности звонка аккаунту
+    call_stmt = select(QcCallEvaluation).where(
+        QcCallEvaluation.id == call_id,
+        QcCallEvaluation.account_id == account_id
+    )
+    call = (await db.execute(call_stmt)).scalar_one_or_none()
+    if not call:
+        raise HTTPException(status_code=404, detail="Запись звонка не найдена в данном аккаунте")
+
     qc_stmt = select(QcSettings).where(QcSettings.account_id == account_id)
     qc = (await db.execute(qc_stmt)).scalar_one_or_none()
     acc_stmt = select(Account).where(Account.id == account_id)
@@ -790,7 +782,7 @@ async def trigger_call_analysis(
         raise HTTPException(status_code=403, detail="Модуль Контроль качества отключен")
 
     from app.modules.quality_control.service import process_call_evaluation
-    ok = await process_call_evaluation(db, call_id, force=True)
+    ok = await process_call_evaluation(db, call_id, force=True, expected_account_id=account_id)
     if not ok:
         raise HTTPException(status_code=400, detail="Не удалось проанализировать звонок (проверьте наличие аудио и настройки ИИ)")
     return {"ok": True, "message": "Звонок успешно проанализирован"}
@@ -819,13 +811,24 @@ async def recalculate_scores(
     )
     res = await db.execute(stmt)
     calls = res.scalars().all()
+    if not calls:
+        return {"ok": True, "updatedCount": 0}
+
+    # Кешируем правила для каждой уникальной воронки аккаунта (устранение N+1)
+    rules_cache: Dict[Optional[int], List[Dict[str, Any]]] = {}
+    unique_pipelines = {c.pipeline_id for c in calls}
+    for p_id in unique_pipelines:
+        rules_cache[p_id] = await get_active_rules(db, account_id, p_id)
+
     updated = 0
     for c in calls:
-        rules = await get_active_rules(db, account_id, c.pipeline_id)
-        new_score, new_anomalies = calculate_score_and_anomalies(c.rules_breakdown or [], rules)
+        active_r = rules_cache.get(c.pipeline_id) or []
+        new_score, new_anomalies, enriched = calculate_score_and_anomalies(c.rules_breakdown or [], active_r)
         c.overall_score = new_score
         c.anomaly_points = new_anomalies
+        c.rules_breakdown = enriched
         updated += 1
+
     await db.commit()
     return {"ok": True, "updatedCount": updated}
 

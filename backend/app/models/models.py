@@ -333,6 +333,10 @@ class QcRule(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
+    __table_args__ = (
+        Index("idx_qc_rules_account_pipe_active", "account_id", "pipeline_id", "is_active"),
+    )
+
     account = relationship("Account")
     pipeline = relationship("Pipeline")
 
@@ -352,7 +356,7 @@ class QcCallEvaluation(Base):
     duration_seconds = Column(Integer, nullable=False)
     recording_url = Column(Text, nullable=True)
     call_status = Column(Integer, nullable=True)
-    status = Column(Text, nullable=False, default="completed")
+    status = Column(Text, nullable=False, default="raw")
     skip_reason = Column(Text, nullable=True)
     overall_score = Column(Integer, nullable=True)
     rules_breakdown = Column(JSONB, nullable=True)
@@ -369,6 +373,10 @@ class QcCallEvaluation(Base):
         Index("idx_qc_eval_account_lead", "account_id", "lead_id"),
         Index("idx_qc_eval_account_date", "account_id", "call_date"),
         Index("idx_qc_eval_account_score", "account_id", "overall_score"),
+        Index("idx_qc_eval_account_status", "account_id", "status"),
+        Index("idx_qc_eval_status_worker", "status", "id"),
+        Index("idx_qc_eval_account_user", "account_id", "amo_user_id"),
+        Index("idx_qc_eval_account_pipeline", "account_id", "pipeline_id"),
     )
 
     account = relationship("Account")
