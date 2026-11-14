@@ -104,23 +104,17 @@ async def evaluate_call_with_gemini(
         base_instruction = (
             custom_prompt.strip()
             if (custom_prompt and custom_prompt.strip())
-            else """You are an objective Quality Control Evaluator for sales calls.
-Your mission is to listen to the audio recording and evaluate compliance strictly against the provided laws.
+            else """You are a fast, objective Quality Control checklist evaluator for sales calls.
+Your mission is to listen to the call audio and evaluate compliance for each provided law strictly against its verification criteria.
 
 EVALUATION INSTRUCTIONS:
-1. STRICT CRITERIA: For each law in the provided list, evaluate the dialogue strictly against its verification criteria:
-   - passed: true — if the manager satisfied the criteria.
-   - passed: false — if the manager violated or failed the criteria.
-2. EVIDENCE: Provide the exact timestamp ("MM:SS") and direct quote from the call in "details".
-3. IMPROVEMENT: If passed: false, write a concise corrective script in "improvement" (how the manager should have spoken according to this law). If passed: true, set "improvement": null.
-4. SUMMARY & INSIGHTS:
-   - errors_summary: list of detected violations with timestamps (e.g. ["[01:45] Qoida buzilishi tavsifi"]).
-   - bottleneck: the exact moment where the conversation stalled or communication broke down.
-   - brief_summary: 2-3 sentences summarizing the essence of the call.
-   - recommendation: practical advice for the manager and supervisor.
+For each law in the provided list:
+- passed: true if the manager complied with the criteria, false if violated.
+- timestamp: exact "MM:SS" of the occurrence (or null).
+- details: a short factual quote or note from the dialogue explaining the result.
 
 LANGUAGE REQUIREMENT:
-All output text values ("details", "improvement", "errors_summary", "bottleneck", "brief_summary", "recommendation") MUST be written strictly in Uzbek using the Latin alphabet (O'zbek tili lotin alifbosida)."""
+Output all text values ("summary", "details") strictly in Uzbek using the Latin alphabet (O'zbek tili lotin alifbosida)."""
         )
 
         company_section = ""
@@ -135,30 +129,21 @@ Laws to verify:
 
 Return response STRICTLY in JSON format following this schema:
 {{
+  "summary": "Suhbatning qisqacha mazmuni (1 jumla)",
   "rules_evaluation": [
     {{
       "rule_id": 1,
-      "rule_title": "Qoida nomi",
       "passed": true,
       "timestamp": "00:04",
-      "details": "Menejer qoidani bajardi: «...»",
-      "improvement": null
+      "details": "Menejer salomlashdi: «...»"
     }},
     {{
       "rule_id": 2,
-      "rule_title": "Ikkinchi qoida nomi",
       "passed": false,
-      "timestamp": "01:45",
-      "details": "Menejer qoidani buzdi: «...»",
-      "improvement": "Bunday vaziyatda menejer quyidagicha aytishi kerak edi: «...»"
+      "timestamp": "01:20",
+      "details": "Mijoz narx so'raganda menejer javob bermadi"
     }}
-  ],
-  "errors_summary": [
-    "[01:45] Qoida buzilishi tavsifi"
-  ],
-  "bottleneck": "Suhbatdagi asosiy zaif nuqta (01:45 da...)",
-  "brief_summary": "Suhbatning qisqacha mazmuni (2-3 jumla)...",
-  "recommendation": "Menejer va ROP uchun tavsiya..."
+  ]
 }}
 """
 
@@ -336,17 +321,34 @@ async def process_call_evaluation(session: AsyncSession, eval_id: int, force: bo
 
     # 4. Честный математический расчёт оценки в Python
     rules_eval = analysis.get("rules_evaluation") or []
+
+    # Обогащаем названиями законов из активных правил (нейросеть не тратит токены на их генерацию)
+    rules_by_id = {r.get("id"): r for r in rules if r.get("id")}
+    for i, r in enumerate(rules_eval):
+        matched = rules_by_id.get(r.get("rule_id")) or (rules[i] if i < len(rules) else {})
+        if not r.get("rule_title") and matched:
+            r["rule_title"] = matched.get("title")
+
     score, anomaly_points = calculate_score_and_anomalies(rules_eval, rules)
 
-    # 5. Сохранение результата
+    # 5. Автоматическое формирование списка ошибок из нарушенных правил (без лишней нагрузки на нейросеть)
+    errors_list = []
+    for r in rules_eval:
+        if not r.get("passed"):
+            ts = f"[{r.get('timestamp')}] " if r.get("timestamp") else ""
+            title = r.get("rule_title") or f"Qoida #{r.get('rule_id')}"
+            details = r.get("details")
+            errors_list.append(f"{ts}{title}: {details}" if details else f"{ts}{title}")
+
+    # Сохранение результата
     call_eval.status = "completed"
     call_eval.overall_score = score
     call_eval.rules_breakdown = rules_eval
-    call_eval.errors_list = analysis.get("errors_summary")
-    call_eval.bottleneck = analysis.get("bottleneck")
+    call_eval.errors_list = errors_list
+    call_eval.bottleneck = errors_list[0] if errors_list else None
     call_eval.transcript = None
-    call_eval.summary = analysis.get("brief_summary")
-    call_eval.recommendation = analysis.get("recommendation")
+    call_eval.summary = analysis.get("summary") or analysis.get("brief_summary")
+    call_eval.recommendation = None
     call_eval.anomaly_points = anomaly_points
 
     await session.commit()

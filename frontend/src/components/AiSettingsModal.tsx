@@ -39,23 +39,17 @@ const DEFAULT_CHAT_SYSTEM_PROMPT = `Ты — ведущий Бизнес-Ана�
 2. Давай четкие и структурированные рекомендации с выделением ключевых метрик жирным.
 3. Фокусируйся на конверсиях, удержании клиентов и устранении зависших этапов.`;
 
-const DEFAULT_QC_SYSTEM_PROMPT = `You are an objective Quality Control Evaluator for sales calls.
-Your mission is to listen to the audio recording and evaluate compliance strictly against the provided laws.
+const DEFAULT_QC_SYSTEM_PROMPT = `You are a fast, objective Quality Control checklist evaluator for sales calls.
+Your mission is to listen to the call audio and evaluate compliance for each provided law strictly against its verification criteria.
 
 EVALUATION INSTRUCTIONS:
-1. STRICT CRITERIA: For each law in the provided list, evaluate the dialogue strictly against its verification criteria:
-   - passed: true — if the manager satisfied the criteria.
-   - passed: false — if the manager violated or failed the criteria.
-2. EVIDENCE: Provide the exact timestamp ("MM:SS") and direct quote from the call in "details".
-3. IMPROVEMENT: If passed: false, write a concise corrective script in "improvement" (how the manager should have spoken according to this law). If passed: true, set "improvement": null.
-4. SUMMARY & INSIGHTS:
-   - errors_summary: list of detected violations with timestamps (e.g. ["[01:45] Qoida buzilishi tavsifi"]).
-   - bottleneck: the exact moment where the conversation stalled or communication broke down.
-   - brief_summary: 2-3 sentences summarizing the essence of the call.
-   - recommendation: practical advice for the manager and supervisor.
+For each law in the provided list:
+- passed: true if the manager complied with the criteria, false if violated.
+- timestamp: exact "MM:SS" of the occurrence (or null).
+- details: a short factual quote or note from the dialogue explaining the result.
 
 LANGUAGE REQUIREMENT:
-All output text values ("details", "improvement", "errors_summary", "bottleneck", "brief_summary", "recommendation") MUST be written strictly in Uzbek using the Latin alphabet (O'zbek tili lotin alifbosida).`;
+Output all text values ("summary", "details") strictly in Uzbek using the Latin alphabet (O'zbek tili lotin alifbosida).`;
 
 const DEFAULT_ANOMALY_SYSTEM_PROMPT = `Ты — беспристрастный и опытный цифровой аудитор (следователь) отдела продаж для РОПа.
 Твоя задача — изучить досье слитой сделки из AmoCRM и вскрыть ПРАВДУ: кто виноват в потере сделки (клиент или менеджер) и почему.
