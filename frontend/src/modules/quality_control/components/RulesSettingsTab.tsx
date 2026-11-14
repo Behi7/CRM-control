@@ -91,8 +91,8 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
     });
   };
 
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreate = (e?: React.SyntheticEvent) => {
+    if (e) e.preventDefault();
     if (!newTitle.trim()) return;
     createMut.mutate({
       pipelineId: selectedPipelineId ?? null,
@@ -170,8 +170,7 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
 
       {/* Add New Rule Form */}
       {isAdding && (
-        <form
-          onSubmit={handleCreate}
+        <div
           className="bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 p-4 rounded-xl space-y-3 animate-in fade-in"
         >
           <div className="flex items-center justify-between">
@@ -197,6 +196,12 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
                 required
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCreate();
+                  }
+                }}
                 placeholder={lang === 'uz' ? 'Masalan: Mijoz bilan salomlashdi' : 'Например: Поздоровался и представился'}
                 className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
               />
@@ -211,6 +216,12 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
                 max={50}
                 value={newPenalty}
                 onChange={(e) => setNewPenalty(Number(e.target.value))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCreate();
+                  }
+                }}
                 className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
               />
             </div>
@@ -238,14 +249,15 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
               {lang === 'uz' ? 'Bekor qilish' : 'Отмена'}
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={handleCreate}
               disabled={createMut.isPending}
-              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs cursor-pointer"
+              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs cursor-pointer disabled:opacity-50"
             >
               {createMut.isPending ? '...' : (lang === 'uz' ? 'Qo\'shish' : 'Сохранить закон')}
             </button>
           </div>
-        </form>
+        </div>
       )}
 
       {/* Rules List */}
@@ -271,6 +283,12 @@ export default function RulesSettingsTab({ accountId, pipelines, pipelineId }: R
                         type="text"
                         value={editTitle}
                         onChange={(e) => setEditTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleSaveEdit(rule.id);
+                          }
+                        }}
                         className="col-span-2 p-1.5 border border-slate-300 dark:border-slate-700 rounded text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                       />
                       <input
