@@ -48,8 +48,12 @@ For each law in the provided list:
 - timestamp: exact "MM:SS" of the occurrence (or null).
 - details: a short factual quote or note from the dialogue explaining the result.
 
+CRITICAL ACCURACY:
+- Do NOT invent extra requirements. If the manager satisfied the core criterion (e.g. clearly stated the price when asked), mark passed: true.
+- Only mark passed: false if the manager clearly failed, avoided answering, or violated the criterion.
+
 LANGUAGE REQUIREMENT:
-Output all text values ("summary", "details") strictly in Uzbek using the Latin alphabet (O'zbek tili lotin alifbosida).`;
+Output all "details" strictly in Uzbek using the Latin alphabet (O'zbek tili lotin alifbosida).`;
 
 const DEFAULT_ANOMALY_SYSTEM_PROMPT = `Ты — беспристрастный и опытный цифровой аудитор (следователь) отдела продаж для РОПа.
 Твоя задача — изучить досье слитой сделки из AmoCRM и вскрыть ПРАВДУ: кто виноват в потере сделки (клиент или менеджер) и почему.

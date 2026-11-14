@@ -115,8 +115,12 @@ For each law in the provided list:
 - timestamp: exact "MM:SS" of the occurrence (or null).
 - details: a short factual quote or note from the dialogue explaining the result.
 
+CRITICAL ACCURACY:
+- Do NOT invent extra requirements. If the manager satisfied the core criterion (e.g. clearly stated the price when asked), mark passed: true.
+- Only mark passed: false if the manager clearly failed, avoided answering, or violated the criterion.
+
 LANGUAGE REQUIREMENT:
-Output all text values ("summary", "details") strictly in Uzbek using the Latin alphabet (O'zbek tili lotin alifbosida)."""
+Output all "details" strictly in Uzbek using the Latin alphabet (O'zbek tili lotin alifbosida)."""
         )
 
         company_section = ""
@@ -131,7 +135,6 @@ Laws to verify:
 
 Return response STRICTLY in JSON format following this schema:
 {{
-  "summary": "Suhbatning qisqacha mazmuni (1 jumla)",
   "rules_evaluation": [
     {{
       "rule_id": 1,
@@ -347,9 +350,9 @@ async def process_call_evaluation(session: AsyncSession, eval_id: int, force: bo
     call_eval.overall_score = score
     call_eval.rules_breakdown = rules_eval
     call_eval.errors_list = errors_list
-    call_eval.bottleneck = errors_list[0] if errors_list else None
+    call_eval.bottleneck = None
     call_eval.transcript = None
-    call_eval.summary = analysis.get("summary") or analysis.get("brief_summary")
+    call_eval.summary = None
     call_eval.recommendation = None
     call_eval.anomaly_points = anomaly_points
 

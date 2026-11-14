@@ -25,7 +25,7 @@ interface CallDetailModalProps {
 
 export default function CallDetailModal({ accountId, callId, onClose }: CallDetailModalProps) {
   const { lang } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'verdict' | 'checklist'>('verdict');
+  const [activeTab, setActiveTab] = useState<'checklist' | 'verdict'>('checklist');
 
   const { data: call, isLoading } = useQuery({
     queryKey: ['qc-call-detail', accountId, callId],
@@ -144,16 +144,6 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
         {/* Tabs Bar */}
         <div className="flex border-b border-slate-200 dark:border-slate-800 px-5 gap-4 bg-white dark:bg-slate-900 text-sm">
           <button
-            onClick={() => setActiveTab('verdict')}
-            className={`py-3 font-semibold border-b-2 cursor-pointer transition-colors ${
-              activeTab === 'verdict'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
-            }`}
-          >
-            {lang === 'uz' ? 'AI Xulosasi' : 'Вердикт ИИ'}
-          </button>
-          <button
             onClick={() => setActiveTab('checklist')}
             className={`py-3 font-semibold border-b-2 cursor-pointer transition-colors flex items-center gap-1.5 ${
               activeTab === 'checklist'
@@ -168,50 +158,27 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
               </span>
             )}
           </button>
+          {call.errorsList && call.errorsList.length > 0 && (
+            <button
+              onClick={() => setActiveTab('verdict')}
+              className={`py-3 font-semibold border-b-2 cursor-pointer transition-colors flex items-center gap-1.5 ${
+                activeTab === 'verdict'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+              }`}
+            >
+              {lang === 'uz' ? 'Xatolar ro\'yxati' : 'Список ошибок'}
+              <span className="px-1.5 py-0.2 rounded-full text-xs bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 font-bold">
+                {call.errorsList.length}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Body content */}
         <div className="p-6 overflow-y-auto flex-1 space-y-4">
           {activeTab === 'verdict' && (
             <div className="space-y-4">
-              {/* Summary */}
-              {call.summary && (
-                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                    {lang === 'uz' ? 'Qisqacha mazmun' : 'Краткое содержание'}
-                  </span>
-                  <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">
-                    {call.summary}
-                  </p>
-                </div>
-              )}
-
-              {/* Bottleneck */}
-              {call.bottleneck && (
-                <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200/80 dark:border-amber-900/40">
-                  <span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider block mb-1 flex items-center gap-1.5">
-                    <AlertTriangle size={15} />
-                    {lang === 'uz' ? 'Suhbatning zaif nuqtasi (Bottleneck)' : 'Узкое место разговора'}
-                  </span>
-                  <p className="text-sm text-amber-950 dark:text-amber-200 leading-relaxed">
-                    {call.bottleneck}
-                  </p>
-                </div>
-              )}
-
-              {/* Recommendation */}
-              {call.recommendation && (
-                <div className="p-4 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-200/80 dark:border-blue-900/40">
-                  <span className="text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider block mb-1 flex items-center gap-1.5">
-                    <Lightbulb size={15} />
-                    {lang === 'uz' ? 'Menejer va ROP uchun tavsiya' : 'Рекомендация менеджеру и РОПу'}
-                  </span>
-                  <p className="text-sm text-blue-950 dark:text-blue-200 leading-relaxed">
-                    {call.recommendation}
-                  </p>
-                </div>
-              )}
-
               {/* Errors List */}
               {call.errorsList && call.errorsList.length > 0 && (
                 <div>
@@ -232,8 +199,8 @@ export default function CallDetailModal({ accountId, callId, onClose }: CallDeta
                 </div>
               )}
 
-              {/* If no verdict data (e.g. call was skipped or pending) */}
-              {!call.summary && !call.bottleneck && !call.recommendation && (!call.errorsList || call.errorsList.length === 0) && (
+              {/* If no errors data (e.g. call was skipped or pending) */}
+              {(!call.errorsList || call.errorsList.length === 0) && (
                 <div className="text-center py-10 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-2">
                   <AlertTriangle size={28} className="mx-auto text-slate-400" />
                   <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">
